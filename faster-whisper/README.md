@@ -8,7 +8,7 @@ Run the demo transcription, e.g.:
 
 ```bash
 python load.py ~/develop/ai/stt/samples/002-01.wav
-```
+````
 
 Example output:
 
@@ -17,7 +17,13 @@ Detected language: ar
 [0.00s -> 3.25s] بسم الله الرحمن الرحيم
 ```
 
----
+After confirming that the model works, you can **move or copy** the generated `whisper_ct2/` folder to the proper location for your project:
+
+* For Python projects:
+  → move to `../models/whisper_ct2/`
+
+* For Android apps:
+  → copy into `app/src/main/assets/whisper_ct2/`
 
 ## 📂 Project Structure
 
