@@ -43,5 +43,6 @@ captures
 local.properties
 .gitignore
 .name
+*.bin
 
 
