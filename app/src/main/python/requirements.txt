@@ -1,0 +1,2 @@
+faster-whisper[audio]
+# remove av or leave optional extras out

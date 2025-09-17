@@ -1,46 +1,25 @@
 package org.amr.arabicwhisper
 
 import android.os.Bundle
+import android.util.Log
 import androidx.appcompat.app.AppCompatActivity
-import java.io.File
-import android.content.res.AssetManager
 
 class MainActivity : AppCompatActivity() {
-  private lateinit var whisperHelper: WhisperHelper
+
+  private lateinit var whisper: FasterWhisper
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
 
-    // Use 'this' as the context
-    val modelDir = File(this.filesDir, "whisper_ct2")
-    if (!modelDir.exists()) {
-      modelDir.mkdirs() // <-- now it works
-    }
-    copyModelFromAssets(assets, modelDir)
-    // TODO: Copy model.bin and other files into modelDir if not already there
+    whisper = FasterWhisper(this)
 
-    whisperHelper = WhisperHelper(this)
+    // Initialize the model from assets (or filesDir path)
+    val modelPath = filesDir.absolutePath + "/whisper_ct2"
+    val initResult = whisper.initModel(modelPath)
+    Log.d("WhisperDemo", "Model init: $initResult")
 
-    // Example call with a string
-    val text = whisperHelper.transcribe("hello world")
-    println("Transcription: $text")
-
-    // Another instance, using wav path
-    val transcription = whisperHelper.transcribe("/data/data/org.amr.arabicwhisper/files/001.wav")
-    println("Wav transcription: $transcription")
-  }
-}
-
-fun copyModelFromAssets(assetManager: AssetManager, destDir: File) {
-  val files = assetManager.list("whisper_ct2") ?: return
-  for (fileName in files) {
-    val outFile = File(destDir, fileName)
-    if (!outFile.exists()) {
-      assetManager.open("whisper_ct2/$fileName").use { input ->
-        outFile.outputStream().use { output ->
-          input.copyTo(output)
-        }
-      }
-    }
+    // Transcribe a file in internal storage
+    val transcription = whisper.transcribe(filesDir.absolutePath + "/001.wav")
+    Log.d("WhisperDemo", "Transcription: $transcription")
   }
 }
