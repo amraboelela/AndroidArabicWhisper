@@ -42,7 +42,6 @@ android {
   }
 }
 
-
 dependencies {
   implementation(libs.androidx.core.ktx)
   implementation(libs.androidx.lifecycle.runtime.ktx)
@@ -52,9 +51,10 @@ dependencies {
   implementation(libs.androidx.ui.graphics)
   implementation(libs.androidx.ui.tooling.preview)
   implementation(libs.androidx.material3)
-  //implementation("com.microsoft.onnxruntime:onnxruntime-android:1.16.3")
   implementation("androidx.appcompat:appcompat:1.6.1")
   implementation("com.microsoft.onnxruntime:onnxruntime-android:1.15.1")
+  implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
+
   testImplementation(libs.junit)
   androidTestImplementation(libs.androidx.junit)
   androidTestImplementation(libs.androidx.espresso.core)
