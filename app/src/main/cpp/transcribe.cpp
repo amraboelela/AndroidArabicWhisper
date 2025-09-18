@@ -14,12 +14,16 @@
 #include <numeric>
 #include <cassert>
 #include <set>
-#include <zlib.h>        // for compression
-#include <cstring>       // for memcpy
+#include <zlib.h>
+#include <cstring>
 #include <variant>
-#include <utility> // for std::pair
+#include <utility>
+#include "vad.h"
+#include "utils.h"
+#include "tokenizer.h"
+#include "audio.h"
+#include "feature_extractor.h"
 
-// ---------------- Word ----------------
 struct Word {
   float start;
   float end;
@@ -35,7 +39,6 @@ struct Word {
   }
 };
 
-// ---------------- Segment ----------------
 struct Segment {
   int id;
   int seek;
@@ -46,8 +49,8 @@ struct Segment {
   float avg_logprob;
   float compression_ratio;
   float no_speech_prob;
-  std::optional<std::vector<Word>> words;  // optional field
-  std::optional<float> temperature;        // optional field
+  std::optional<std::vector<Word>> words;
+  std::optional<float> temperature;
 
   std::string to_string() const {
     std::string words_str = "[";
@@ -73,10 +76,6 @@ struct Segment {
   }
 };
 
-// Forward declaration of VadOptions
-struct VadOptions;
-
-// ---------------- TranscriptionOptions ----------------
 struct TranscriptionOptions {
   int beam_size;
   int best_of;
@@ -114,7 +113,6 @@ struct TranscriptionOptions {
   std::optional<std::string> hotwords;
 };
 
-// ---------------- TranscriptionInfo ----------------
 struct TranscriptionInfo {
   std::string language;
   float language_probability;
@@ -140,9 +138,6 @@ public:
       const std::string &revision = "",
       const std::string &use_auth_token = ""
   ) {
-    // -------------------
-    // Model Path Handling
-    // -------------------
     std::string model_path;
     if (!files.empty()) {
       // If model files are already provided in memory (not implemented here)
@@ -155,17 +150,17 @@ public:
       model_path = model_size_or_path;
     }
 
-    // -------------------
-    // Load Whisper Model
-    // -------------------
-    ctranslate2::models::Whisper::Options options;
-    options.device = device;
-    options.device_indices = device_index;
-    options.compute_type = compute_type;
-    options.intra_threads = cpu_threads;
-    options.inter_threads = num_workers;
+    ctranslate2::ReplicaPoolConfig config;
+    config.num_threads_per_replica = cpu_threads;   // map your params here
 
-    model = std::make_unique<ctranslate2::models::Whisper>(model_path, options);
+    model = std::make_unique<ctranslate2::models::Whisper>(
+        model_path,
+        ctranslate2::Device::CPU,
+        ctranslate2::ComputeType::DEFAULT,
+        device_index,
+        false,
+        config
+    );
 
     // -------------------
     // Tokenizer Handling
@@ -195,9 +190,6 @@ public:
     max_length = 448;
   }
 
-  // -----------------
-  // Supported Languages
-  // -----------------
   std::vector<std::string> supported_languages() const {
     if (model->is_multilingual()) {
       return LANGUAGE_CODES; // assume you have a constant vector of strings
@@ -229,9 +221,6 @@ public:
     return config;
   }
 
-  // -----------------
-  // Transcribe
-  // -----------------
   std::tuple<std::vector<Segment>, TranscriptionInfo> transcribe(
       const std::vector<float> &audio,
       const std::optional<std::string> &language = std::nullopt,

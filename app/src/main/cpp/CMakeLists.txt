@@ -6,11 +6,17 @@ add_library(
         whisper_jni
         SHARED
         whisper_jni.cpp       # your JNI wrapper file
-        whisper_model.cpp     # new WhisperModel implementation
+        transcribe.cpp
+        vad.cpp
+        utils.cpp
+        tokenizer.cpp
+        feature_extractor.cpp
+        audio.cpp
 )
 
 # Include directories for CTranslate2 headers
 include_directories(/Users/amraboelela/develop/android/CTranslate2/include)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 # Prebuilt shared library for CTranslate2
 add_library(ctranslate2 SHARED IMPORTED)
