@@ -51,7 +51,7 @@ const std::unordered_set<std::string> _TASKS = {
     "transcribe", "translate"
 };
 
-const std::unordered_set<std::string> _LANGUAGE_CODES = {
+const std::vector<std::string> _LANGUAGE_CODES = {
     "af", "am", "ar", "as", "az", "ba", "be", "bg", "bn", "bo", "br", "bs", "ca",
     "cs", "cy", "da", "de", "el", "en", "es", "et", "eu", "fa", "fi", "fo", "fr",
     "gl", "gu", "ha", "haw", "he", "hi", "hr", "ht", "hu", "hy", "id", "is", "it",

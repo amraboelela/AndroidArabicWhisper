@@ -15,7 +15,7 @@ namespace tokenizers {
 
 // A C++ equivalent of the `_TASKS` and `_LANGUAGE_CODES` constants.
 extern const std::unordered_set<std::string> _TASKS;
-extern const std::unordered_set<std::string> _LANGUAGE_CODES;
+extern const std::vector<std::string> _LANGUAGE_CODES;
 
 class Tokenizer {
 public:

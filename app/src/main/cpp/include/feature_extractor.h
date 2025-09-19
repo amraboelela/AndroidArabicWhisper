@@ -25,7 +25,6 @@ public:
       std::optional<int> chunk_length = std::nullopt
   );
 
-private:
   int n_fft;
   int hop_length;
   int chunk_length;

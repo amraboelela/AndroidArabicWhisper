@@ -145,7 +145,6 @@ std::vector<float> SileroVADModel::operator()(const std::vector<float>& audio_2d
   return decoder_out;
 }
 
-// --------------------- get_speech_timestamps implementation ---------------------
 std::vector<Chunk> get_speech_timestamps(const std::vector<float>& audio,
                                          const VadOptions& vad_options,
                                          int sampling_rate) {
@@ -293,7 +292,6 @@ std::vector<Chunk> get_speech_timestamps(const std::vector<float>& audio,
   return speeches;
 }
 
-// --------------------- collect_chunks implementation ---------------------
 std::pair<std::vector<std::vector<float>>, std::vector<ChunkMetadata>>
 collect_chunks(const std::vector<float>& audio,
                const std::vector<Chunk>& chunks,
