@@ -1,4 +1,5 @@
-#include "Tokenizer.h"
+#include "tokenizer.h"
+#include "whisper_tokenizer.h"
 
 #include <iostream>
 #include <stdexcept>
@@ -7,41 +8,25 @@
 #include <set>
 #include <string_view>
 
-// A mock implementation of the `tokenizers::Tokenizer` class.
-// In a real application, you would link to the actual tokenizer library.
+// Use whisper tokenizer for the underlying implementation
 namespace tokenizers {
   class Tokenizer {
+  private:
+    std::unique_ptr<whisper::WhisperTokenizer> whisper_tokenizer_;
+
   public:
+    Tokenizer() : whisper_tokenizer_(std::make_unique<whisper::WhisperTokenizer>()) {}
+
     int token_to_id(const std::string& token) {
-      // A simple hardcoded mapping for demonstration.
-      if (token == "<|transcribe|>") return 50359;
-      if (token == "<|translate|>") return 50358;
-      if (token == "<|startoftranscript|>") return 50257;
-      if (token == "<|startoflm|>") return 50361;
-      if (token == "<|startofprev|>") return 50362;
-      if (token == "<|endoftext|>") return 50256;
-      if (token == "<|notimestamps|>") return 50363;
-      if (token == " -") return 11;
-      if (token == " '") return 12;
-      return -1; // Placeholder for unknown tokens.
+      return whisper_tokenizer_->token_to_id(token);
     }
 
     std::vector<int> encode(const std::string& text, bool add_special_tokens) {
-      // A very basic mock encoding for demonstration.
-      std::vector<int> tokens;
-      for (char c : text) {
-        tokens.push_back(static_cast<int>(c));
-      }
-      return tokens;
+      return whisper_tokenizer_->encode(text, add_special_tokens);
     }
 
     std::string decode(const std::vector<int>& tokens) {
-      // A basic mock decoding.
-      std::string text;
-      for (int token : tokens) {
-        text += static_cast<char>(token);
-      }
-      return text;
+      return whisper_tokenizer_->decode(tokens, true);
     }
   };
 } // namespace tokenizers
@@ -70,16 +55,31 @@ Tokenizer::Tokenizer(
     std::optional<std::string> task,
     std::optional<std::string> language
 ) : _tokenizer(tokenizer), _multilingual(multilingual) {
+
+  // Create whisper tokenizer wrapper for enhanced functionality
+  whisper_wrapper_ = std::make_unique<whisper::TokenizerWrapper>(
+      multilingual,
+      language.value_or("en"),
+      task.value_or("transcribe")
+  );
+
   if (multilingual) {
     if (task && _TASKS.find(task.value()) == _TASKS.end()) {
       throw std::invalid_argument("'" + task.value() + "' is not a valid task.");
     }
-    if (language && _LANGUAGE_CODES.find(language.value()) == _LANGUAGE_CODES.end()) {
+    if (language && std::find(_LANGUAGE_CODES.begin(), _LANGUAGE_CODES.end(), language.value()) == _LANGUAGE_CODES.end()) {
       throw std::invalid_argument("'" + language.value() + "' is not a valid language code.");
     }
-    _task = _tokenizer->token_to_id("<|" + task.value() + "|>");
-    _language = _tokenizer->token_to_id("<|" + language.value() + "|>");
-    _language_code = language.value();
+
+    _task = whisper_wrapper_->get_transcribe();
+    if (task.value_or("") == "translate") {
+      _task = whisper_wrapper_->get_translate();
+    }
+
+    // Use whisper tokenizer to get language token
+    auto whisper_tok = whisper::WhisperTokenizer();
+    _language = whisper_tok.get_language_token(language.value_or("en"));
+    _language_code = language.value_or("en");
   } else {
     _task = std::nullopt;
     _language = std::nullopt;
@@ -88,125 +88,51 @@ Tokenizer::Tokenizer(
 }
 
 int Tokenizer::get_transcribe() {
-  if (!_transcribe) {
-    _transcribe = _tokenizer->token_to_id("<|transcribe|>");
-  }
-  return _transcribe.value();
+  return whisper_wrapper_->get_transcribe();
 }
 
 int Tokenizer::get_translate() {
-  if (!_translate) {
-    _translate = _tokenizer->token_to_id("<|translate|>");
-  }
-  return _translate.value();
+  return whisper_wrapper_->get_translate();
 }
 
 int Tokenizer::get_sot() {
-  if (!_sot) {
-    _sot = _tokenizer->token_to_id("<|startoftranscript|>");
-  }
-  return _sot.value();
+  return whisper_wrapper_->get_sot();
 }
 
 int Tokenizer::get_sot_lm() {
-  if (!_sot_lm) {
-    _sot_lm = _tokenizer->token_to_id("<|startoflm|>");
-  }
-  return _sot_lm.value();
+  return whisper_wrapper_->get_sot_lm();
 }
 
 int Tokenizer::get_sot_prev() {
-  if (!_sot_prev) {
-    _sot_prev = _tokenizer->token_to_id("<|startofprev|>");
-  }
-  return _sot_prev.value();
+  return whisper_wrapper_->get_sot_prev();
 }
 
 int Tokenizer::get_eot() {
-  if (!_eot) {
-    _eot = _tokenizer->token_to_id("<|endoftext|>");
-  }
-  return _eot.value();
+  return whisper_wrapper_->get_eot();
 }
 
 int Tokenizer::get_no_timestamps() {
-  if (!_no_timestamps) {
-    _no_timestamps = _tokenizer->token_to_id("<|notimestamps|>");
-  }
-  return _no_timestamps.value();
+  return whisper_wrapper_->get_no_timestamps();
 }
 
 std::vector<int> Tokenizer::get_non_speech_tokens() {
-  if (!_non_speech_tokens) {
-    std::set<int> result;
-
-    std::string symbols = R"("_#()*+/:;<=>@[\\]^_`{|}~「」『』)";
-    std::string miscellaneous = "♩♪♫♬♭♮♯";
-
-    // Handle " -" and " '" separately
-    result.insert(encode(" -")[0]);
-    result.insert(encode(" '")[0]);
-
-    for (char symbol : symbols) {
-      std::string s(1, symbol);
-      std::vector<int> tokens_with_space = encode(" " + s);
-      if (!tokens_with_space.empty()) {
-        result.insert(tokens_with_space[0]);
-      }
-      std::vector<int> tokens_without_space = encode(s);
-      if (!tokens_without_space.empty()) {
-        result.insert(tokens_without_space[0]);
-      }
-    }
-
-    for (char symbol : miscellaneous) {
-      std::string s(1, symbol);
-      std::vector<int> tokens_with_space = encode(" " + s);
-      if (!tokens_with_space.empty()) {
-        result.insert(tokens_with_space[0]);
-      }
-      std::vector<int> tokens_without_space = encode(s);
-      if (!tokens_without_space.empty()) {
-        result.insert(tokens_without_space[0]);
-      }
-    }
-
-    std::vector<int> non_speech_tokens_vec(result.begin(), result.end());
-    _non_speech_tokens = non_speech_tokens_vec;
-  }
-  return _non_speech_tokens.value();
+  return whisper_wrapper_->get_non_speech_tokens();
 }
 
 int Tokenizer::get_timestamp_begin() {
-  return get_no_timestamps() + 1;
+  return whisper_wrapper_->get_timestamp_begin();
 }
 
 std::vector<int> Tokenizer::get_sot_sequence() {
-  std::vector<int> sequence = {get_sot()};
-
-  if (_language) {
-    sequence.push_back(_language.value());
-  }
-
-  if (_task) {
-    sequence.push_back(_task.value());
-  }
-
-  return sequence;
+  return whisper_wrapper_->get_sot_sequence();
 }
 
 std::vector<int> Tokenizer::encode(const std::string& text) {
-  return _tokenizer->encode(text, false);
+  return whisper_wrapper_->encode(text);
 }
 
 std::string Tokenizer::decode(const std::vector<int>& tokens) {
-  std::vector<int> text_tokens;
-  for (int token : tokens) {
-    if (token < get_eot()) {
-      text_tokens.push_back(token);
-    }
-  }
-  return _tokenizer->decode(text_tokens);
+  return whisper_wrapper_->decode(tokens);
 }
 
 std::string Tokenizer::decode_with_timestamps(const std::vector<int>& tokens) {
@@ -226,7 +152,7 @@ std::string Tokenizer::decode_with_timestamps(const std::vector<int>& tokens) {
   }
 
   for (const auto& output_tokens : outputs) {
-    result += _tokenizer->decode(output_tokens);
+    result += whisper_wrapper_->decode(output_tokens);
   }
 
   return result;
@@ -234,23 +160,17 @@ std::string Tokenizer::decode_with_timestamps(const std::vector<int>& tokens) {
 
 std::pair<std::vector<std::string>, std::vector<std::vector<int>>>
 Tokenizer::split_to_word_tokens(const std::vector<int>& tokens) {
-  if (_language_code == "zh" || _language_code == "ja" || _language_code == "th" ||
-      _language_code == "lo" || _language_code == "my" || _language_code == "yue") {
-    return split_tokens_on_unicode(tokens);
-  }
-  return split_tokens_on_spaces(tokens);
+  return whisper_wrapper_->split_to_word_tokens(tokens);
 }
 
 std::pair<std::vector<std::string>, std::vector<std::vector<int>>>
 Tokenizer::split_tokens_on_unicode(const std::vector<int>& tokens) {
-  // This is a simplified C++ implementation of the complex logic.
-  // A full implementation would require more advanced unicode handling.
-  return {{"mock_word"}, {{1}}};
+  // Use whisper tokenizer's implementation
+  return whisper_wrapper_->split_to_word_tokens(tokens);
 }
 
 std::pair<std::vector<std::string>, std::vector<std::vector<int>>>
 Tokenizer::split_tokens_on_spaces(const std::vector<int>& tokens) {
-  // This is a simplified C++ implementation of the complex logic.
-  // A full implementation would require more advanced unicode handling.
-  return {{"mock_word_with_spaces"}, {{2}}};
+  // Use whisper tokenizer's implementation
+  return whisper_wrapper_->split_to_word_tokens(tokens);
 }

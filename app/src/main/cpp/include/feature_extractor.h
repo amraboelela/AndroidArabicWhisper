@@ -25,13 +25,29 @@ public:
       std::optional<int> chunk_length = std::nullopt
   );
 
+  // Original implementation as fallback
+  Matrix compute_mel_spectrogram_original(
+      const std::vector<float>& waveform,
+      int padding = 160,
+      std::optional<int> chunk_length = std::nullopt
+  );
+
+  // Convenience methods for whisper compatibility
+  std::vector<std::vector<float>> extract(const std::vector<float>& audio) {
+    return compute_mel_spectrogram(audio);
+  }
+
+  float time_per_frame() const { return time_per_frame_; }
+  int nb_max_frames() const { return nb_max_frames_; }
+  int sampling_rate() const { return sampling_rate_; }
+
   int n_fft;
   int hop_length;
   int chunk_length;
   int n_samples;
-  int nb_max_frames;
-  float time_per_frame;
-  int sampling_rate;
+  int nb_max_frames_;
+  float time_per_frame_;
+  int sampling_rate_;
   Matrix mel_filters;
 
   // Static helper methods, equivalent to Python's @staticmethod

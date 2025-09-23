@@ -7,6 +7,8 @@
 #include <unordered_set>
 #include <optional>
 #include <tuple>
+#include <memory>
+#include "whisper_tokenizer.h"  // Include complete definition of TokenizerWrapper
 
 // Forward declaration of the mock tokenizers::Tokenizer class
 namespace tokenizers {
@@ -56,6 +58,9 @@ private:
   std::optional<int> _task;
   std::optional<int> _language;
   std::string _language_code;
+
+  // Whisper tokenizer wrapper for enhanced functionality
+  std::unique_ptr<whisper::TokenizerWrapper> whisper_wrapper_;
 
   // Optional members to cache the result of the `cached_property` methods.
   std::optional<int> _transcribe;

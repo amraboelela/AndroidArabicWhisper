@@ -2,6 +2,7 @@
 #include <string>
 #include <vector>
 #include <unordered_map>
+#include <map>
 #include <stdexcept>
 #include <regex>
 #include <optional>
@@ -147,4 +148,17 @@ std::optional<double> get_end(const std::vector<std::unordered_map<std::string, 
     return std::nullopt;
   }
   return segments.back().at("end");
+}
+
+// Simple JSON parsing functions (stub implementations)
+std::map<std::string, std::string> parse_json(const std::string& json_string) {
+  // Stub implementation - returns empty map
+  // In a real implementation, you would parse the JSON string
+  return std::map<std::string, std::string>();
+}
+
+std::map<std::string, std::string> parse_json_file(const std::string& file_path) {
+  // Stub implementation - returns empty map
+  // In a real implementation, you would read and parse the JSON file
+  return std::map<std::string, std::string>();
 }

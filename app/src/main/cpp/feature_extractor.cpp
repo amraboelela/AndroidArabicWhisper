@@ -1,4 +1,5 @@
 #include "feature_extractor.h"
+#include "whisper_audio.h"
 #include <iostream>
 #include <stdexcept>
 #include <cmath>
@@ -56,11 +57,11 @@ FeatureExtractor::FeatureExtractor(
 ) : n_fft(n_fft),
     hop_length(hop_length),
     chunk_length(chunk_length),
-    sampling_rate(sampling_rate)
+    sampling_rate_(sampling_rate)
 {
-  n_samples = chunk_length * sampling_rate;
-  nb_max_frames = n_samples / hop_length;
-  time_per_frame = (float)hop_length / sampling_rate;
+  n_samples = chunk_length * sampling_rate_;
+  nb_max_frames_ = n_samples / hop_length;
+  time_per_frame_ = (float)hop_length / sampling_rate_;
   mel_filters = get_mel_filters(sampling_rate, n_fft, feature_size);
 }
 
@@ -148,9 +149,34 @@ Matrix FeatureExtractor::compute_mel_spectrogram(
     int padding,
     std::optional<int> chunk_length
 ) {
+  // Use whisper-compatible mel spectrogram extraction
+  auto whisper_mel_spec = whisper::AudioProcessor::extract_mel_spectrogram(waveform);
+
+  if (whisper_mel_spec.empty()) {
+    std::cerr << "Failed to extract mel spectrogram using whisper audio processing" << std::endl;
+    // Fall back to original implementation
+    return compute_mel_spectrogram_original(waveform, padding, chunk_length);
+  }
+
+  // Apply log transform for whisper compatibility
+  auto log_mel_spec = whisper::AudioProcessor::apply_log_transform(whisper_mel_spec);
+
+  std::cout << "Successfully extracted mel spectrogram with dimensions: "
+            << log_mel_spec.size() << " x "
+            << (log_mel_spec.empty() ? 0 : log_mel_spec[0].size()) << std::endl;
+
+  return log_mel_spec;
+}
+
+Matrix FeatureExtractor::compute_mel_spectrogram_original(
+    const std::vector<float>& waveform,
+    int padding,
+    std::optional<int> chunk_length
+) {
+  // Original implementation as fallback
   if (chunk_length) {
-    n_samples = chunk_length.value() * sampling_rate;
-    nb_max_frames = n_samples / hop_length;
+    n_samples = chunk_length.value() * sampling_rate_;
+    nb_max_frames_ = n_samples / hop_length;
   }
 
   std::vector<float> processed_waveform = waveform;
@@ -172,6 +198,11 @@ Matrix FeatureExtractor::compute_mel_spectrogram(
       true
   );
 
+  if (stft_output.empty()) {
+    std::cerr << "STFT computation failed, returning empty matrix" << std::endl;
+    return Matrix();
+  }
+
   Matrix magnitudes(stft_output.size(), std::vector<float>(stft_output[0].size()));
   for (size_t i = 0; i < stft_output.size(); ++i) {
     for (size_t j = 0; j < stft_output[i].size(); ++j) {
@@ -184,7 +215,7 @@ Matrix FeatureExtractor::compute_mel_spectrogram(
   for (size_t i = 0; i < mel_filters.size(); ++i) {
     for (size_t j = 0; j < magnitudes.size(); ++j) {
       float sum = 0.0f;
-      for (size_t k = 0; k < mel_filters[0].size(); ++k) {
+      for (size_t k = 0; k < mel_filters[0].size() && k < magnitudes[0].size(); ++k) {
         sum += mel_filters[i][k] * magnitudes[j][k];
       }
       mel_spec[i][j] = sum;

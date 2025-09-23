@@ -6,7 +6,7 @@ import java.io.File
 class WhisperHelper(context: Context, modelDirName: String = "whisper_ct2") {
 
   init {
-    System.loadLibrary("ctranslate2")
+    // Note: ctranslate2 is loaded as a dependency of whisper_jni
     System.loadLibrary("whisper_jni") // your JNI wrapper .so
 
     val modelDir = File(context.filesDir, modelDirName).absolutePath

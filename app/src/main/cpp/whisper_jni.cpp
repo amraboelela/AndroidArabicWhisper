@@ -1,35 +1,45 @@
 #include <jni.h>
-#include <ctranslate2/generator.h>
+#include "whisper_model.h"
 #include <string>
 #include <vector>
 
-using namespace ctranslate2;
-
-static Generator* generator = nullptr;
+static WhisperModel* whisper_model = nullptr;
 
 extern "C" JNIEXPORT void JNICALL
 Java_org_amr_arabicwhisper_WhisperHelper_initModel(JNIEnv* env, jobject thiz, jstring model_path) {
     const char* path = env->GetStringUTFChars(model_path, nullptr);
-    generator = new Generator(path, Device::CPU);
+    whisper_model = new WhisperModel(path);
     env->ReleaseStringUTFChars(model_path, path);
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_org_amr_arabicwhisper_WhisperHelper_transcribe(JNIEnv* env, jobject thiz, jstring input_text) {
-    const char* input_cstr = env->GetStringUTFChars(input_text, nullptr);
-
-    // Wrap input tokens
-    std::vector<std::vector<std::string>> batch = {{input_cstr}};
-
-    // Run generation
-    auto results = generator->generate_batch(batch);
-
-    // Collect output tokens
-    std::string output;
-    for (const auto& token : results[0].sequences[0]) {
-        output += token + " ";
+Java_org_amr_arabicwhisper_WhisperHelper_transcribe(JNIEnv* env, jobject thiz, jfloatArray audio_data) {
+    if (!whisper_model) {
+        return env->NewStringUTF("Model not initialized");
     }
 
-    env->ReleaseStringUTFChars(input_text, input_cstr);
-    return env->NewStringUTF(output.c_str());
+    // Get audio data from Java float array
+    jsize length = env->GetArrayLength(audio_data);
+    jfloat* audio_ptr = env->GetFloatArrayElements(audio_data, nullptr);
+
+    // Convert to std::vector<float>
+    std::vector<float> audio(audio_ptr, audio_ptr + length);
+
+    // Release the array
+    env->ReleaseFloatArrayElements(audio_data, audio_ptr, JNI_ABORT);
+
+    try {
+        // Transcribe audio
+        auto [segments, info] = whisper_model->transcribe(audio);
+
+        // Build result string from segments
+        std::string result;
+        for (const auto& segment : segments) {
+            result += segment.text + " ";
+        }
+
+        return env->NewStringUTF(result.c_str());
+    } catch (const std::exception& e) {
+        return env->NewStringUTF(("Error: " + std::string(e.what())).c_str());
+    }
 }

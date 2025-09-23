@@ -10,7 +10,6 @@
 #include <map>
 #include <optional>
 #include <memory>
-#include "vad.h"
 
 struct Word {
   float start;
@@ -106,10 +105,8 @@ struct TranscriptionInfo {
   std::string language;
   float language_probability;
   float duration;
-  float duration_after_vad;
   std::optional<std::vector<std::pair<std::string, float>>> all_language_probs;
   TranscriptionOptions transcription_options;
-  VadOptions vad_options;  // should be defined elsewhere
 };
 
 class WhisperModel {
@@ -136,8 +133,7 @@ public:
   std::tuple<std::vector<Segment>, TranscriptionInfo> transcribe(
       const std::vector<float> &audio,
       const std::optional<std::string> &language = std::nullopt,
-      bool multilingual = false,
-      bool vad_filter = false
+      bool multilingual = false
   );
   std::tuple<std::vector<Segment>, int, bool> split_segments_by_timestamps(
       Tokenizer &tokenizer,
@@ -153,7 +149,7 @@ public:
       const TranscriptionOptions &options
   );
   ctranslate2::StorageView encode(const std::vector<std::vector<float>> &features);
-  std::tuple<ctranslate2::models::WhisperGenerationResult, float, float, float>
+  std::tuple<std::vector<int>, float, float, float>
   generate_with_fallback(
       const ctranslate2::StorageView &encoder_output,
       const std::vector<int> &prompt,
@@ -186,8 +182,6 @@ public:
   std::tuple<std::string, float, std::vector<std::pair<std::string, float>>> detect_language(
       const std::vector<float> *audio = nullptr,
       const std::vector<std::vector<float>> *features = nullptr,
-      bool vad_filter = false,
-      const VadOptions& vad_parameters = VadOptions(),
       int language_detection_segments = 1,
       float language_detection_threshold = 0.5f
   );

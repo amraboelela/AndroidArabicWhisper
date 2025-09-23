@@ -2,5 +2,16 @@
 <project version="4">
   <component name="VcsDirectoryMappings">
     <mapping directory="$PROJECT_DIR$" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../CTranslate2" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../CTranslate2/third_party/cpu_features" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../CTranslate2/third_party/cutlass" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../CTranslate2/third_party/cxxopts" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../CTranslate2/third_party/googletest" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../CTranslate2/third_party/ruy" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../CTranslate2/third_party/ruy/third_party/cpuinfo" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../CTranslate2/third_party/ruy/third_party/googletest" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../CTranslate2/third_party/spdlog" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../CTranslate2/third_party/thrust" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../CTranslate2/third_party/thrust/dependencies/cub" vcs="Git" />
   </component>
 </project>

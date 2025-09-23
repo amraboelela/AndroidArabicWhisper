@@ -57,5 +57,9 @@ std::string formatTimestamp(
 // Returns an empty optional if the vector is empty.
 std::optional<double> get_end(const std::vector<std::unordered_map<std::string, double>>& segments);
 
+// Simple JSON parsing functions (stub implementations)
+std::map<std::string, std::string> parse_json(const std::string& json_string);
+std::map<std::string, std::string> parse_json_file(const std::string& file_path);
+
 #endif // MODEL_DOWNLOADER_H
 
