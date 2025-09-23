@@ -10,431 +10,431 @@ namespace whisper {
 
 // Language codes to token ID mapping (matching whisper.cpp)
 static const std::unordered_map<std::string, int> LANGUAGE_TO_TOKEN = {
-    {"en", 50259}, {"zh", 50260}, {"de", 50261}, {"es", 50262}, {"ru", 50263},
-    {"ko", 50264}, {"fr", 50265}, {"ja", 50266}, {"pt", 50267}, {"tr", 50268},
-    {"pl", 50269}, {"ca", 50270}, {"nl", 50271}, {"ar", 50272}, {"sv", 50273},
-    {"it", 50274}, {"id", 50275}, {"hi", 50276}, {"fi", 50277}, {"vi", 50278},
-    {"he", 50279}, {"uk", 50280}, {"el", 50281}, {"ms", 50282}, {"cs", 50283},
-    {"ro", 50284}, {"da", 50285}, {"hu", 50286}, {"ta", 50287}, {"no", 50288},
-    {"th", 50289}, {"ur", 50290}, {"hr", 50291}, {"bg", 50292}, {"lt", 50293},
-    {"la", 50294}, {"mi", 50295}, {"ml", 50296}, {"cy", 50297}, {"sk", 50298},
-    {"te", 50299}, {"fa", 50300}, {"lv", 50301}, {"bn", 50302}, {"sr", 50303},
-    {"az", 50304}, {"sl", 50305}, {"kn", 50306}, {"et", 50307}, {"mk", 50308},
-    {"br", 50309}, {"eu", 50310}, {"is", 50311}, {"hy", 50312}, {"ne", 50313},
-    {"mn", 50314}, {"bs", 50315}, {"kk", 50316}, {"sq", 50317}, {"sw", 50318},
-    {"gl", 50319}, {"mr", 50320}, {"pa", 50321}, {"si", 50322}, {"km", 50323},
-    {"sn", 50324}, {"yo", 50325}, {"so", 50326}, {"af", 50327}, {"oc", 50328},
-    {"ka", 50329}, {"be", 50330}, {"tg", 50331}, {"sd", 50332}, {"gu", 50333},
-    {"am", 50334}, {"yi", 50335}, {"lo", 50336}, {"uz", 50337}, {"fo", 50338},
-    {"ht", 50339}, {"ps", 50340}, {"tk", 50341}, {"nn", 50342}, {"mt", 50343},
-    {"sa", 50344}, {"lb", 50345}, {"my", 50346}, {"bo", 50347}, {"tl", 50348},
-    {"mg", 50349}, {"as", 50350}, {"tt", 50351}, {"haw", 50352}, {"ln", 50353},
-    {"ha", 50354}, {"ba", 50355}, {"jw", 50356}, {"su", 50357}
+  {"en", 50259}, {"zh", 50260}, {"de", 50261}, {"es", 50262}, {"ru", 50263},
+  {"ko", 50264}, {"fr", 50265}, {"ja", 50266}, {"pt", 50267}, {"tr", 50268},
+  {"pl", 50269}, {"ca", 50270}, {"nl", 50271}, {"ar", 50272}, {"sv", 50273},
+  {"it", 50274}, {"id", 50275}, {"hi", 50276}, {"fi", 50277}, {"vi", 50278},
+  {"he", 50279}, {"uk", 50280}, {"el", 50281}, {"ms", 50282}, {"cs", 50283},
+  {"ro", 50284}, {"da", 50285}, {"hu", 50286}, {"ta", 50287}, {"no", 50288},
+  {"th", 50289}, {"ur", 50290}, {"hr", 50291}, {"bg", 50292}, {"lt", 50293},
+  {"la", 50294}, {"mi", 50295}, {"ml", 50296}, {"cy", 50297}, {"sk", 50298},
+  {"te", 50299}, {"fa", 50300}, {"lv", 50301}, {"bn", 50302}, {"sr", 50303},
+  {"az", 50304}, {"sl", 50305}, {"kn", 50306}, {"et", 50307}, {"mk", 50308},
+  {"br", 50309}, {"eu", 50310}, {"is", 50311}, {"hy", 50312}, {"ne", 50313},
+  {"mn", 50314}, {"bs", 50315}, {"kk", 50316}, {"sq", 50317}, {"sw", 50318},
+  {"gl", 50319}, {"mr", 50320}, {"pa", 50321}, {"si", 50322}, {"km", 50323},
+  {"sn", 50324}, {"yo", 50325}, {"so", 50326}, {"af", 50327}, {"oc", 50328},
+  {"ka", 50329}, {"be", 50330}, {"tg", 50331}, {"sd", 50332}, {"gu", 50333},
+  {"am", 50334}, {"yi", 50335}, {"lo", 50336}, {"uz", 50337}, {"fo", 50338},
+  {"ht", 50339}, {"ps", 50340}, {"tk", 50341}, {"nn", 50342}, {"mt", 50343},
+  {"sa", 50344}, {"lb", 50345}, {"my", 50346}, {"bo", 50347}, {"tl", 50348},
+  {"mg", 50349}, {"as", 50350}, {"tt", 50351}, {"haw", 50352}, {"ln", 50353},
+  {"ha", 50354}, {"ba", 50355}, {"jw", 50356}, {"su", 50357}
 };
 
 WhisperTokenizer::WhisperTokenizer(const std::string& vocab_file, bool multilingual)
-    : multilingual_(multilingual) {
+  : multilingual_(multilingual) {
 
-    if (!vocab_file.empty()) {
-        if (!load_vocab_from_file(vocab_file)) {
-            std::cerr << "Failed to load vocabulary from file, using built-in vocab" << std::endl;
-            initialize_builtin_vocab();
-        }
-    } else {
-        initialize_builtin_vocab();
-    }
+  if (!vocab_file.empty()) {
+      if (!load_vocab_from_file(vocab_file)) {
+      std::cerr << "Failed to load vocabulary from file, using built-in vocab" << std::endl;
+      initialize_builtin_vocab();
+      }
+  } else {
+      initialize_builtin_vocab();
+  }
 
-    initialize_special_tokens();
-    initialize_language_tokens();
+  initialize_special_tokens();
+  initialize_language_tokens();
 }
 
 void WhisperTokenizer::initialize_builtin_vocab() {
-    // Initialize with basic GPT-2 style vocabulary
-    // This is a simplified version - in production, you'd load the full GPT-2 vocab
+  // Initialize with basic GPT-2 style vocabulary
+  // This is a simplified version - in production, you'd load the full GPT-2 vocab
 
-    // Add basic ASCII characters
-    for (int i = 0; i < 256; ++i) {
-        std::string token(1, static_cast<char>(i));
-        vocab_to_id_[token] = i;
-        id_to_vocab_[i] = token;
-    }
+  // Add basic ASCII characters
+  for (int i = 0; i < 256; ++i) {
+      std::string token(1, static_cast<char>(i));
+      vocab_to_id_[token] = i;
+      id_to_vocab_[i] = token;
+  }
 
-    // Add common English words and subwords (simplified)
-    std::vector<std::string> common_tokens = {
-        " the", " and", " to", " of", " a", " in", " is", " it", " you", " that",
-        " he", " was", " for", " on", " are", " as", " with", " his", " they",
-        " I", " at", " be", " this", " have", " from", " or", " one", " had",
-        " by", " word", " but", " not", " what", " all", " were", " we", " when",
-        " your", " can", " said", " there", " each", " which", " she", " do",
-        " how", " their", " if", " will", " up", " other", " about", " out",
-        " many", " then", " them", " these", " so", " some", " her", " would",
-        " make", " like", " into", " him", " has", " two", " more", " very",
-        " after", " words", " first", " where", " much", " through", " back",
-        " years", " work", " came", " right", " still", " children", " left"
-    };
+  // Add common English words and subwords (simplified)
+  std::vector<std::string> common_tokens = {
+      " the", " and", " to", " of", " a", " in", " is", " it", " you", " that",
+      " he", " was", " for", " on", " are", " as", " with", " his", " they",
+      " I", " at", " be", " this", " have", " from", " or", " one", " had",
+      " by", " word", " but", " not", " what", " all", " were", " we", " when",
+      " your", " can", " said", " there", " each", " which", " she", " do",
+      " how", " their", " if", " will", " up", " other", " about", " out",
+      " many", " then", " them", " these", " so", " some", " her", " would",
+      " make", " like", " into", " him", " has", " two", " more", " very",
+      " after", " words", " first", " where", " much", " through", " back",
+      " years", " work", " came", " right", " still", " children", " left"
+  };
 
-    int token_id = 256;
-    for (const auto& token : common_tokens) {
-        vocab_to_id_[token] = token_id;
-        id_to_vocab_[token_id] = token;
-        ++token_id;
-    }
+  int token_id = 256;
+  for (const auto& token : common_tokens) {
+      vocab_to_id_[token] = token_id;
+      id_to_vocab_[token_id] = token;
+      ++token_id;
+  }
 
-    // Add Arabic tokens (basic set)
-    std::vector<std::string> arabic_tokens = {
-        " في", " من", " إلى", " على", " أن", " هذا", " هذه", " التي", " الذي",
-        " كان", " كانت", " يكون", " تكون", " هو", " هي", " لا", " ما", " قد",
-        " أو", " أم", " إذا", " حتى", " عند", " بعد", " قبل", " أثناء",
-        " خلال", " أمام", " وراء", " تحت", " فوق", " بين", " ضد", " مع"
-    };
+  // Add Arabic tokens (basic set)
+  std::vector<std::string> arabic_tokens = {
+      " في", " من", " إلى", " على", " أن", " هذا", " هذه", " التي", " الذي",
+      " كان", " كانت", " يكون", " تكون", " هو", " هي", " لا", " ما", " قد",
+      " أو", " أم", " إذا", " حتى", " عند", " بعد", " قبل", " أثناء",
+      " خلال", " أمام", " وراء", " تحت", " فوق", " بين", " ضد", " مع"
+  };
 
-    for (const auto& token : arabic_tokens) {
-        vocab_to_id_[token] = token_id;
-        id_to_vocab_[token_id] = token;
-        ++token_id;
-    }
+  for (const auto& token : arabic_tokens) {
+      vocab_to_id_[token] = token_id;
+      id_to_vocab_[token_id] = token;
+      ++token_id;
+  }
 }
 
 bool WhisperTokenizer::load_vocab_from_file(const std::string& vocab_file) {
-    std::ifstream file(vocab_file);
-    if (!file.is_open()) {
-        return false;
-    }
+  std::ifstream file(vocab_file);
+  if (!file.is_open()) {
+      return false;
+  }
 
-    vocab_to_id_.clear();
-    id_to_vocab_.clear();
+  vocab_to_id_.clear();
+  id_to_vocab_.clear();
 
-    std::string line;
-    int token_id = 0;
+  std::string line;
+  int token_id = 0;
 
-    while (std::getline(file, line)) {
-        if (!line.empty()) {
-            vocab_to_id_[line] = token_id;
-            id_to_vocab_[token_id] = line;
-            ++token_id;
-        }
-    }
+  while (std::getline(file, line)) {
+      if (!line.empty()) {
+      vocab_to_id_[line] = token_id;
+      id_to_vocab_[token_id] = line;
+      ++token_id;
+      }
+  }
 
-    return true;
+  return true;
 }
 
 void WhisperTokenizer::initialize_special_tokens() {
-    // Add special tokens to vocabulary if not present
-    std::unordered_map<std::string, int> special_tokens = {
-        {"<|endoftext|>", EOT_TOKEN},
-        {"<|startoftranscript|>", SOT_TOKEN},
-        {"<|transcribe|>", TRANSCRIBE_TOKEN},
-        {"<|translate|>", TRANSLATE_TOKEN},
-        {"<|notimestamps|>", NO_TIMESTAMPS_TOKEN},
-        {"<|startofprev|>", SOT_PREV_TOKEN},
-        {"<|startoflm|>", SOT_LM_TOKEN}
-    };
+  // Add special tokens to vocabulary if not present
+  std::unordered_map<std::string, int> special_tokens = {
+      {"<|endoftext|>", EOT_TOKEN},
+      {"<|startoftranscript|>", SOT_TOKEN},
+      {"<|transcribe|>", TRANSCRIBE_TOKEN},
+      {"<|translate|>", TRANSLATE_TOKEN},
+      {"<|notimestamps|>", NO_TIMESTAMPS_TOKEN},
+      {"<|startofprev|>", SOT_PREV_TOKEN},
+      {"<|startoflm|>", SOT_LM_TOKEN}
+  };
 
-    for (const auto& [token, id] : special_tokens) {
-        vocab_to_id_[token] = id;
-        id_to_vocab_[id] = token;
-    }
+  for (const auto& [token, id] : special_tokens) {
+      vocab_to_id_[token] = id;
+      id_to_vocab_[id] = token;
+  }
 
-    // Add timestamp tokens
-    for (int i = 0; i < 1500; ++i) { // 30 seconds * 50 tokens per second
-        int token_id = TIMESTAMP_BEGIN + i;
-        float seconds = i * 0.02f; // 20ms per token
+  // Add timestamp tokens
+  for (int i = 0; i < 1500; ++i) { // 30 seconds * 50 tokens per second
+      int token_id = TIMESTAMP_BEGIN + i;
+      float seconds = i * 0.02f; // 20ms per token
 
-        char buffer[32];
-        snprintf(buffer, sizeof(buffer), "<|%.2f|>", seconds);
-        std::string token_str(buffer);
+      char buffer[32];
+      snprintf(buffer, sizeof(buffer), "<|%.2f|>", seconds);
+      std::string token_str(buffer);
 
-        vocab_to_id_[token_str] = token_id;
-        id_to_vocab_[token_id] = token_str;
-    }
+      vocab_to_id_[token_str] = token_id;
+      id_to_vocab_[token_id] = token_str;
+  }
 }
 
 void WhisperTokenizer::initialize_language_tokens() {
-    for (const auto& [lang_code, token_id] : LANGUAGE_TO_TOKEN) {
-        std::string token_str = "<|" + lang_code + "|>";
-        vocab_to_id_[token_str] = token_id;
-        id_to_vocab_[token_id] = token_str;
-        language_tokens_[lang_code] = token_id;
-    }
+  for (const auto& [lang_code, token_id] : LANGUAGE_TO_TOKEN) {
+      std::string token_str = "<|" + lang_code + "|>";
+      vocab_to_id_[token_str] = token_id;
+      id_to_vocab_[token_id] = token_str;
+      language_tokens_[lang_code] = token_id;
+  }
 }
 
 std::vector<int> WhisperTokenizer::encode(const std::string& text, bool add_special_tokens) const {
-    if (text.empty()) {
-        return {};
-    }
+  if (text.empty()) {
+      return {};
+  }
 
-    // Normalize text
-    std::string normalized = normalize_text(text);
+  // Normalize text
+  std::string normalized = normalize_text(text);
 
-    // Tokenize into subwords
-    auto tokens = tokenize_text(normalized);
+  // Tokenize into subwords
+  auto tokens = tokenize_text(normalized);
 
-    // Convert to IDs
-    std::vector<int> token_ids;
-    for (const auto& token : tokens) {
-        auto it = vocab_to_id_.find(token);
-        if (it != vocab_to_id_.end()) {
-            token_ids.push_back(it->second);
-        } else {
-            // Handle unknown tokens - split into characters
-            for (char c : token) {
-                auto char_it = vocab_to_id_.find(std::string(1, c));
-                if (char_it != vocab_to_id_.end()) {
-                    token_ids.push_back(char_it->second);
-                }
-            }
-        }
-    }
+  // Convert to IDs
+  std::vector<int> token_ids;
+  for (const auto& token : tokens) {
+      auto it = vocab_to_id_.find(token);
+      if (it != vocab_to_id_.end()) {
+      token_ids.push_back(it->second);
+      } else {
+      // Handle unknown tokens - split into characters
+      for (char c : token) {
+          auto char_it = vocab_to_id_.find(std::string(1, c));
+          if (char_it != vocab_to_id_.end()) {
+        token_ids.push_back(char_it->second);
+          }
+      }
+      }
+  }
 
-    return token_ids;
+  return token_ids;
 }
 
 std::string WhisperTokenizer::decode(const std::vector<int>& tokens, bool skip_special_tokens) const {
-    std::string result;
+  std::string result;
 
-    for (int token_id : tokens) {
-        auto it = id_to_vocab_.find(token_id);
-        if (it != id_to_vocab_.end()) {
-            const std::string& token = it->second;
+  for (int token_id : tokens) {
+      auto it = id_to_vocab_.find(token_id);
+      if (it != id_to_vocab_.end()) {
+      const std::string& token = it->second;
 
-            // Skip special tokens if requested
-            if (skip_special_tokens && (token.substr(0, 2) == "<|" && token.size() >= 4 && token.substr(token.size() - 2) == "|>")) {
-                continue;
-            }
+      // Skip special tokens if requested
+      if (skip_special_tokens && (token.substr(0, 2) == "<|" && token.size() >= 4 && token.substr(token.size() - 2) == "|>")) {
+          continue;
+      }
 
-            result += token;
-        }
-    }
+      result += token;
+      }
+  }
 
-    return result;
+  return result;
 }
 
 int WhisperTokenizer::token_to_id(const std::string& token) const {
-    auto it = vocab_to_id_.find(token);
-    return (it != vocab_to_id_.end()) ? it->second : -1;
+  auto it = vocab_to_id_.find(token);
+  return (it != vocab_to_id_.end()) ? it->second : -1;
 }
 
 std::string WhisperTokenizer::id_to_token(int id) const {
-    auto it = id_to_vocab_.find(id);
-    return (it != id_to_vocab_.end()) ? it->second : "";
+  auto it = id_to_vocab_.find(id);
+  return (it != id_to_vocab_.end()) ? it->second : "";
 }
 
 int WhisperTokenizer::get_language_token(const std::string& language_code) const {
-    auto it = language_tokens_.find(language_code);
-    return (it != language_tokens_.end()) ? it->second : -1;
+  auto it = language_tokens_.find(language_code);
+  return (it != language_tokens_.end()) ? it->second : -1;
 }
 
 std::vector<int> WhisperTokenizer::get_sot_sequence(const std::string& language_code,
-                                                   const std::string& task) const {
-    std::vector<int> sequence = {SOT_TOKEN};
+                     const std::string& task) const {
+  std::vector<int> sequence = {SOT_TOKEN};
 
-    if (multilingual_ && !language_code.empty()) {
-        int lang_token = get_language_token(language_code);
-        if (lang_token != -1) {
-            sequence.push_back(lang_token);
-        }
-    }
+  if (multilingual_ && !language_code.empty()) {
+      int lang_token = get_language_token(language_code);
+      if (lang_token != -1) {
+      sequence.push_back(lang_token);
+      }
+  }
 
-    if (task == "transcribe") {
-        sequence.push_back(TRANSCRIBE_TOKEN);
-    } else if (task == "translate") {
-        sequence.push_back(TRANSLATE_TOKEN);
-    }
+  if (task == "transcribe") {
+      sequence.push_back(TRANSCRIBE_TOKEN);
+  } else if (task == "translate") {
+      sequence.push_back(TRANSLATE_TOKEN);
+  }
 
-    return sequence;
+  return sequence;
 }
 
 std::vector<int> WhisperTokenizer::get_non_speech_tokens() const {
-    if (!non_speech_tokens_cache_.has_value()) {
-        std::unordered_set<int> tokens;
+  if (!non_speech_tokens_cache_.has_value()) {
+      std::unordered_set<int> tokens;
 
-        // Punctuation and symbols
-        std::string symbols = "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~";
-        for (char c : symbols) {
-            std::string token(1, c);
-            int id = token_to_id(token);
-            if (id != -1) tokens.insert(id);
+      // Punctuation and symbols
+      std::string symbols = "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~";
+      for (char c : symbols) {
+      std::string token(1, c);
+      int id = token_to_id(token);
+      if (id != -1) tokens.insert(id);
 
-            std::string spaced_token = " " + token;
-            id = token_to_id(spaced_token);
-            if (id != -1) tokens.insert(id);
-        }
+      std::string spaced_token = " " + token;
+      id = token_to_id(spaced_token);
+      if (id != -1) tokens.insert(id);
+      }
 
-        // Musical symbols
-        std::vector<std::string> musical = {"♩", "♪", "♫", "♬", "♭", "♮", "♯"};
-        for (const auto& symbol : musical) {
-            int id = token_to_id(symbol);
-            if (id != -1) tokens.insert(id);
+      // Musical symbols
+      std::vector<std::string> musical = {"♩", "♪", "♫", "♬", "♭", "♮", "♯"};
+      for (const auto& symbol : musical) {
+      int id = token_to_id(symbol);
+      if (id != -1) tokens.insert(id);
 
-            std::string spaced_symbol = " " + symbol;
-            id = token_to_id(spaced_symbol);
-            if (id != -1) tokens.insert(id);
-        }
+      std::string spaced_symbol = " " + symbol;
+      id = token_to_id(spaced_symbol);
+      if (id != -1) tokens.insert(id);
+      }
 
-        non_speech_tokens_cache_ = std::vector<int>(tokens.begin(), tokens.end());
-    }
+      non_speech_tokens_cache_ = std::vector<int>(tokens.begin(), tokens.end());
+  }
 
-    return non_speech_tokens_cache_.value();
+  return non_speech_tokens_cache_.value();
 }
 
 bool WhisperTokenizer::is_timestamp_token(int token_id) const {
-    return token_id >= TIMESTAMP_BEGIN && token_id < TIMESTAMP_BEGIN + 1500;
+  return token_id >= TIMESTAMP_BEGIN && token_id < TIMESTAMP_BEGIN + 1500;
 }
 
 float WhisperTokenizer::timestamp_to_seconds(int token_id) const {
-    if (!is_timestamp_token(token_id)) {
-        return -1.0f;
-    }
-    return (token_id - TIMESTAMP_BEGIN) * 0.02f;
+  if (!is_timestamp_token(token_id)) {
+      return -1.0f;
+  }
+  return (token_id - TIMESTAMP_BEGIN) * 0.02f;
 }
 
 int WhisperTokenizer::seconds_to_timestamp(float seconds) const {
-    int offset = static_cast<int>(seconds / 0.02f);
-    return TIMESTAMP_BEGIN + offset;
+  int offset = static_cast<int>(seconds / 0.02f);
+  return TIMESTAMP_BEGIN + offset;
 }
 
 std::pair<std::vector<std::string>, std::vector<std::vector<int>>>
 WhisperTokenizer::split_to_word_tokens(const std::vector<int>& tokens) const {
-    std::vector<std::string> words;
-    std::vector<std::vector<int>> word_tokens;
+  std::vector<std::string> words;
+  std::vector<std::vector<int>> word_tokens;
 
-    std::vector<int> current_word_tokens;
-    std::string current_word;
+  std::vector<int> current_word_tokens;
+  std::string current_word;
 
-    for (int token_id : tokens) {
-        if (token_id >= EOT_TOKEN) {
-            // Special token - finish current word if any
-            if (!current_word_tokens.empty()) {
-                words.push_back(current_word);
-                word_tokens.push_back(current_word_tokens);
-                current_word.clear();
-                current_word_tokens.clear();
-            }
-            continue;
-        }
+  for (int token_id : tokens) {
+      if (token_id >= EOT_TOKEN) {
+      // Special token - finish current word if any
+      if (!current_word_tokens.empty()) {
+          words.push_back(current_word);
+          word_tokens.push_back(current_word_tokens);
+          current_word.clear();
+          current_word_tokens.clear();
+      }
+      continue;
+      }
 
-        std::string token_str = id_to_token(token_id);
-        if (token_str.empty()) continue;
+      std::string token_str = id_to_token(token_id);
+      if (token_str.empty()) continue;
 
-        current_word_tokens.push_back(token_id);
-        current_word += token_str;
+      current_word_tokens.push_back(token_id);
+      current_word += token_str;
 
-        // Check if this completes a word (ends with space or punctuation)
-        if (!token_str.empty() && (token_str.back() == ' ' ||
-            std::ispunct(static_cast<unsigned char>(token_str.back())))) {
-            words.push_back(current_word);
-            word_tokens.push_back(current_word_tokens);
-            current_word.clear();
-            current_word_tokens.clear();
-        }
-    }
+      // Check if this completes a word (ends with space or punctuation)
+      if (!token_str.empty() && (token_str.back() == ' ' ||
+      std::ispunct(static_cast<unsigned char>(token_str.back())))) {
+      words.push_back(current_word);
+      word_tokens.push_back(current_word_tokens);
+      current_word.clear();
+      current_word_tokens.clear();
+      }
+  }
 
-    // Add final word if any
-    if (!current_word_tokens.empty()) {
-        words.push_back(current_word);
-        word_tokens.push_back(current_word_tokens);
-    }
+  // Add final word if any
+  if (!current_word_tokens.empty()) {
+      words.push_back(current_word);
+      word_tokens.push_back(current_word_tokens);
+  }
 
-    return {words, word_tokens};
+  return {words, word_tokens};
 }
 
 std::string WhisperTokenizer::normalize_text(const std::string& text) const {
-    std::string normalized = text;
+  std::string normalized = text;
 
-    // Basic normalization - convert to lowercase and trim
-    std::transform(normalized.begin(), normalized.end(), normalized.begin(), ::tolower);
+  // Basic normalization - convert to lowercase and trim
+  std::transform(normalized.begin(), normalized.end(), normalized.begin(), ::tolower);
 
-    // Remove extra whitespace
-    normalized = std::regex_replace(normalized, std::regex("\\s+"), " ");
+  // Remove extra whitespace
+  normalized = std::regex_replace(normalized, std::regex("\\s+"), " ");
 
-    // Trim leading/trailing whitespace
-    normalized.erase(0, normalized.find_first_not_of(" \\t\\n\\r"));
-    normalized.erase(normalized.find_last_not_of(" \\t\\n\\r") + 1);
+  // Trim leading/trailing whitespace
+  normalized.erase(0, normalized.find_first_not_of(" \\t\\n\\r"));
+  normalized.erase(normalized.find_last_not_of(" \\t\\n\\r") + 1);
 
-    return normalized;
+  return normalized;
 }
 
 std::vector<std::string> WhisperTokenizer::tokenize_text(const std::string& text) const {
-    // Simple whitespace tokenization as fallback
-    // In production, you'd use proper BPE tokenization
-    std::vector<std::string> tokens;
-    std::stringstream ss(text);
-    std::string token;
+  // Simple whitespace tokenization as fallback
+  // In production, you'd use proper BPE tokenization
+  std::vector<std::string> tokens;
+  std::stringstream ss(text);
+  std::string token;
 
-    while (ss >> token) {
-        // Add space prefix except for first token
-        if (!tokens.empty()) {
-            tokens.push_back(" " + token);
-        } else {
-            tokens.push_back(token);
-        }
-    }
+  while (ss >> token) {
+      // Add space prefix except for first token
+      if (!tokens.empty()) {
+      tokens.push_back(" " + token);
+      } else {
+      tokens.push_back(token);
+      }
+  }
 
-    return tokens;
+  return tokens;
 }
 
 // TokenizerWrapper implementation
 TokenizerWrapper::TokenizerWrapper(bool multilingual, const std::string& language, const std::string& task)
-    : tokenizer_(std::make_unique<WhisperTokenizer>("", multilingual))
-    , language_(language)
-    , task_(task) {
+  : tokenizer_(std::make_unique<WhisperTokenizer>("", multilingual))
+  , language_(language)
+  , task_(task) {
 }
 
 int TokenizerWrapper::get_transcribe() const {
-    return tokenizer_->get_transcribe_token();
+  return tokenizer_->get_transcribe_token();
 }
 
 int TokenizerWrapper::get_translate() const {
-    return tokenizer_->get_translate_token();
+  return tokenizer_->get_translate_token();
 }
 
 int TokenizerWrapper::get_sot() const {
-    return tokenizer_->get_sot_token();
+  return tokenizer_->get_sot_token();
 }
 
 int TokenizerWrapper::get_sot_lm() const {
-    return tokenizer_->get_sot_lm_token();
+  return tokenizer_->get_sot_lm_token();
 }
 
 int TokenizerWrapper::get_sot_prev() const {
-    return tokenizer_->get_sot_prev_token();
+  return tokenizer_->get_sot_prev_token();
 }
 
 int TokenizerWrapper::get_eot() const {
-    return tokenizer_->get_eot_token();
+  return tokenizer_->get_eot_token();
 }
 
 int TokenizerWrapper::get_no_timestamps() const {
-    return tokenizer_->get_no_timestamps_token();
+  return tokenizer_->get_no_timestamps_token();
 }
 
 int TokenizerWrapper::get_timestamp_begin() const {
-    return tokenizer_->get_timestamp_begin();
+  return tokenizer_->get_timestamp_begin();
 }
 
 std::vector<int> TokenizerWrapper::get_sot_sequence() const {
-    return tokenizer_->get_sot_sequence(language_, task_);
+  return tokenizer_->get_sot_sequence(language_, task_);
 }
 
 std::vector<int> TokenizerWrapper::get_non_speech_tokens() const {
-    return tokenizer_->get_non_speech_tokens();
+  return tokenizer_->get_non_speech_tokens();
 }
 
 std::vector<int> TokenizerWrapper::encode(const std::string& text) const {
-    return tokenizer_->encode(text, false);
+  return tokenizer_->encode(text, false);
 }
 
 std::string TokenizerWrapper::decode(const std::vector<int>& tokens) const {
-    return tokenizer_->decode(tokens, true);
+  return tokenizer_->decode(tokens, true);
 }
 
 std::pair<std::vector<std::string>, std::vector<std::vector<int>>>
 TokenizerWrapper::split_to_word_tokens(const std::vector<int>& tokens) const {
-    return tokenizer_->split_to_word_tokens(tokens);
+  return tokenizer_->split_to_word_tokens(tokens);
 }
 
 bool TokenizerWrapper::is_multilingual() const {
-    return tokenizer_->is_multilingual();
+  return tokenizer_->is_multilingual();
 }
 
 } // namespace whisper

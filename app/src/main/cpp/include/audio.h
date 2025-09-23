@@ -12,19 +12,19 @@ public:
   // Decodes audio from a file or input stream.
   // This is a conceptual implementation as the actual FFmpeg C API calls are complex.
   static std::vector<float> decode_audio(
-      const std::string& input_file,
-      int sampling_rate = 16000
+    const std::string& input_file,
+    int sampling_rate = 16000
   );
 
   static std::pair<std::vector<float>, std::vector<float>> decode_audio_split_stereo(
-      const std::string& input_file,
-      int sampling_rate = 16000
+    const std::string& input_file,
+    int sampling_rate = 16000
   );
 
   // Pads or trims a 1D vector to a specific length.
   static std::vector<float> pad_or_trim(
-      const std::vector<float>& array,
-      size_t length = 3000
+    const std::vector<float>& array,
+    size_t length = 3000
   );
 
 private:

@@ -19,10 +19,10 @@ struct Word {
 
   // For compatibility with Python's asdict (optional)
   std::string to_string() const {
-    return "{start: " + std::to_string(start) +
-           ", end: " + std::to_string(end) +
-           ", word: \"" + word + "\"" +
-           ", probability: " + std::to_string(probability) + "}";
+  return "{start: " + std::to_string(start) +
+     ", end: " + std::to_string(end) +
+     ", word: \"" + word + "\"" +
+     ", probability: " + std::to_string(probability) + "}";
   }
 };
 
@@ -40,27 +40,27 @@ struct Segment {
   std::optional<float> temperature;
 
   std::string to_string() const {
-    std::string words_str = "[";
-    if (words.has_value()) {
-      for (const auto &w: words.value()) {
-        words_str += w.to_string() + ", ";
-      }
-      if (!words.value().empty()) words_str.pop_back(), words_str.pop_back();
+  std::string words_str = "[";
+  if (words.has_value()) {
+    for (const auto &w: words.value()) {
+      words_str += w.to_string() + ", ";
     }
-    words_str += "]";
+    if (!words.value().empty()) words_str.pop_back(), words_str.pop_back();
+  }
+  words_str += "]";
 
-    return "{id: " + std::to_string(id) +
-           ", seek: " + std::to_string(seek) +
-           ", start: " + std::to_string(start) +
-           ", end: " + std::to_string(end) +
-           ", text: \"" + text + "\"" +
-           ", avg_logprob: " + std::to_string(avg_logprob) +
-           ", compression_ratio: " + std::to_string(compression_ratio) +
-           ", no_speech_prob: " + std::to_string(no_speech_prob) +
-           ", words: " + words_str +
-           ", temperature: " +
-           (temperature.has_value() ? std::to_string(temperature.value()) : "null") +
-           "}";
+  return "{id: " + std::to_string(id) +
+     ", seek: " + std::to_string(seek) +
+     ", start: " + std::to_string(start) +
+     ", end: " + std::to_string(end) +
+     ", text: \"" + text + "\"" +
+     ", avg_logprob: " + std::to_string(avg_logprob) +
+     ", compression_ratio: " + std::to_string(compression_ratio) +
+     ", no_speech_prob: " + std::to_string(no_speech_prob) +
+     ", words: " + words_str +
+     ", temperature: " +
+     (temperature.has_value() ? std::to_string(temperature.value()) : "null") +
+     "}";
   }
 };
 
@@ -113,77 +113,77 @@ class WhisperModel {
 public:
   // C++ constructor to match the Python `__init__`.
   WhisperModel(
-      const std::string &model_size_or_path,
-      const std::string &device = "auto",
-      const std::vector<int> &device_index = {0},
-      const std::string &compute_type = "default",
-      int cpu_threads = 0,
-      int num_workers = 1,
-      const std::string &download_root = "",
-      bool local_files_only = false,
-      const std::map<std::string, std::string> &files = {},
-      const std::string &revision = "",
-      const std::string &use_auth_token = ""
+    const std::string &model_size_or_path,
+    const std::string &device = "auto",
+    const std::vector<int> &device_index = {0},
+    const std::string &compute_type = "default",
+    int cpu_threads = 0,
+    int num_workers = 1,
+    const std::string &download_root = "",
+    bool local_files_only = false,
+    const std::map<std::string, std::string> &files = {},
+    const std::string &revision = "",
+    const std::string &use_auth_token = ""
   );
   std::vector<std::string> supported_languages() const;
   std::map<std::string, std::string> get_feature_kwargs(
-      const std::string &model_path,
-      const std::optional<std::string> &preprocessor_bytes = std::nullopt
+    const std::string &model_path,
+    const std::optional<std::string> &preprocessor_bytes = std::nullopt
   );
   std::tuple<std::vector<Segment>, TranscriptionInfo> transcribe(
-      const std::vector<float> &audio,
-      const std::optional<std::string> &language = std::nullopt,
-      bool multilingual = false
+    const std::vector<float> &audio,
+    const std::optional<std::string> &language = std::nullopt,
+    bool multilingual = false
   );
   std::tuple<std::vector<Segment>, int, bool> split_segments_by_timestamps(
-      Tokenizer &tokenizer,
-      const std::vector<int> &tokens,
-      float time_offset,
-      int segment_size,
-      float segment_duration,
-      int seek
+    Tokenizer &tokenizer,
+    const std::vector<int> &tokens,
+    float time_offset,
+    int segment_size,
+    float segment_duration,
+    int seek
   );
   std::vector<Segment> generate_segments(
-      const std::vector<std::vector<float>> &features,
-      Tokenizer &tokenizer,
-      const TranscriptionOptions &options
+    const std::vector<std::vector<float>> &features,
+    Tokenizer &tokenizer,
+    const TranscriptionOptions &options
   );
   ctranslate2::StorageView encode(const std::vector<std::vector<float>> &features);
   std::tuple<std::vector<int>, float, float, float>
   generate_with_fallback(
-      const ctranslate2::StorageView &encoder_output,
-      const std::vector<int> &prompt,
-      Tokenizer &tokenizer,
-      const TranscriptionOptions &options
+    const ctranslate2::StorageView &encoder_output,
+    const std::vector<int> &prompt,
+    Tokenizer &tokenizer,
+    const TranscriptionOptions &options
   );
   std::vector<int> get_prompt(
-      Tokenizer &tokenizer,
-      const std::vector<int> &previous_tokens,
-      bool without_timestamps = false,
-      std::optional<std::string> prefix = std::nullopt,
-      std::optional<std::string> hotwords = std::nullopt
+    Tokenizer &tokenizer,
+    const std::vector<int> &previous_tokens,
+    bool without_timestamps = false,
+    std::optional<std::string> prefix = std::nullopt,
+    std::optional<std::string> hotwords = std::nullopt
   );
   float add_word_timestamps(
-      std::vector<std::vector<std::map<std::string, std::any>>> &segments,
-      Tokenizer &tokenizer,
-      const ctranslate2::StorageView &encoder_output,
-      int num_frames,
-      const std::string &prepend_punctuations,
-      const std::string &append_punctuations,
-      float last_speech_timestamp
+    std::vector<std::vector<std::map<std::string, std::any>>> &segments,
+    Tokenizer &tokenizer,
+    const ctranslate2::StorageView &encoder_output,
+    int num_frames,
+    const std::string &prepend_punctuations,
+    const std::string &append_punctuations,
+    float last_speech_timestamp
   );
   std::vector<std::vector<std::map<std::string, std::any>>> find_alignment(
-      Tokenizer &tokenizer,
-      const std::vector<std::vector<int>> &text_tokens,
-      const ctranslate2::StorageView &encoder_output,
-      int num_frames,
-      int median_filter_width = 7
+    Tokenizer &tokenizer,
+    const std::vector<std::vector<int>> &text_tokens,
+    const ctranslate2::StorageView &encoder_output,
+    int num_frames,
+    int median_filter_width = 7
   );
   std::tuple<std::string, float, std::vector<std::pair<std::string, float>>> detect_language(
-      const std::vector<float> *audio = nullptr,
-      const std::vector<std::vector<float>> *features = nullptr,
-      int language_detection_segments = 1,
-      float language_detection_threshold = 0.5f
+    const std::vector<float> *audio = nullptr,
+    const std::vector<std::vector<float>> *features = nullptr,
+    int language_detection_segments = 1,
+    float language_detection_threshold = 0.5f
   );
 
 private:

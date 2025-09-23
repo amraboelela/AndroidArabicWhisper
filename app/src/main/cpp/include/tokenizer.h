@@ -23,10 +23,10 @@ class Tokenizer {
 public:
   // C++ equivalent of the Python constructor.
   Tokenizer(
-      tokenizers::Tokenizer* tokenizer,
-      bool multilingual,
-      std::optional<std::string> task = std::nullopt,
-      std::optional<std::string> language = std::nullopt
+    tokenizers::Tokenizer* tokenizer,
+    bool multilingual,
+    std::optional<std::string> task = std::nullopt,
+    std::optional<std::string> language = std::nullopt
   );
 
   // C++ equivalent of the @cached_property methods.
