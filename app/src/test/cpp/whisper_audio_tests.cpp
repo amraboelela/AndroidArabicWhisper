@@ -11,7 +11,7 @@
 /**
  * Simple test to demonstrate whisper audio processing integration using real audio
  */
-void test_whisper_audio_integration(const std::string& audio_filename = "002-01.wav") {
+void test_whisper_audio(const std::string& audio_filename = "001.wav") {
   std::cout << "=== Whisper Audio Processing Integration Test ===" << std::endl;
 
   // Test 1: Load real audio file from assets
@@ -21,7 +21,9 @@ void test_whisper_audio_integration(const std::string& audio_filename = "002-01.
 
   // Try different possible asset paths depending on where we're running from
   std::vector<std::string> possible_paths = {
-    "../../assets/" + audio_filename,  // From CMake build directory (test_build/)
+    "../../../main/assets/" + audio_filename,  // From CMake build directory (test_build/)
+    "../../main/assets/" + audio_filename,  // From test directory directly
+    "../../assets/" + audio_filename,  // Legacy path
     "../assets/" + audio_filename,     // From direct compilation
     "assets/" + audio_filename         // From project root
   };
@@ -175,9 +177,9 @@ void demonstrate_usage() {
   std::cout << "//    // For large files, consider processing in chunks" << std::endl;
   std::cout << "//" << std::endl;
   std::cout << "// 2. Test with different files:" << std::endl;
-  std::cout << "//    test_whisper_audio_integration(\"002-01.wav\");  // Large Arabic file" << std::endl;
-  std::cout << "//    test_whisper_audio_integration(\"001.wav\");     // Medium file" << std::endl;
-  std::cout << "//    test_whisper_audio_integration(\"test.wav\");    // Small test file" << std::endl;
+  std::cout << "//    test_whisper_audio(\"002-01.wav\");  // Large Arabic file" << std::endl;
+  std::cout << "//    test_whisper_audio(\"001.wav\");     // Medium file" << std::endl;
+  std::cout << "//    test_whisper_audio(\"test.wav\");    // Small test file" << std::endl;
   std::cout << "//" << std::endl;
   std::cout << "// 3. Preprocess audio with whisper-compatible functions:" << std::endl;
   std::cout << "//    auto normalized = whisper::AudioProcessor::normalize_audio(audio);" << std::endl;
@@ -213,15 +215,14 @@ void demonstrate_usage() {
 #ifndef TESTING_MODE
 
 int main() {
-  // Test with default file (002-01.wav)
-  test_whisper_audio_integration();
+  test_whisper_audio("test.wav");
+  test_whisper_audio("001.wav");
 
-  std::cout << "\n" << std::string(50, '=') << std::endl;
-  std::cout << "Testing with different audio file..." << std::endl;
-  std::cout << std::string(50, '=') << "\n" << std::endl;
-
-  // Test with smaller file
-  test_whisper_audio_integration("001.wav");
+//  std::cout << "\n" << std::string(50, '=') << std::endl;
+//  std::cout << "Testing with different audio file..." << std::endl;
+//  std::cout << std::string(50, '=') << "\n" << std::endl;
+//
+  test_whisper_audio("002-01.wav");
 
   demonstrate_usage();
   return 0;

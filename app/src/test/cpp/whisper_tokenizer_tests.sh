@@ -1,11 +1,11 @@
 #!/bin/bash
 
-# Script to build and run whisper audio integration test
-# Usage: ./run_test.sh
+# Script to build and run tokenizer unit tests
+# Usage: ./whisper_tokenizer_tests.sh
 
 set -e  # Exit on any error
 
-echo "=== Building and Running Whisper Audio Integration Test ==="
+echo "=== Building and Running Tokenizer Unit Tests ==="
 
 # Navigate to cpp directory
 cd "$(dirname "$0")"
@@ -19,15 +19,15 @@ cd test_build
 
 echo "Configuring build with CMake..."
 # Copy the test CMakeLists to be the main one for this build
-cp ../CMakeLists_test.txt ./CMakeLists.txt
+cp ../whisper_tokenizer_tests.cmak ./CMakeLists.txt
 cmake -DCMAKE_BUILD_TYPE=Release .
 
 echo "Building test executable..."
 make
 
-echo "Running integration test..."
+echo "Running tokenizer tests..."
 echo "================================"
-./test_whisper_audio_integration
+./test_whisper_tokenizer
 
 echo "================================"
 echo "Test execution completed!"
@@ -36,5 +36,8 @@ echo "Test execution completed!"
 echo ""
 echo "Running with CTest for detailed results..."
 make test
+
+cd ..
+rm -rf test_build
 
 echo "Done!"

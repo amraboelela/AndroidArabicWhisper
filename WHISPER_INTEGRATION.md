@@ -134,7 +134,7 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/whisper)
 Run the integration test to verify functionality:
 ```cpp
 // Included in test_integration.cpp
-test_whisper_audio_integration();
+test_whisper_audio();
 ```
 
 ## Next Steps

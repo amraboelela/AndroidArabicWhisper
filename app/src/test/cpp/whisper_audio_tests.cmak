@@ -11,8 +11,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Include directories
 set(CTRANSLATE2_ROOT "/Users/amraboelela/develop/android/CTranslate2")
 include_directories(${CTRANSLATE2_ROOT}/include)
-include_directories(../include)
-include_directories(../whisper)
+include_directories(../../../main/cpp/include)
+include_directories(../../../main/cpp/whisper)
 
 # Find required packages
 # find_package(PkgConfig REQUIRED)  # Remove this as it's not needed for our simple test
@@ -22,18 +22,18 @@ find_package(ZLIB REQUIRED)
 
 # Create test executable for integration test
 add_executable(
-    test_whisper_audio_integration
-    ../whisper/test_integration.cpp
-    ../whisper/whisper_audio.cpp
-    ../feature_extractor.cpp
-    ../audio.cpp
-    ../utils.cpp
+    test_whisper_audio
+    ../whisper_audio_tests.cpp
+    ../../../main/cpp/whisper/whisper_audio.cpp
+    ../../../main/cpp/feature_extractor.cpp
+    ../../../main/cpp/audio.cpp
+    ../../../main/cpp/utils.cpp
     # Add other dependencies as needed
 )
 
 # Link libraries for test
 target_link_libraries(
-    test_whisper_audio_integration
+    test_whisper_audio
     ${ZLIB_LIBRARIES}
     m  # math library
 )
@@ -42,7 +42,7 @@ target_link_libraries(
 enable_testing()
 
 # Add the test
-add_test(NAME whisper_audio_integration_test COMMAND test_whisper_audio_integration)
+add_test(NAME whisper_audio_test COMMAND test_whisper_audio)
 
 # Print instructions
 message(STATUS "To run tests:")
@@ -50,5 +50,5 @@ message(STATUS "  mkdir build && cd build")
 message(STATUS "  cp ../CMakeLists_test.txt ./CMakeLists.txt")
 message(STATUS "  cmake .")
 message(STATUS "  make")
-message(STATUS "  ./test_whisper_audio_integration")
+message(STATUS "  ./test_whisper_audio")
 message(STATUS "  OR: make test")
