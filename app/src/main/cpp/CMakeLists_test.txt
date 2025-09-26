@@ -6,16 +6,16 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Add compile definitions for testing
-add_definitions(-DTESTING_MODE)
+# add_definitions(-DTESTING_MODE)  # Remove this so main function is included
 
 # Include directories
 set(CTRANSLATE2_ROOT "/Users/amraboelela/develop/android/CTranslate2")
 include_directories(${CTRANSLATE2_ROOT}/include)
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/whisper)
+include_directories(../include)
+include_directories(../whisper)
 
 # Find required packages
-find_package(PkgConfig REQUIRED)
+# find_package(PkgConfig REQUIRED)  # Remove this as it's not needed for our simple test
 
 # Try to find zlib
 find_package(ZLIB REQUIRED)
@@ -23,11 +23,11 @@ find_package(ZLIB REQUIRED)
 # Create test executable for integration test
 add_executable(
     test_whisper_audio_integration
-    whisper/test_integration.cpp
-    whisper/whisper_audio.cpp
-    feature_extractor.cpp
-    audio.cpp
-    utils.cpp
+    ../whisper/test_integration.cpp
+    ../whisper/whisper_audio.cpp
+    ../feature_extractor.cpp
+    ../audio.cpp
+    ../utils.cpp
     # Add other dependencies as needed
 )
 
@@ -47,7 +47,8 @@ add_test(NAME whisper_audio_integration_test COMMAND test_whisper_audio_integrat
 # Print instructions
 message(STATUS "To run tests:")
 message(STATUS "  mkdir build && cd build")
-message(STATUS "  cmake -f ../CMakeLists_test.txt ..")
+message(STATUS "  cp ../CMakeLists_test.txt ./CMakeLists.txt")
+message(STATUS "  cmake .")
 message(STATUS "  make")
 message(STATUS "  ./test_whisper_audio_integration")
 message(STATUS "  OR: make test")

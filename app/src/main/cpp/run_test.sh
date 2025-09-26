@@ -18,7 +18,9 @@ fi
 cd test_build
 
 echo "Configuring build with CMake..."
-cmake -f ../CMakeLists_test.txt ..
+# Copy the test CMakeLists to be the main one for this build
+cp ../CMakeLists_test.txt ./CMakeLists.txt
+cmake -DCMAKE_BUILD_TYPE=Release .
 
 echo "Building test executable..."
 make

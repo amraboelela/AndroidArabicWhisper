@@ -6,6 +6,7 @@
 #include <cassert>
 #include <cmath>  // For M_PI
 #include <iomanip>  // For std::setprecision
+#include <fstream>  // For file existence check
 
 /**
  * Simple test to demonstrate whisper audio processing integration using real audio
@@ -16,7 +17,29 @@ void test_whisper_audio_integration(const std::string& audio_filename = "002-01.
   // Test 1: Load real audio file from assets
   std::cout << "Loading audio file: " << audio_filename << " from assets..." << std::endl;
 
-  std::string audio_file_path = "../assets/" + audio_filename;
+  std::string audio_file_path;
+
+  // Try different possible asset paths depending on where we're running from
+  std::vector<std::string> possible_paths = {
+    "../../assets/" + audio_filename,  // From CMake build directory (test_build/)
+    "../assets/" + audio_filename,     // From direct compilation
+    "assets/" + audio_filename         // From project root
+  };
+
+  // Find the first path that exists
+  bool found_file = false;
+  for (const auto& path : possible_paths) {
+    std::ifstream test_file(path);
+    if (test_file.good()) {
+      audio_file_path = path;
+      found_file = true;
+      break;
+    }
+  }
+
+  if (!found_file) {
+    audio_file_path = possible_paths[0]; // Use first path as fallback
+  }
   std::vector<float> test_audio;
 
   try {
