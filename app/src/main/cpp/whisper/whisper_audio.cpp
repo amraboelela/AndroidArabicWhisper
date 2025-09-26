@@ -271,36 +271,109 @@ bool WavReader::read_wav_file(const std::string& filename, std::vector<float>& a
       return false;
   }
 
-  // Read WAV header
-  uint8_t buffer[44];
-  file.read(reinterpret_cast<char*>(buffer), 44);
+  // Read RIFF header (12 bytes)
+  uint8_t riff_header[12];
+  file.read(reinterpret_cast<char*>(riff_header), 12);
 
-  if (file.gcount() != 44) {
+  if (file.gcount() != 12) {
       return false;
   }
 
   // Check RIFF header
-  if (std::memcmp(buffer, "RIFF", 4) != 0 || std::memcmp(buffer + 8, "WAVE", 4) != 0) {
+  if (std::memcmp(riff_header, "RIFF", 4) != 0 || std::memcmp(riff_header + 8, "WAVE", 4) != 0) {
       return false;
   }
 
-  // Parse header
-  header.num_channels = bytes_to_uint16(buffer + 22);
-  header.sample_rate = bytes_to_uint32(buffer + 24);
-  header.bits_per_sample = bytes_to_uint16(buffer + 34);
-  header.data_size = bytes_to_uint32(buffer + 40);
+  // Initialize header fields
+  header.num_channels = 0;
+  header.sample_rate = 0;
+  header.bits_per_sample = 0;
+  header.data_size = 0;
+
+  // Read chunks until we find fmt and data chunks
+  bool found_fmt = false;
+  bool found_data = false;
+
+  while (!found_fmt || !found_data) {
+      // Read chunk header (8 bytes: 4-byte ID + 4-byte size)
+      uint8_t chunk_header[8];
+      file.read(reinterpret_cast<char*>(chunk_header), 8);
+
+      if (file.gcount() != 8) {
+          break; // End of file or error
+      }
+
+      uint32_t chunk_size = bytes_to_uint32(chunk_header + 4);
+
+      if (std::memcmp(chunk_header, "fmt ", 4) == 0) {
+          // Read fmt chunk data
+          if (chunk_size < 16) {
+              return false; // Invalid fmt chunk
+          }
+
+          uint8_t fmt_data[16];
+          file.read(reinterpret_cast<char*>(fmt_data), 16);
+
+          if (file.gcount() != 16) {
+              return false;
+          }
+
+          // Parse fmt chunk
+          uint16_t audio_format = bytes_to_uint16(fmt_data);
+          header.num_channels = bytes_to_uint16(fmt_data + 2);
+          header.sample_rate = bytes_to_uint32(fmt_data + 4);
+          header.bits_per_sample = bytes_to_uint16(fmt_data + 14);
+
+          // Check if it's PCM format
+          if (audio_format != 1) {
+              return false; // Only support PCM
+          }
+
+          found_fmt = true;
+
+          // Skip any remaining bytes in this chunk
+          if (chunk_size > 16) {
+              file.seekg(chunk_size - 16, std::ios::cur);
+          }
+      } else if (std::memcmp(chunk_header, "data", 4) == 0) {
+          header.data_size = chunk_size;
+          found_data = true;
+
+          // Don't skip this chunk - we'll read the data next
+          break;
+      } else {
+          // Skip unknown chunk
+          file.seekg(chunk_size, std::ios::cur);
+      }
+
+      // Ensure we're aligned to even byte boundary
+      if (chunk_size % 2 == 1) {
+          file.seekg(1, std::ios::cur);
+      }
+  }
+
+  if (!found_fmt || !found_data) {
+      return false;
+  }
 
   // Read audio data
   size_t num_samples = header.data_size / (header.bits_per_sample / 8);
+
+  // For stereo files, num_samples includes both channels
+  // We want the total number of sample values, not sample frames
   audio.resize(num_samples);
 
   if (header.bits_per_sample == 16) {
       std::vector<int16_t> int16_data(num_samples);
       file.read(reinterpret_cast<char*>(int16_data.data()), header.data_size);
 
+      if (file.gcount() != static_cast<std::streamsize>(header.data_size)) {
+          return false;
+      }
+
       // Convert to float [-1, 1]
       for (size_t i = 0; i < num_samples; ++i) {
-      audio[i] = static_cast<float>(int16_data[i]) / 32768.0f;
+          audio[i] = static_cast<float>(int16_data[i]) / 32768.0f;
       }
   } else {
       // For simplicity, only support 16-bit WAV files
