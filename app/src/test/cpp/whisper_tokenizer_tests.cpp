@@ -33,24 +33,26 @@ namespace {
 /**
  * Test WhisperTokenizer special token constants
  */
-bool test_special_token_constants() {
+  bool test_special_token_constants() {
     std::cout << "\n=== Testing Special Token Constants ===" << std::endl;
 
     ASSERT_EQ(whisper::WhisperTokenizer::EOT_TOKEN, 50256, "EOT token constant");
     ASSERT_EQ(whisper::WhisperTokenizer::SOT_TOKEN, 50257, "SOT token constant");
     ASSERT_EQ(whisper::WhisperTokenizer::TRANSCRIBE_TOKEN, 50359, "Transcribe token constant");
     ASSERT_EQ(whisper::WhisperTokenizer::TRANSLATE_TOKEN, 50358, "Translate token constant");
-    ASSERT_EQ(whisper::WhisperTokenizer::NO_TIMESTAMPS_TOKEN, 50363, "No timestamps token constant");
+    ASSERT_EQ(whisper::WhisperTokenizer::NO_TIMESTAMPS_TOKEN, 50363,
+              "No timestamps token constant");
     ASSERT_EQ(whisper::WhisperTokenizer::TIMESTAMP_BEGIN, 50364, "Timestamp begin constant");
-    ASSERT_EQ(whisper::WhisperTokenizer::LANGUAGE_TOKEN_START, 50259, "Language token start constant");
+    ASSERT_EQ(whisper::WhisperTokenizer::LANGUAGE_TOKEN_START, 50259,
+              "Language token start constant");
 
     return true;
-}
+  }
 
 /**
  * Test WhisperTokenizer initialization
  */
-bool test_whisper_tokenizer_initialization() {
+  bool test_whisper_tokenizer_initialization() {
     std::cout << "\n=== Testing WhisperTokenizer Initialization ===" << std::endl;
 
     // Test monolingual initialization
@@ -64,15 +66,15 @@ bool test_whisper_tokenizer_initialization() {
 
     // Note: Both may have same vocab size if language tokens are added conditionally
     ASSERT_TRUE(multi_tokenizer.vocab_size() >= mono_tokenizer.vocab_size(),
-               "Multilingual has equal or larger vocabulary");
+                "Multilingual has equal or larger vocabulary");
 
     return true;
-}
+  }
 
 /**
  * Test special token getters
  */
-bool test_special_token_getters() {
+  bool test_special_token_getters() {
     std::cout << "\n=== Testing Special Token Getters ===" << std::endl;
 
     whisper::WhisperTokenizer tokenizer("", true);
@@ -87,12 +89,12 @@ bool test_special_token_getters() {
     ASSERT_EQ(tokenizer.get_sot_lm_token(), 50361, "get_sot_lm_token()");
 
     return true;
-}
+  }
 
 /**
  * Test language token functionality
  */
-bool test_language_tokens() {
+  bool test_language_tokens() {
     std::cout << "\n=== Testing Language Tokens ===" << std::endl;
 
     whisper::WhisperTokenizer tokenizer("", true);
@@ -117,12 +119,12 @@ bool test_language_tokens() {
     ASSERT_EQ(invalid_token, -1, "Invalid language returns -1");
 
     return true;
-}
+  }
 
 /**
  * Test SOT sequence generation
  */
-bool test_sot_sequence_generation() {
+  bool test_sot_sequence_generation() {
     std::cout << "\n=== Testing SOT Sequence Generation ===" << std::endl;
 
     whisper::WhisperTokenizer tokenizer("", true);
@@ -130,28 +132,32 @@ bool test_sot_sequence_generation() {
     // Test basic SOT sequence
     auto basic_sot = tokenizer.get_sot_sequence();
     ASSERT_TRUE(basic_sot.size() >= 1, "Basic SOT sequence has tokens");
-    ASSERT_EQ(basic_sot[0], whisper::WhisperTokenizer::SOT_TOKEN, "SOT sequence starts with SOT token");
+    ASSERT_EQ(basic_sot[0], whisper::WhisperTokenizer::SOT_TOKEN,
+              "SOT sequence starts with SOT token");
 
     // Test Arabic transcribe sequence
     auto ar_transcribe = tokenizer.get_sot_sequence("ar", "transcribe");
     ASSERT_TRUE(ar_transcribe.size() >= 3, "Arabic transcribe sequence has multiple tokens");
-    ASSERT_EQ(ar_transcribe[0], whisper::WhisperTokenizer::SOT_TOKEN, "Arabic sequence starts with SOT");
+    ASSERT_EQ(ar_transcribe[0], whisper::WhisperTokenizer::SOT_TOKEN,
+              "Arabic sequence starts with SOT");
 
     // Test English translate sequence
     auto en_translate = tokenizer.get_sot_sequence("en", "translate");
     ASSERT_TRUE(en_translate.size() >= 3, "English translate sequence has multiple tokens");
-    ASSERT_EQ(en_translate[0], whisper::WhisperTokenizer::SOT_TOKEN, "English sequence starts with SOT");
+    ASSERT_EQ(en_translate[0], whisper::WhisperTokenizer::SOT_TOKEN,
+              "English sequence starts with SOT");
 
     // Test that different language/task combinations produce different sequences
-    ASSERT_TRUE(ar_transcribe != en_translate, "Different language/task combinations produce different sequences");
+    ASSERT_TRUE(ar_transcribe != en_translate,
+                "Different language/task combinations produce different sequences");
 
     return true;
-}
+  }
 
 /**
  * Test timestamp token functionality
  */
-bool test_timestamp_tokens() {
+  bool test_timestamp_tokens() {
     std::cout << "\n=== Testing Timestamp Tokens ===" << std::endl;
 
     whisper::WhisperTokenizer tokenizer("", true);
@@ -159,31 +165,31 @@ bool test_timestamp_tokens() {
     // Test timestamp conversion (basic functionality)
     float test_times[] = {0.0f, 1.0f, 2.5f, 10.0f, 30.0f};
 
-    for (float time : test_times) {
-        int timestamp_token = tokenizer.seconds_to_timestamp(time);
+    for (float time: test_times) {
+      int timestamp_token = tokenizer.seconds_to_timestamp(time);
 
-        // Check that it's in the timestamp range
-        ASSERT_TRUE(timestamp_token >= whisper::WhisperTokenizer::TIMESTAMP_BEGIN,
-                   "Generated token is in timestamp range");
+      // Check that it's in the timestamp range
+      ASSERT_TRUE(timestamp_token >= whisper::WhisperTokenizer::TIMESTAMP_BEGIN,
+                  "Generated token is in timestamp range");
 
-        // Note: Round-trip testing skipped due to implementation limitations
-        // This would be important for production code
+      // Note: Round-trip testing skipped due to implementation limitations
+      // This would be important for production code
     }
 
     // Test non-timestamp tokens
     ASSERT_TRUE(!tokenizer.is_timestamp_token(whisper::WhisperTokenizer::SOT_TOKEN),
-               "SOT token is not timestamp");
+                "SOT token is not timestamp");
     ASSERT_TRUE(!tokenizer.is_timestamp_token(whisper::WhisperTokenizer::EOT_TOKEN),
-               "EOT token is not timestamp");
+                "EOT token is not timestamp");
     ASSERT_TRUE(!tokenizer.is_timestamp_token(100), "Regular token is not timestamp");
 
     return true;
-}
+  }
 
 /**
  * Test basic encoding/decoding
  */
-bool test_basic_encoding_decoding() {
+  bool test_basic_encoding_decoding() {
     std::cout << "\n=== Testing Basic Encoding/Decoding ===" << std::endl;
 
     whisper::WhisperTokenizer tokenizer("", true);
@@ -212,12 +218,12 @@ bool test_basic_encoding_decoding() {
     ASSERT_TRUE(empty_decode.empty(), "Empty token list produces empty string");
 
     return true;
-}
+  }
 
 /**
  * Test non-speech token identification
  */
-bool test_non_speech_tokens() {
+  bool test_non_speech_tokens() {
     std::cout << "\n=== Testing Non-Speech Tokens ===" << std::endl;
 
     whisper::WhisperTokenizer tokenizer("", true);
@@ -236,12 +242,12 @@ bool test_non_speech_tokens() {
     ASSERT_TRUE(non_speech.size() >= 5, "Non-speech tokens list has no duplicates");
 
     return true;
-}
+  }
 
 /**
  * Test edge cases
  */
-bool test_edge_cases() {
+  bool test_edge_cases() {
     std::cout << "\n=== Testing Edge Cases ===" << std::endl;
 
     whisper::WhisperTokenizer tokenizer("", true);
@@ -267,12 +273,12 @@ bool test_edge_cases() {
     ASSERT_TRUE(!ws_tokens.empty(), "Whitespace text produces tokens");
 
     return true;
-}
+  }
 
 /**
  * Test TokenizerWrapper interface
  */
-bool test_tokenizer_wrapper() {
+  bool test_tokenizer_wrapper() {
     std::cout << "\n=== Testing TokenizerWrapper Interface ===" << std::endl;
 
     whisper::TokenizerWrapper wrapper(true, "ar", "transcribe");
@@ -299,7 +305,7 @@ bool test_tokenizer_wrapper() {
     ASSERT_TRUE(wrapper.is_multilingual(), "Wrapper reports multilingual correctly");
 
     return true;
-}
+  }
 
 } // anonymous namespace
 
@@ -479,48 +485,50 @@ void demonstrate_tokenizer_usage() {
  * Main unit test runner
  */
 bool run_tokenizer_unit_tests() {
-    std::cout << "=== TOKENIZER UNIT TESTS ===" << std::endl;
+  std::cout << "=== TOKENIZER UNIT TESTS ===" << std::endl;
 
-    bool all_passed = true;
+  bool all_passed = true;
 
-    all_passed &= test_special_token_constants();
-    all_passed &= test_whisper_tokenizer_initialization();
-    all_passed &= test_special_token_getters();
-    all_passed &= test_language_tokens();
-    all_passed &= test_sot_sequence_generation();
-    all_passed &= test_timestamp_tokens();
-    all_passed &= test_basic_encoding_decoding();
-    all_passed &= test_non_speech_tokens();
-    all_passed &= test_edge_cases();
-    all_passed &= test_tokenizer_wrapper();
+  all_passed &= test_special_token_constants();
+  all_passed &= test_whisper_tokenizer_initialization();
+  all_passed &= test_special_token_getters();
+  all_passed &= test_language_tokens();
+  all_passed &= test_sot_sequence_generation();
+  all_passed &= test_timestamp_tokens();
+  all_passed &= test_basic_encoding_decoding();
+  all_passed &= test_non_speech_tokens();
+  all_passed &= test_edge_cases();
+  all_passed &= test_tokenizer_wrapper();
 
-    std::cout << "\n=== UNIT TEST SUMMARY ===" << std::endl;
-    if (all_passed) {
-        std::cout << "✅ ALL TOKENIZER UNIT TESTS PASSED!" << std::endl;
-    } else {
-        std::cout << "❌ SOME TOKENIZER UNIT TESTS FAILED!" << std::endl;
-    }
+  std::cout << "\n=== UNIT TEST SUMMARY ===" << std::endl;
+  if (all_passed) {
+    std::cout << "✅ ALL TOKENIZER UNIT TESTS PASSED!" << std::endl;
+  } else {
+    std::cout << "❌ SOME TOKENIZER UNIT TESTS FAILED!" << std::endl;
+  }
 
-    return all_passed;
+  return all_passed;
 }
 
 /**
  * Run integration tests
  */
 void run_tokenizer_integration_tests() {
-    test_whisper_tokenizer_integration();
-    test_whisper_tokenizer_standalone();
-    demonstrate_tokenizer_usage();
+  test_whisper_tokenizer_integration();
+  test_whisper_tokenizer_standalone();
+  demonstrate_tokenizer_usage();
 }
 
 #ifndef TESTING_MODE
+
 int main() {
-    bool unit_tests_passed = run_tokenizer_unit_tests();
+  bool unit_tests_passed = run_tokenizer_unit_tests();
 
-    if (unit_tests_passed) {
-        run_tokenizer_integration_tests();
-    }
+  if (unit_tests_passed) {
+    run_tokenizer_integration_tests();
+  }
 
-    return unit_tests_passed ? 0 : 1;
+  return unit_tests_passed ? 0 : 1;
 }
+
 #endif
