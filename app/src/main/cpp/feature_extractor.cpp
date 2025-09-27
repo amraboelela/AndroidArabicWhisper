@@ -136,11 +136,51 @@ std::vector<std::vector<std::complex<float>>> FeatureExtractor::stft(
     const std::vector<float>& window,
     bool center
 ) {
-  // This is a simplified C++ implementation of STFT.
-  // A full implementation requires a robust FFT library.
-  // This is a placeholder for the actual computation.
-  std::cout << "Warning: STFT is a placeholder implementation. Use a real FFT library for a production application." << std::endl;
-  std::vector<std::vector<std::complex<float>>> result;
+  // Simplified STFT implementation
+  // For production, use a proper FFT library like FFTW or Kiss FFT
+
+  if (input_array.empty()) {
+    return std::vector<std::vector<std::complex<float>>>();
+  }
+
+  // Calculate number of frames
+  int n_frames = 1 + (input_array.size() - n_fft) / hop_length;
+  if (n_frames <= 0) n_frames = 1;
+
+  // Frequency bins (n_fft/2 + 1 for real FFT)
+  int n_freq_bins = n_fft / 2 + 1;
+
+  // Initialize result matrix [freq_bins][time_frames]
+  std::vector<std::vector<std::complex<float>>> result(
+      n_freq_bins,
+      std::vector<std::complex<float>>(n_frames, std::complex<float>(0.0f, 0.0f))
+  );
+
+  // Simple DFT implementation (inefficient but functional)
+  for (int frame = 0; frame < n_frames; ++frame) {
+    int start_idx = frame * hop_length;
+
+    // Extract frame with windowing
+    std::vector<float> frame_data(n_fft, 0.0f);
+    for (int i = 0; i < n_fft && (start_idx + i) < static_cast<int>(input_array.size()); ++i) {
+      float win_val = (i < static_cast<int>(window.size())) ? window[i] : 1.0f;
+      frame_data[i] = input_array[start_idx + i] * win_val;
+    }
+
+    // Compute DFT for positive frequencies only (real FFT)
+    for (int k = 0; k < n_freq_bins; ++k) {
+      std::complex<float> sum(0.0f, 0.0f);
+
+      for (int n = 0; n < n_fft; ++n) {
+        float angle = -2.0f * M_PI * k * n / n_fft;
+        std::complex<float> twiddle(cos(angle), sin(angle));
+        sum += frame_data[n] * twiddle;
+      }
+
+      result[k][frame] = sum;
+    }
+  }
+
   return result;
 }
 
@@ -222,15 +262,18 @@ Matrix FeatureExtractor::compute_mel_spectrogram_original(
     }
   }
 
+  // Apply log transform with proper clamping
   Matrix log_spec(mel_spec.size(), std::vector<float>(mel_spec[0].size()));
   for (size_t i = 0; i < mel_spec.size(); ++i) {
     for (size_t j = 0; j < mel_spec[i].size(); ++j) {
+      // Clamp to avoid log(0) and apply log10
       float value = std::max(mel_spec[i][j], 1e-10f);
       log_spec[i][j] = log10(value);
     }
   }
 
-  float max_log = -8.0f; // Simplified max for a reasonable baseline
+  // Find max value for normalization
+  float max_log = -10.0f;
   if (!log_spec.empty() && !log_spec[0].empty()) {
     max_log = log_spec[0][0];
     for (size_t i = 0; i < log_spec.size(); ++i) {
@@ -242,9 +285,14 @@ Matrix FeatureExtractor::compute_mel_spectrogram_original(
     }
   }
 
+  // Normalize to reasonable range for whisper compatibility
+  // Typical range: [max_log - 8, max_log] -> [-8, 0] after normalization
   for (size_t i = 0; i < log_spec.size(); ++i) {
     for (size_t j = 0; j < log_spec[i].size(); ++j) {
-      log_spec[i][j] = (std::max(log_spec[i][j], max_log - 8.0f) + 4.0f) / 4.0f;
+      // Clamp to dynamic range of 8 dB
+      log_spec[i][j] = std::max(log_spec[i][j], max_log - 8.0f);
+      // Normalize to [0, 8] then shift to [-8, 0]
+      log_spec[i][j] = log_spec[i][j] - max_log;
     }
   }
 

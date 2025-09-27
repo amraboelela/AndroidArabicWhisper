@@ -26,7 +26,7 @@ add_executable(
     ../whisper_audio_tests.cpp
     ../../../main/cpp/whisper/whisper_audio.cpp
     ../../../main/cpp/feature_extractor.cpp
-    ../../../main/cpp/audio.cpp
+    ../../../main/cpp/audio_decoder.cpp
     ../../../main/cpp/utils.cpp
     # Add other dependencies as needed
 )

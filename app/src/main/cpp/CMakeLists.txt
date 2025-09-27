@@ -10,7 +10,7 @@ add_library(
         utils.cpp
         tokenizer.cpp
         feature_extractor.cpp
-        audio.cpp
+        audio_decoder.cpp
         whisper/whisper_audio.cpp     # New whisper-compatible audio processing
         whisper/whisper_tokenizer.cpp # New whisper-compatible tokenizer
 )

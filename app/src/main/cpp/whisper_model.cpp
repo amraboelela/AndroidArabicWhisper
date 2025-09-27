@@ -32,7 +32,7 @@ std::vector<std::vector<float>> pad_or_trim(const std::vector<std::vector<float>
 #include <variant>
 #include <utility>
 #include "tokenizer.h"
-#include "audio.h"
+#include "audio_decoder.h"
 #include "feature_extractor.h"
 
 // Forward declarations and constants

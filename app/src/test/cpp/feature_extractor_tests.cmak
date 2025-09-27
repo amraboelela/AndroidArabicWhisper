@@ -1,0 +1,43 @@
+cmake_minimum_required(VERSION 3.10)
+project(arabicwhisper_feature_extractor_tests)
+
+# Set C++ standard
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# Include directories
+include_directories(../../../main/cpp/include)
+include_directories(../../../main/cpp/whisper)
+
+# Find required packages
+find_package(ZLIB REQUIRED)
+
+# Create test executable for feature extractor tests
+add_executable(
+    test_feature_extractor
+    ../feature_extractor_tests.cpp
+    ../../../main/cpp/feature_extractor.cpp
+    ../../../main/cpp/whisper/whisper_audio.cpp
+)
+
+# Link libraries for test
+target_link_libraries(
+    test_feature_extractor
+    ${ZLIB_LIBRARIES}
+    m  # math library
+)
+
+# Enable testing
+enable_testing()
+
+# Add the test
+add_test(NAME feature_extractor_test COMMAND test_feature_extractor)
+
+# Print instructions
+message(STATUS "To run feature extractor tests:")
+message(STATUS "  mkdir build && cd build")
+message(STATUS "  cp ../feature_extractor_tests.cmak ./CMakeLists.txt")
+message(STATUS "  cmake .")
+message(STATUS "  make")
+message(STATUS "  ./test_feature_extractor")
+message(STATUS "  OR: make test")

@@ -1,6 +1,6 @@
 #include "whisper_audio.h"
 #include "feature_extractor.h"
-#include "audio.h"
+#include "audio_decoder.h"
 #include <iostream>
 #include <vector>
 #include <cassert>

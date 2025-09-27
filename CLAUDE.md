@@ -13,7 +13,7 @@ This is an Android NDK project that integrates Arabic speech recognition using O
 - **whisper_jni.cpp** - JNI interface bridging Java and C++
 - **tokenizer.cpp/.h** - Whisper tokenizer implementation with Arabic support
 - **feature_extractor.cpp/.h** - Audio feature extraction for Whisper input
-- **audio.cpp/.h** - Audio preprocessing and format conversion
+- **audio_decoder.cpp/.h** - Audio preprocessing and format conversion
 - **utils.cpp/.h** - Utility functions for model downloading and JSON parsing
 - **whisper/** - Enhanced Whisper-compatible audio and tokenizer components
 

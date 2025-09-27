@@ -1,0 +1,43 @@
+cmake_minimum_required(VERSION 3.10)
+project(arabicwhisper_audio_decoder_tests)
+
+# Set C++ standard
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# Include directories
+include_directories(../../../main/cpp/include)
+include_directories(../../../main/cpp/whisper)
+
+# Find required packages
+find_package(ZLIB REQUIRED)
+
+# Create test executable for audio processing tests
+add_executable(
+    test_audio_decoder
+    ../audio_decoder_tests.cpp
+    ../../../main/cpp/audio_decoder.cpp
+    ../../../main/cpp/whisper/whisper_audio.cpp
+)
+
+# Link libraries for test
+target_link_libraries(
+    test_audio_decoder
+    ${ZLIB_LIBRARIES}
+    m  # math library
+)
+
+# Enable testing
+enable_testing()
+
+# Add the test
+add_test(NAME audio_decoder_test COMMAND test_audio_decoder)
+
+# Print instructions
+message(STATUS "To run audio processing tests:")
+message(STATUS "  mkdir build && cd build")
+message(STATUS "  cp ../audio_decoder_tests.cmak ./CMakeLists.txt")
+message(STATUS "  cmake .")
+message(STATUS "  make")
+message(STATUS "  ./test_audio_decoder")
+message(STATUS "  OR: make test")
