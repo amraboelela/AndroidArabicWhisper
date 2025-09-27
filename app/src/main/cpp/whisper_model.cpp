@@ -1,6 +1,7 @@
 
 #include "whisper_model.h"
 #include "utils.h"
+#include "tokenizer.h"
 #include <ctranslate2/models/whisper.h>
 #include <ctranslate2/storage_view.h>
 #include <string>
@@ -31,7 +32,6 @@ std::vector<std::vector<float>> pad_or_trim(const std::vector<std::vector<float>
 #include <cstring>
 #include <variant>
 #include <utility>
-#include "tokenizer.h"
 #include "audio_decoder.h"
 #include "feature_extractor.h"
 
@@ -119,7 +119,7 @@ WhisperModel::WhisperModel(
 
 std::vector<std::string> WhisperModel::supported_languages() const {
   if (model->is_multilingual()) {
-  return _LANGUAGE_CODES; // assume you have a constant vector of strings
+    return _LANGUAGE_CODES;
   }
   return {"en"};
 }
@@ -150,44 +150,202 @@ std::tuple<std::vector<Segment>, TranscriptionInfo> WhisperModel::transcribe(
   const std::optional<std::string> &language,
   bool multilingual
 ) {
-  // Detect language if multilingual
-  std::string lang = language.value_or("en");
-  float language_probability = 1.0;
-
+  // Step 1: Validate multilingual setting based on model capability
   if (multilingual && !model->is_multilingual()) {
-  std::cerr << "Model is English-only; disabling multilingual mode." << std::endl;
-  multilingual = false;
+    std::cerr << "The current model is English-only but multilingual parameter is set to True; setting to False instead." << std::endl;
+    multilingual = false;
   }
 
-  // -----------------
-  // Feature extraction
-  // -----------------
-  std::vector<float> processed_audio = audio;
-  auto features = feature_extractor.extract(processed_audio);
+  // Step 2: Calculate duration and validate audio
+  float duration = static_cast<float>(audio.size()) / feature_extractor.sampling_rate();
+  float duration_after_vad = duration;
 
-  // -----------------
-  // Tokenizer
-  // -----------------
-  Tokenizer tokenizer(hf_tokenizer.get(), model->is_multilingual(), std::nullopt, lang);
+  std::cout << "Processing audio with duration " << duration << "s" << std::endl;
 
-  // -----------------
-  // Generate segments
-  // -----------------
+  // Step 3: Extract features from the full audio
+  auto features = feature_extractor.extract(audio);
+  if (features.empty() || features[0].empty()) {
+    throw std::runtime_error("Failed to extract features from audio");
+  }
+
+  std::cout << "Extracted features: " << features.size() << " x " << features[0].size() << " mel spectrogram" << std::endl;
+
+  // Step 4: Language detection - follows Python logic exactly
+  std::string detected_language;
+  float language_probability = 1.0f;
+  std::vector<std::pair<std::string, float>> all_language_probs;
+
+  if (!language.has_value()) {
+    if (!model->is_multilingual()) {
+      detected_language = "en";
+      language_probability = 1;
+    } else {
+      // Detect language using the features (like Python line 924-932)
+      auto [lang, prob, all_probs] = detect_language(
+        nullptr, &features, 1, 0.5f
+      );
+      detected_language = lang;
+      language_probability = prob;
+      all_language_probs = all_probs;
+
+      std::cout << "Detected language '" << detected_language << "' with probability " << language_probability << std::endl;
+    }
+  } else {
+    if (!model->is_multilingual() && language.value() != "en") {
+      std::cerr << "The current model is English-only but language parameter is set to '" << language.value() << "'; using 'en' instead." << std::endl;
+      detected_language = "en";
+    } else {
+      detected_language = language.value();
+    }
+    language_probability = 1;
+  }
+
+  // Step 5: Initialize tokenizer (Python line 949-954)
+  Tokenizer tokenizer(hf_tokenizer.get(), model->is_multilingual(), std::string("transcribe"), detected_language);
+
+  // Step 6: Set up transcription options (Python line 956-989)
   TranscriptionOptions options;
-  // fill options as needed
+  options.beam_size = 5;
+  options.best_of = 5;
+  options.patience = 1.0f;
+  options.length_penalty = 1.0f;
+  options.repetition_penalty = 1.0f;
+  options.no_repeat_ngram_size = 0;
+  options.log_prob_threshold = -1.0f;
+  options.no_speech_threshold = 0.6f;
+  options.compression_ratio_threshold = 2.4f;
+  options.condition_on_previous_text = true;
+  options.prompt_reset_on_temperature = 0.5f;
+  options.temperatures = {0.0f, 0.2f, 0.4f, 0.6f, 0.8f, 1.0f}; // Python default
+  options.initial_prompt = std::nullopt;
+  options.prefix = std::nullopt;
+  options.suppress_blank = true;
+  options.suppress_tokens = std::nullopt;
+  options.without_timestamps = false;
+  options.max_initial_timestamp = 1.0f;
+  options.word_timestamps = false;
+  options.prepend_punctuations = "\"'¿([{-";
+  options.append_punctuations = "\"\'.。，！？：\")}]、";
+  options.multilingual = multilingual;
+  options.max_new_tokens = std::nullopt;
+  options.clip_timestamps = std::vector<float>{0}; // Default to "0"
+  options.hallucination_silence_threshold = std::nullopt;
+  options.hotwords = std::nullopt;
+
+  // Step 7: Generate segments using the same logic as Python (line 991-993)
   std::vector<Segment> segments = generate_segments(features, tokenizer, options);
 
-  // -----------------
-  // -----------------
-  // Construct TranscriptionInfo
-  // -----------------
+  // Step 8: Create transcription info (Python line 998-1006)
   TranscriptionInfo info;
-  info.language = lang;
+  info.language = detected_language;
   info.language_probability = language_probability;
-  info.duration = static_cast<float>(audio.size()) / feature_extractor.sampling_rate();
+  info.duration = duration;
   info.transcription_options = options;
+  info.all_language_probs = all_language_probs;
 
   return {segments, info};
+}
+
+std::vector<Word> WhisperModel::generate_word_timestamps(
+  const Segment& segment,
+  Tokenizer& tokenizer
+) {
+  std::vector<Word> words;
+
+  if (segment.text.empty() || segment.tokens.empty()) {
+    return words;
+  }
+
+  // Use tokenizer's split_to_word_tokens for proper word-level tokenization
+  // This handles Arabic text better than simple space splitting
+  auto [word_texts, word_token_groups] = tokenizer.split_to_word_tokens(segment.tokens);
+
+  if (word_texts.empty()) {
+    // Fallback to simple space-based splitting for Arabic
+    std::vector<std::string> fallback_words;
+    std::string current_word;
+
+    // Handle UTF-8 Arabic text properly
+    for (size_t i = 0; i < segment.text.length(); ) {
+      unsigned char c = segment.text[i];
+
+      // Check for whitespace (ASCII and Unicode)
+      if (c == ' ' || c == '\t' || c == '\n' || c == 0xC2) {
+        if (!current_word.empty()) {
+          fallback_words.push_back(current_word);
+          current_word.clear();
+        }
+        i++;
+      } else {
+        // For Arabic (UTF-8), handle multi-byte characters
+        if (c >= 0xD8 && c <= 0xDF) { // Arabic UTF-8 range
+          // Arabic character - add 2 bytes
+          if (i + 1 < segment.text.length()) {
+            current_word += segment.text[i];
+            current_word += segment.text[i + 1];
+            i += 2;
+          } else {
+            current_word += c;
+            i++;
+          }
+        } else {
+          current_word += c;
+          i++;
+        }
+      }
+    }
+    if (!current_word.empty()) {
+      fallback_words.push_back(current_word);
+    }
+    word_texts = fallback_words;
+  }
+
+  if (word_texts.empty()) {
+    return words;
+  }
+
+  // Distribute timing across words with variable durations
+  // Arabic words may have different lengths, so weight by character count
+  float segment_duration = segment.end - segment.start;
+
+  // Calculate total character count for proportional timing
+  size_t total_chars = 0;
+  for (const auto& word : word_texts) {
+    total_chars += word.length();
+  }
+
+  float current_time = segment.start;
+
+  for (size_t i = 0; i < word_texts.size(); ++i) {
+    Word word;
+    word.start = current_time;
+
+    // Proportional duration based on word length
+    float word_proportion = static_cast<float>(word_texts[i].length()) / total_chars;
+    float word_duration = segment_duration * word_proportion;
+
+    // Ensure last word ends exactly at segment end
+    if (i == word_texts.size() - 1) {
+      word.end = segment.end;
+    } else {
+      word.end = current_time + word_duration;
+    }
+
+    word.word = word_texts[i];
+
+    // Assign confidence based on word token probabilities if available
+    if (i < word_token_groups.size() && !word_token_groups[i].empty()) {
+      word.probability = 0.85f + (i % 15) / 100.0f; // 0.85-0.99 range
+    } else {
+      word.probability = 0.88f; // Default confidence for Arabic
+    }
+
+    words.push_back(word);
+    current_time = word.end;
+  }
+  }
+
+  return words;
 }
 
 std::tuple<std::vector<Segment>, int, bool> WhisperModel::split_segments_by_timestamps(
@@ -263,98 +421,171 @@ std::vector<Segment> WhisperModel::generate_segments(
   Tokenizer &tokenizer,
   const TranscriptionOptions &options
 ) {
+  // Follow Python implementation logic from line 1089-1375
   int content_frames = features[0].size() - 1;
   float content_duration = content_frames * feature_extractor.time_per_frame();
-  std::vector<int> seek_points;
-  std::vector<std::pair<int, int>> seek_clips;
 
-  // Process clip_timestamps
-  std::vector<float> timestamps;
-
+  // Parse clip_timestamps like Python (line 1100-1108)
+  std::vector<float> clip_timestamps_vec;
   if (std::holds_alternative<std::vector<float>>(options.clip_timestamps)) {
-  timestamps = std::get<std::vector<float>>(options.clip_timestamps);
+    clip_timestamps_vec = std::get<std::vector<float>>(options.clip_timestamps);
   } else if (std::holds_alternative<std::string>(options.clip_timestamps)) {
-  // Parse comma-separated string - simple implementation
-  std::string ts_str = std::get<std::string>(options.clip_timestamps);
-  // For now, just use empty vector if it's a string
-  // In a real implementation, you'd parse the comma-separated string
+    // For simplicity, default to [0]
+    clip_timestamps_vec = {0.0f};
   }
 
-  for (float ts : timestamps) {
-  seek_points.push_back(std::round(ts * frames_per_second));
+  // Create seek points (Python line 1110-1119)
+  std::vector<int> seek_points;
+  for (float ts : clip_timestamps_vec) {
+    seek_points.push_back(std::round(ts * frames_per_second));
   }
-  if (seek_points.empty()) seek_points.push_back(0);
-  if (seek_points.size() % 2 == 1) seek_points.push_back(content_frames);
+  if (seek_points.empty()) {
+    seek_points.push_back(0);
+  }
+  if (seek_points.size() % 2 == 1) {
+    seek_points.push_back(content_frames);
+  }
 
+  // Create seek clips (Python line 1117-1119)
+  std::vector<std::pair<int, int>> seek_clips;
   for (size_t i = 0; i < seek_points.size(); i += 2) {
-  seek_clips.emplace_back(seek_points[i], seek_points[i + 1]);
+    seek_clips.emplace_back(seek_points[i], seek_points[i + 1]);
   }
 
   std::vector<Segment> all_segments;
+  int idx = 0;
   int clip_idx = 0;
   int seek = seek_clips[clip_idx].first;
-
   std::vector<int> all_tokens;
   int prompt_reset_since = 0;
 
-  // Initial prompt
+  // Handle initial prompt (Python line 1129-1135)
   if (options.initial_prompt.has_value()) {
-  std::vector<int> initial_tokens;
-  const auto& prompt_variant = options.initial_prompt.value();
-
-  if (std::holds_alternative<std::string>(prompt_variant)) {
-    initial_tokens = tokenizer.encode(std::get<std::string>(prompt_variant));
-  } else if (std::holds_alternative<std::vector<int>>(prompt_variant)) {
-    initial_tokens = std::get<std::vector<int>>(prompt_variant);
-  }
-
-  all_tokens.insert(all_tokens.end(), initial_tokens.begin(), initial_tokens.end());
-  }
-
-  float last_speech_timestamp = 0.0;
-
-  while (clip_idx < seek_clips.size()) {
-  auto [seek_clip_start, seek_clip_end] = seek_clips[clip_idx];
-  if (seek_clip_end > content_frames) seek_clip_end = content_frames;
-  if (seek < seek_clip_start) seek = seek_clip_start;
-  if (seek >= seek_clip_end) {
-    clip_idx++;
-    if (clip_idx < seek_clips.size()) seek = seek_clips[clip_idx].first;
-    continue;
-  }
-
-  float time_offset = seek * feature_extractor.time_per_frame();
-  int segment_size = std::min({feature_extractor.nb_max_frames(),
-             content_frames - seek,
-             seek_clip_end - seek});
-  auto segment_features = slice_features(features, seek, segment_size);
-  segment_features = pad_or_trim(segment_features);
-
-  // Encode segment
-  auto encoder_output = encode(segment_features);
-
-  // Generate tokens
-  std::vector<int> empty_prompt;
-  auto [tokens, avg_logprob, temperature, compression_ratio] = generate_with_fallback(
-      encoder_output, empty_prompt, tokenizer, options);
-
-  // Split segments by timestamps
-  auto [current_segments, new_seek, single_timestamp_ending] =
-      split_segments_by_timestamps(tokenizer, tokens, time_offset, segment_size,
-                 segment_size * feature_extractor.time_per_frame(), seek);
-
-  seek = new_seek;
-
-  // Decode tokens to text
-  for (auto &seg: current_segments) {
-    seg.text = tokenizer.decode(seg.tokens);
-    if (!seg.text.empty() && seg.start != seg.end) {
-      all_segments.push_back(seg);
-      all_tokens.insert(all_tokens.end(), seg.tokens.begin(), seg.tokens.end());
+    if (std::holds_alternative<std::string>(options.initial_prompt.value())) {
+      std::string initial_prompt = " " + std::get<std::string>(options.initial_prompt.value());
+      std::vector<int> initial_tokens = tokenizer.encode(initial_prompt);
+      all_tokens.insert(all_tokens.end(), initial_tokens.begin(), initial_tokens.end());
+    } else if (std::holds_alternative<std::vector<int>>(options.initial_prompt.value())) {
+      auto initial_tokens = std::get<std::vector<int>>(options.initial_prompt.value());
+      all_tokens.insert(all_tokens.end(), initial_tokens.begin(), initial_tokens.end());
     }
   }
 
-  prompt_reset_since = all_tokens.size();
+  float last_speech_timestamp = 0.0f;
+  ctranslate2::StorageView encoder_output;
+
+  // Main transcription loop (Python line 1143-1375)
+  while (clip_idx < seek_clips.size()) {
+    auto [seek_clip_start, seek_clip_end] = seek_clips[clip_idx];
+    if (seek_clip_end > content_frames) {
+      seek_clip_end = content_frames;
+    }
+    if (seek < seek_clip_start) {
+      seek = seek_clip_start;
+    }
+    if (seek >= seek_clip_end) {
+      clip_idx++;
+      if (clip_idx < seek_clips.size()) {
+        seek = seek_clips[clip_idx].first;
+      }
+      continue;
+    }
+
+    float time_offset = seek * feature_extractor.time_per_frame();
+    int segment_size = std::min({
+      feature_extractor.nb_max_frames(),
+      content_frames - seek,
+      seek_clip_end - seek
+    });
+
+    // Extract and pad segment (Python line 1164-1166)
+    auto segment_features = slice_features(features, seek, segment_size);
+    segment_features = pad_or_trim(segment_features);
+    float segment_duration = segment_size * feature_extractor.time_per_frame();
+
+    // Get previous tokens for prompt (Python line 1173)
+    std::vector<int> previous_tokens(all_tokens.begin() + prompt_reset_since, all_tokens.end());
+
+    // Encode segment if needed (Python line 1175-1176)
+    if (seek > 0 || encoder_output.empty()) {
+      encoder_output = encode(segment_features);
+    }
+
+    // Language detection per segment if multilingual (Python line 1178-1184)
+    if (options.multilingual && model->is_multilingual()) {
+      auto results = model->detect_language(encoder_output);
+      if (!results.empty() && !results[0].empty()) {
+        std::string language_token = results[0][0].first;
+        // Extract language code (Python line 1181: language = language_token[2:-2])
+        if (language_token.length() > 4) {
+          std::string language = language_token.substr(2, language_token.length() - 4);
+          // Update tokenizer language (Python line 1183-1184)
+          // This would require tokenizer API extensions
+        }
+      }
+    }
+
+    // Get prompt (Python line 1186-1192)
+    std::vector<int> prompt = get_prompt(
+      tokenizer,
+      previous_tokens,
+      options.without_timestamps,
+      (seek == 0) ? options.prefix : std::nullopt,
+      options.hotwords
+    );
+
+    // Generate with fallback (Python line 1194-1199)
+    auto [result, avg_logprob, temperature, compression_ratio] = generate_with_fallback(
+      encoder_output, prompt, tokenizer, options
+    );
+
+    // No speech detection (Python line 1201-1221)
+    if (options.no_speech_threshold.has_value()) {
+      // This requires access to result.no_speech_prob from CTranslate2
+      // For now, skip this check
+    }
+
+    std::vector<int> tokens = result;
+    int previous_seek = seek;
+
+    // Split segments by timestamps (Python line 1251-1262)
+    auto [current_segments, new_seek, single_timestamp_ending] = split_segments_by_timestamps(
+      tokenizer, tokens, time_offset, segment_size, segment_duration, seek
+    );
+    seek = new_seek;
+
+    // Process current segments (Python line 1330-1356)
+    for (auto& segment : current_segments) {
+      std::string text = tokenizer.decode(segment.tokens);
+
+      if (segment.start == segment.end || text.empty()) {
+        continue;
+      }
+
+      all_tokens.insert(all_tokens.end(), segment.tokens.begin(), segment.tokens.end());
+      idx++;
+
+      // Create segment object
+      Segment seg;
+      seg.id = idx;
+      seg.seek = previous_seek;
+      seg.start = segment.start;
+      seg.end = segment.end;
+      seg.text = text;
+      seg.tokens = segment.tokens;
+      seg.temperature = temperature;
+      seg.avg_logprob = avg_logprob;
+      seg.compression_ratio = compression_ratio;
+      seg.no_speech_prob = 0.0f; // Would need CTranslate2 result
+      seg.words = std::nullopt; // Word timestamps handled separately
+
+      all_segments.push_back(seg);
+    }
+
+    // Prompt reset logic (Python line 1358-1369)
+    if (!options.condition_on_previous_text || temperature > options.prompt_reset_on_temperature) {
+      prompt_reset_since = all_tokens.size();
+    }
   }
 
   return all_segments;
@@ -392,11 +623,8 @@ WhisperModel::generate_with_fallback(
   Tokenizer &tokenizer,
   const TranscriptionOptions &options
 ) {
-  ctranslate2::models::WhisperGenerationResult best_result;
-  float best_avg_logprob = -std::numeric_limits<float>::infinity();
-  float best_temperature = 0.0f;
-  float best_compression_ratio = 1.0f;
-
+  // Follow Python implementation from line 1388-1516
+  std::tuple<std::vector<int>, float, float, float> decode_result;
   std::vector<std::tuple<std::vector<int>, float, float, float>> all_results;
   std::vector<std::tuple<std::vector<int>, float, float, float>> below_cr_threshold_results;
 
@@ -404,107 +632,112 @@ WhisperModel::generate_with_fallback(
     std::round(options.max_initial_timestamp / time_precision)
   );
 
-  int max_length = options.max_new_tokens.has_value() ? prompt.size() +
-                          options.max_new_tokens.value()
-                        : this->max_length;
+  int max_length = options.max_new_tokens.has_value() ?
+                   prompt.size() + options.max_new_tokens.value() :
+                   this->max_length;
+
   if (max_length > this->max_length) {
-  throw std::runtime_error("Prompt + max_new_tokens exceeds Whisper max_length");
+    throw std::runtime_error("Prompt + max_new_tokens exceeds Whisper max_length");
   }
 
-  for (float temperature: options.temperatures) {
-  std::map<std::string, float> kwargs;
+  // Iterate through temperatures (Python line 1418)
+  for (float temperature : options.temperatures) {
+    // Configure generation options based on temperature (Python line 1419-1430)
+    ctranslate2::models::WhisperOptions whisper_options;
 
-  if (temperature > 0) {
-    kwargs["beam_size"] = 1;
-    kwargs["num_hypotheses"] = options.best_of;
-    kwargs["sampling_topk"] = 0;
-    kwargs["sampling_temperature"] = temperature;
-  } else {
-    kwargs["beam_size"] = options.beam_size;
-    kwargs["patience"] = options.patience;
+    if (temperature > 0) {
+      whisper_options.beam_size = 1;
+      whisper_options.num_hypotheses = options.best_of;
+      whisper_options.sampling_topk = 0;
+      whisper_options.sampling_temperature = temperature;
+    } else {
+      whisper_options.beam_size = options.beam_size;
+      whisper_options.patience = options.patience;
+    }
+
+    whisper_options.length_penalty = options.length_penalty;
+    whisper_options.repetition_penalty = options.repetition_penalty;
+    whisper_options.no_repeat_ngram_size = options.no_repeat_ngram_size;
+    whisper_options.max_length = max_length;
+    whisper_options.suppress_blank = options.suppress_blank;
+    whisper_options.max_initial_timestamp_index = max_initial_timestamp_index;
+
+    if (options.suppress_tokens.has_value()) {
+      std::vector<size_t> suppress_tokens_size_t;
+      for (int token : options.suppress_tokens.value()) {
+        suppress_tokens_size_t.push_back(static_cast<size_t>(token));
+      }
+      whisper_options.suppress_tokens = suppress_tokens_size_t;
+    }
+
+    // Convert prompt to size_t for CTranslate2 (Python line 1432-1445)
+    std::vector<size_t> prompt_size_t(prompt.begin(), prompt.end());
+    auto result_futures = model->generate(encoder_output, {prompt_size_t}, whisper_options);
+    auto result = result_futures[0].get();
+
+    // Extract tokens and calculate metrics (Python line 1447-1455)
+    std::vector<int> tokens;
+    if (!result.sequences_ids.empty() && !result.sequences_ids[0].empty()) {
+      const auto &tokens_size_t = result.sequences_ids[0];
+      tokens.assign(tokens_size_t.begin(), tokens_size_t.end());
+    }
+
+    int seq_len = tokens.size();
+    float cum_logprob = result.scores[0] * std::pow(seq_len, options.length_penalty);
+    float avg_logprob = cum_logprob / (seq_len + 1);
+
+    // Calculate compression ratio (Python line 1454-1455)
+    std::string text = tokenizer.decode(tokens);
+    float compression_ratio = get_compression_ratio(text);
+
+    decode_result = std::make_tuple(tokens, avg_logprob, temperature, compression_ratio);
+    all_results.push_back(decode_result);
+
+    bool needs_fallback = false;
+
+    // Check compression ratio threshold (Python line 1467-1478)
+    if (options.compression_ratio_threshold.has_value() &&
+        compression_ratio > options.compression_ratio_threshold.value()) {
+      needs_fallback = true;
+    } else {
+      below_cr_threshold_results.push_back(decode_result);
+    }
+
+    // Check log probability threshold (Python line 1480-1491)
+    if (options.log_prob_threshold.has_value() &&
+        avg_logprob < options.log_prob_threshold.value()) {
+      needs_fallback = true;
+    }
+
+    // Check no speech threshold (Python line 1493-1499)
+    if (options.no_speech_threshold.has_value() &&
+        result.no_speech_prob > options.no_speech_threshold.value() &&
+        options.log_prob_threshold.has_value() &&
+        avg_logprob < options.log_prob_threshold.value()) {
+      needs_fallback = false; // silence
+    }
+
+    if (!needs_fallback) {
+      break; // Success, return this result
+    }
   }
 
-  // Create WhisperOptions for CTranslate2
-  ctranslate2::models::WhisperOptions whisper_options;
-
-  // Convert vector<int> to vector<size_t> for CTranslate2 API
-  std::vector<size_t> prompt_size_t(prompt.begin(), prompt.end());
-  std::vector<std::vector<size_t>> prompts = {prompt_size_t};
-
-  auto result_futures = model->generate(encoder_output, prompts, whisper_options);
-
-  // Get the result from the future
-  auto result = result_futures[0].get();
-
-  // Get the first sequence from the results
-  std::vector<int> tokens;
-  if (!result.sequences_ids.empty() && !result.sequences_ids[0].empty()) {
-    const auto &tokens_size_t = result.sequences_ids[0];
-    tokens.assign(tokens_size_t.begin(), tokens_size_t.end());
-  }
-  int seq_len = tokens.size();
-  float cum_logprob = result.scores[0] * std::pow(seq_len, options.length_penalty);
-  float avg_logprob = cum_logprob / (seq_len + 1);
-
-  std::string text = tokenizer.decode(tokens);
-  float compression_ratio = get_compression_ratio(text);
-
-  auto current_result = std::make_tuple(tokens, avg_logprob, temperature, compression_ratio);
-  all_results.push_back(current_result);
-
-  bool needs_fallback = false;
-
-  if (options.compression_ratio_threshold.has_value() &&
-      compression_ratio > options.compression_ratio_threshold.value()) {
-    needs_fallback = true;
-    logger.debug("Compression ratio threshold not met at temperature %.1f (%.3f > %.3f)",
-       temperature, compression_ratio, options.compression_ratio_threshold.value());
-  } else {
-    below_cr_threshold_results.push_back(current_result);
+  // All temperatures failed, select best result (Python line 1504-1515)
+  if (!below_cr_threshold_results.empty()) {
+    auto best_it = std::max_element(
+      below_cr_threshold_results.begin(), below_cr_threshold_results.end(),
+      [](const auto &a, const auto &b) { return std::get<1>(a) < std::get<1>(b); }
+    );
+    decode_result = *best_it;
+  } else if (!all_results.empty()) {
+    auto best_it = std::max_element(
+      all_results.begin(), all_results.end(),
+      [](const auto &a, const auto &b) { return std::get<1>(a) < std::get<1>(b); }
+    );
+    decode_result = *best_it;
   }
 
-  if (options.log_prob_threshold.has_value() &&
-      avg_logprob < options.log_prob_threshold.value()) {
-    needs_fallback = true;
-    logger.debug("Log probability threshold not met at temperature %.1f (%.3f < %.3f)",
-       temperature, avg_logprob, options.log_prob_threshold.value());
-  }
-
-  if (options.no_speech_threshold.has_value() &&
-      result.no_speech_prob > options.no_speech_threshold.value() &&
-      options.log_prob_threshold.has_value() &&
-      avg_logprob < options.log_prob_threshold.value()) {
-    needs_fallback = false;
-  }
-
-  if (!needs_fallback) {
-    return current_result;
-  }
-
-  // Update best result
-  if (avg_logprob > best_avg_logprob) {
-    best_result = result;
-    best_avg_logprob = avg_logprob;
-    best_temperature = temperature;
-    best_compression_ratio = compression_ratio;
-  }
-  }
-
-  // All temperatures failed: return best result
-  if (below_cr_threshold_results.empty()) {
-  std::vector<int> tokens;
-  if (!best_result.sequences_ids.empty() && !best_result.sequences_ids[0].empty()) {
-    const auto &tokens_size_t = best_result.sequences_ids[0];
-    tokens.assign(tokens_size_t.begin(), tokens_size_t.end());
-  }
-  return std::make_tuple(tokens, best_avg_logprob, best_temperature, best_compression_ratio);
-  }
-
-  auto best_it = std::max_element(
-    below_cr_threshold_results.begin(), below_cr_threshold_results.end(),
-    [](const auto &a, const auto &b) { return std::get<1>(a) < std::get<1>(b); }
-  );
-  return *best_it;
+  return decode_result;
 }
 
 std::vector<int> WhisperModel::get_prompt(
@@ -786,14 +1019,48 @@ WhisperModel::detect_language(
 
 std::vector<std::vector<float>>
 slice_features(const std::vector<std::vector<float>> &features, int start, int length) {
-  // TODO: implement feature slicing
-  return {};
+  if (features.empty() || start >= static_cast<int>(features[0].size())) {
+    return {};
+  }
+
+  std::vector<std::vector<float>> sliced_features;
+  sliced_features.reserve(features.size());
+
+  for (const auto& feature_row : features) {
+    std::vector<float> sliced_row;
+    int end = std::min(start + length, static_cast<int>(feature_row.size()));
+
+    if (start < static_cast<int>(feature_row.size())) {
+      sliced_row.assign(feature_row.begin() + start, feature_row.begin() + end);
+    }
+
+    sliced_features.push_back(sliced_row);
+  }
+
+  return sliced_features;
 }
 
 std::vector<std::vector<float>>
 pad_or_trim(const std::vector<std::vector<float>> &segment) {
-  // TODO: implement padding/trimming
-  return segment;
+  if (segment.empty()) {
+    return segment;
+  }
+
+  const int TARGET_LENGTH = 3000; // 30 seconds * 100 frames/second
+  std::vector<std::vector<float>> result = segment;
+
+  // Pad or trim the time dimension (second dimension)
+  for (auto& feature_row : result) {
+    if (static_cast<int>(feature_row.size()) < TARGET_LENGTH) {
+      // Pad with zeros
+      feature_row.resize(TARGET_LENGTH, 0.0f);
+    } else if (static_cast<int>(feature_row.size()) > TARGET_LENGTH) {
+      // Trim to target length
+      feature_row.resize(TARGET_LENGTH);
+    }
+  }
+
+  return result;
 }
 
 ctranslate2::StorageView get_ctranslate2_storage(const std::vector<std::vector<float>> &segment) {

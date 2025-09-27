@@ -14,12 +14,16 @@ include_directories(../../../main/cpp/whisper)
 # Find required packages
 find_package(ZLIB REQUIRED)
 
+# Find CTranslate2 (try to link if available)
+find_library(CTRANSLATE2_LIB ctranslate2 PATHS ${CTRANSLATE2_ROOT}/lib ${CTRANSLATE2_ROOT}/build/lib NO_DEFAULT_PATH)
+
 # Create test executable for WhisperModel tests
 add_executable(
     test_whisper_model
     ../whisper_model_tests.cpp
-    # Note: WhisperModel has complex dependencies, so we test mainly data structures
-    # ../../../main/cpp/whisper_model.cpp would require CTranslate2 linking
+    ../../../main/cpp/feature_extractor.cpp
+    ../../../main/cpp/audio_decoder.cpp
+    ../../../main/cpp/whisper/whisper_audio.cpp
 )
 
 # Link libraries for test
@@ -28,6 +32,15 @@ target_link_libraries(
     ${ZLIB_LIBRARIES}
     m  # math library
 )
+
+# Try to link CTranslate2 if found
+if(CTRANSLATE2_LIB)
+    message(STATUS "Found CTranslate2: ${CTRANSLATE2_LIB}")
+    target_link_libraries(test_whisper_model ${CTRANSLATE2_LIB})
+    target_compile_definitions(test_whisper_model PRIVATE HAVE_CTRANSLATE2)
+else()
+    message(STATUS "CTranslate2 not found - WhisperModel will fall back to mock transcription")
+endif()
 
 # Enable testing
 enable_testing()

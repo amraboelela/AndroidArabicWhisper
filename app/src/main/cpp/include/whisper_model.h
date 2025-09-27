@@ -186,6 +186,11 @@ public:
     float language_detection_threshold = 0.5f
   );
 
+  std::vector<Word> generate_word_timestamps(
+    const Segment& segment,
+    Tokenizer& tokenizer
+  );
+
 private:
   std::shared_ptr<ctranslate2::models::Whisper> model;
   std::shared_ptr<tokenizers::Tokenizer> hf_tokenizer;

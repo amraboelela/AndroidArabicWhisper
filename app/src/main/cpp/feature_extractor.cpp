@@ -189,8 +189,19 @@ Matrix FeatureExtractor::compute_mel_spectrogram(
     int padding,
     std::optional<int> chunk_length
 ) {
+  // Handle chunking if specified
+  std::vector<float> audio_to_process = waveform;
+
+  if (chunk_length.has_value()) {
+    // Chunk the audio to the specified length in seconds
+    int max_samples = chunk_length.value() * sampling_rate_;
+    if (static_cast<int>(waveform.size()) > max_samples) {
+      audio_to_process = std::vector<float>(waveform.begin(), waveform.begin() + max_samples);
+    }
+  }
+
   // Use whisper-compatible mel spectrogram extraction
-  auto whisper_mel_spec = whisper::AudioProcessor::extract_mel_spectrogram(waveform);
+  auto whisper_mel_spec = whisper::AudioProcessor::extract_mel_spectrogram(audio_to_process);
 
   if (whisper_mel_spec.empty()) {
     std::cerr << "Failed to extract mel spectrogram using whisper audio processing" << std::endl;
