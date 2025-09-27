@@ -19,7 +19,7 @@ cd feature_test_build
 
 echo "Configuring build with CMake..."
 # Copy the test CMakeLists to be the main one for this build
-cp ../feature_extractor_tests.cmak ./CMakeLists.txt
+cp ../cmak_lists/feature_extractor_tests.cmak ./CMakeLists.txt
 cmake -DCMAKE_BUILD_TYPE=Release .
 
 echo "Building test executable..."

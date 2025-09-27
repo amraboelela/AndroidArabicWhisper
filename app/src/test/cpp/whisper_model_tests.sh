@@ -19,7 +19,7 @@ cd model_test_build
 
 echo "Configuring build with CMake..."
 # Copy the test CMakeLists to be the main one for this build
-cp ../whisper_model_tests.cmak ./CMakeLists.txt
+cp ../cmak_lists/whisper_model_tests.cmak ./CMakeLists.txt
 cmake -DCMAKE_BUILD_TYPE=Release .
 
 echo "Building test executable..."
