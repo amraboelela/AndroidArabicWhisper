@@ -285,6 +285,11 @@ std::tuple<std::vector<Segment>, TranscriptionInfo> WhisperModel::transcribe(
   // Step 7: Generate segments using the same logic as Python (line 991-993)
   std::vector<Segment> segments = generate_segments(features, tokenizer, options);
 
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "transcribe() received %zu segments from generate_segments", segments.size());
+  for (size_t i = 0; i < segments.size(); ++i) {
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Transcribe segment %zu: '%s'", i, segments[i].text.c_str());
+  }
+
   // Step 8: Create transcription info (Python line 998-1006)
   TranscriptionInfo info;
   info.language = detected_language;
@@ -610,6 +615,20 @@ std::vector<Segment> WhisperModel::generate_segments(
     );
 
     __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "generate_with_fallback completed successfully");
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Generated %zu tokens", result.size());
+
+    // Debug: Show first few generated tokens
+    if (!result.empty()) {
+      std::string tokens_str = "Generated tokens: ";
+      for (size_t i = 0; i < std::min(result.size(), size_t(10)); ++i) {
+        tokens_str += std::to_string(result[i]) + " ";
+      }
+      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "%s", tokens_str.c_str());
+
+      // Try to decode the result
+      std::string decoded_result = tokenizer.decode(result);
+      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Decoded result: '%s'", decoded_result.c_str());
+    }
 
     // No speech detection (Python line 1201-1221)
     if (options.no_speech_threshold.has_value()) {
@@ -627,10 +646,13 @@ std::vector<Segment> WhisperModel::generate_segments(
     seek = new_seek;
 
     // Process current segments (Python line 1330-1356)
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Processing %zu segments", current_segments.size());
     for (auto& segment : current_segments) {
       std::string text = tokenizer.decode(segment.tokens);
+      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Segment text: '%s' (tokens: %zu)", text.c_str(), segment.tokens.size());
 
       if (segment.start == segment.end || text.empty()) {
+        __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Skipping empty segment");
         continue;
       }
 
@@ -658,6 +680,11 @@ std::vector<Segment> WhisperModel::generate_segments(
     if (!options.condition_on_previous_text || temperature > options.prompt_reset_on_temperature) {
       prompt_reset_since = all_tokens.size();
     }
+  }
+
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "generate_segments completed with %zu segments", all_segments.size());
+  for (size_t i = 0; i < all_segments.size(); ++i) {
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Final segment %zu: '%s'", i, all_segments[i].text.c_str());
   }
 
   return all_segments;

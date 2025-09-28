@@ -43,14 +43,19 @@ Java_org_amr_arabicwhisper_WhisperHelper_transcribe(JNIEnv* env, jobject thiz, j
     // Transcribe the audio using WhisperModel
     auto [segments, info] = whisper_model->transcribe(audio_data, std::nullopt, true);
 
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "JNI received %zu segments from whisper_model->transcribe", segments.size());
+
     // Build result string from segments
     std::string result;
     for (const auto& segment : segments) {
+      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "JNI processing segment: '%s'", segment.text.c_str());
       result += segment.text;
       if (!segment.text.empty() && segment.text.back() != ' ') {
         result += " ";
       }
     }
+
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "JNI final result: '%s'", result.c_str());
 
     // Remove trailing space
     if (!result.empty() && result.back() == ' ') {

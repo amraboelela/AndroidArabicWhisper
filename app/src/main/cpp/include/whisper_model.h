@@ -126,7 +126,7 @@ public:
     const std::string &use_auth_token = ""
   );
   std::vector<std::string> supported_languages() const;
-  std::map<std::string, std::string> get_feature_kwargs(
+  static std::map<std::string, std::string> get_feature_kwargs(
     const std::string &model_path,
     const std::optional<std::string> &preprocessor_bytes = std::nullopt
   );
