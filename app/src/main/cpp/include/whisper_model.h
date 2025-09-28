@@ -203,6 +203,58 @@ private:
   int max_length;
 };
 
+// Utility function declarations (implemented in whisper_model_utils.cpp)
+std::vector<std::vector<float>> slice_features(
+  const std::vector<std::vector<float>>& features,
+  int start,
+  int length
+);
+
+std::vector<std::vector<float>> pad_or_trim(
+  const std::vector<std::vector<float>>& segment
+);
+
+ctranslate2::StorageView get_ctranslate2_storage(
+  const std::vector<std::vector<float>>& features
+);
+
+float get_compression_ratio(const std::string& text);
+
+void merge_punctuations(
+  std::vector<std::pair<std::string, float>>& alignment,
+  const std::vector<std::string>& prepend_punctuations,
+  const std::vector<std::string>& append_punctuations
+);
+
+std::vector<Segment> restore_speech_timestamps(
+  std::vector<Segment> segments,
+  const std::vector<std::map<std::string, float>>& speech_chunks,
+  int sampling_rate
+);
+
+// Additional utility functions
+std::vector<std::vector<float>> normalize_features(
+  const std::vector<std::vector<float>>& features
+);
+
+std::vector<std::vector<float>> apply_log_mel_spectrogram(
+  const std::vector<std::vector<float>>& mel_features
+);
+
+float calculate_signal_to_noise_ratio(const std::vector<float>& audio);
+
+bool is_silent_segment(
+  const std::vector<float>& audio_segment,
+  float threshold = 0.01f
+);
+
+std::vector<std::pair<float, float>> detect_speech_activity(
+  const std::vector<float>& audio,
+  int sampling_rate,
+  float frame_duration = 0.025f,
+  float energy_threshold = 0.01f
+);
+
 // --- Conceptual helper functions (replace with actual implementations) ---
 
 // Conceptual function to simulate Python's `download_model`.

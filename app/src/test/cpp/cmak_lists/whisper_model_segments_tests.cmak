@@ -1,0 +1,70 @@
+cmake_minimum_required(VERSION 3.10)
+project(arabicwhisper_model_segments_tests)
+
+# Set C++ standard
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# Include directories
+set(CTRANSLATE2_ROOT "/Users/amraboelela/develop/android/CTranslate2")
+include_directories(${CTRANSLATE2_ROOT}/include)
+include_directories(../../../main/cpp/include)
+include_directories(../../../main/cpp/whisper)
+
+# Find required packages
+find_package(ZLIB REQUIRED)
+
+# Find CTranslate2 (try to link if available)
+find_library(CTRANSLATE2_LIB ctranslate2 PATHS ${CTRANSLATE2_ROOT}/lib ${CTRANSLATE2_ROOT}/build/lib NO_DEFAULT_PATH)
+
+# Create test executable for WhisperModel segments tests
+add_executable(
+    test_whisper_model_segments
+    ../whisper_model_segments_tests.cpp
+    ../../../main/cpp/whisper_model_segments.cpp
+    ../../../main/cpp/whisper_model_utils.cpp
+    ../../../main/cpp/tokenizer.cpp
+    ../../../main/cpp/feature_extractor.cpp
+    ../../../main/cpp/audio_decoder.cpp
+    ../../../main/cpp/whisper/whisper_audio.cpp
+    ../../../main/cpp/whisper/whisper_tokenizer.cpp
+    ../../../main/cpp/utils.cpp
+)
+
+# Link libraries for test
+target_link_libraries(
+    test_whisper_model_segments
+    ${ZLIB_LIBRARIES}
+    m  # math library
+)
+
+# Try to link CTranslate2 if found
+if(CTRANSLATE2_LIB)
+    message(STATUS "Found CTranslate2: ${CTRANSLATE2_LIB}")
+    target_link_libraries(test_whisper_model_segments ${CTRANSLATE2_LIB})
+    target_compile_definitions(test_whisper_model_segments PRIVATE HAVE_CTRANSLATE2)
+else()
+    message(STATUS "CTranslate2 not found - WhisperModel segments will fall back to mock functionality")
+endif()
+
+# Enable testing
+enable_testing()
+
+# Add the test
+add_test(NAME whisper_model_segments_test COMMAND test_whisper_model_segments)
+
+# Print instructions
+message(STATUS "To run WhisperModel segments tests:")
+message(STATUS "  mkdir segments_test_build && cd segments_test_build")
+message(STATUS "  cp ../cmak_lists/whisper_model_segments_tests.cmak ./CMakeLists.txt")
+message(STATUS "  cmake .")
+message(STATUS "  make")
+message(STATUS "  ./test_whisper_model_segments")
+message(STATUS "  OR: make test")
+message(STATUS "")
+message(STATUS "Segments tests cover:")
+message(STATUS "  - Segment processing and timestamp splitting")
+message(STATUS "  - Generation with fallback and temperature handling")
+message(STATUS "  - Prompt construction and word timestamp generation")
+message(STATUS "  - Token-to-word alignment and Arabic word processing")
+message(STATUS "  - Transcription options validation")
