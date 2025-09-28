@@ -1,6 +1,7 @@
 package org.amr.arabicwhisper
 
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.fillMaxSize
@@ -27,6 +28,9 @@ class MainActivity : ComponentActivity() {
     }
     copyModelFromAssets(assets, modelDir)
 
+    // Copy audio test files to internal storage
+    copyAudioFromAssets(assets, this.filesDir)
+
     whisperHelper = WhisperHelper(this)
 
     setContent {
@@ -51,7 +55,8 @@ fun MainScreen(whisperHelper: WhisperHelper) {
 
   // Example transcription calls
   // val text = whisperHelper.transcribe("hello world")
-  // val transcription = whisperHelper.transcribe("/data/data/org.amr.arabicwhisper/files/001.wav")
+  val transcription = whisperHelper.transcribe("/data/data/org.amr.arabicwhisper/files/001.wav")
+  Log.d("#transcribe", "transcription: $transcription")
 }
 
 @Preview(showBackground = true)
@@ -78,5 +83,25 @@ fun copyModelFromAssets(assetManager: AssetManager, destDir: File) {
   } catch (e: Exception) {
     e.printStackTrace()
     // Handle missing assets gracefully
+  }
+}
+
+fun copyAudioFromAssets(assetManager: AssetManager, destDir: File) {
+  try {
+    val audioFiles = listOf("001.wav", "002-01.wav", "test.wav")
+    for (fileName in audioFiles) {
+      val outFile = File(destDir, fileName)
+      if (!outFile.exists()) {
+        assetManager.open(fileName).use { input ->
+          outFile.outputStream().use { output ->
+            input.copyTo(output)
+          }
+        }
+        Log.d("#transcribe", "Copied audio file: ${outFile.absolutePath}")
+      }
+    }
+  } catch (e: Exception) {
+    e.printStackTrace()
+    Log.e("#transcribe", "Failed to copy audio files: ${e.message}")
   }
 }

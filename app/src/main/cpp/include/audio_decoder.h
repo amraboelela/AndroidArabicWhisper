@@ -9,11 +9,11 @@
 
 class AudioDecoder {
 public:
-  // Decodes audio from a file or input stream.
-  // This is a conceptual implementation as the actual FFmpeg C API calls are complex.
+  // Decodes audio from a WAV file and converts to float samples.
+  // Supports 16-bit PCM format with automatic resampling to 16kHz and mono conversion.
   static std::vector<float> decode_audio(
-    const std::string& input_file,
-    int sampling_rate = 16000
+      const std::string& input_file,
+      int sampling_rate = 16000
   );
 
   static std::pair<std::vector<float>, std::vector<float>> decode_audio_split_stereo(

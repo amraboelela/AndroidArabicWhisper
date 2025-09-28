@@ -19,6 +19,7 @@
 // Forward declarations of utility functions
 std::vector<std::vector<float>> slice_features(const std::vector<std::vector<float>>& features, int start, int length);
 ctranslate2::StorageView get_ctranslate2_storage(const std::vector<std::vector<float>>& features);
+ctranslate2::StorageView get_ctranslate2_storage_3d(const std::vector<std::vector<float>>& features);
 float get_compression_ratio(const std::string& text);
 void merge_punctuations(std::vector<std::pair<std::string, float>>& alignment,
            const std::vector<std::string>& prepend_punctuations,
@@ -78,15 +79,46 @@ WhisperModel::WhisperModel(
   ctranslate2::ReplicaPoolConfig config;
   config.num_threads_per_replica = cpu_threads;   // map your params here
 
-  // Initialize the CTranslate2 model.
-  model = std::make_shared<ctranslate2::models::Whisper>(
-    model_path,
-    ctranslate2::Device::CPU,
-    ctranslate2::ComputeType::DEFAULT,
-    device_index,
-    false,
-    config
-  );
+  // Initialize the CTranslate2 model with fallback compute types for Android
+  std::vector<ctranslate2::ComputeType> compute_types = {
+    ctranslate2::ComputeType::INT8,     // Try INT8 first (lowest memory, no SGEMM)
+    ctranslate2::ComputeType::INT16,    // Try INT16 next
+    ctranslate2::ComputeType::FLOAT32   // Fallback to FLOAT32
+  };
+
+  std::shared_ptr<ctranslate2::models::Whisper> created_model = nullptr;
+  std::string last_error;
+
+  for (auto compute_type : compute_types) {
+    try {
+      std::cout << "Trying to initialize Whisper model with compute type: "
+                << (int)compute_type << std::endl;
+
+      created_model = std::make_shared<ctranslate2::models::Whisper>(
+        model_path,
+        ctranslate2::Device::CPU,
+        compute_type,
+        device_index,
+        false,
+        config
+      );
+
+      std::cout << "Successfully initialized Whisper model with compute type: "
+                << (int)compute_type << std::endl;
+      break;
+
+    } catch (const std::exception& e) {
+      last_error = e.what();
+      std::cerr << "Failed to initialize with compute type " << (int)compute_type
+                << ": " << e.what() << std::endl;
+    }
+  }
+
+  if (!created_model) {
+    throw std::runtime_error("Failed to initialize Whisper model with any compute type. Last error: " + last_error);
+  }
+
+  model = created_model;
 
   // Initialize tokenizer placeholder
   hf_tokenizer = nullptr;
@@ -597,18 +629,15 @@ std::vector<Segment> WhisperModel::generate_segments(
 ctranslate2::StorageView WhisperModel::encode(const std::vector<std::vector<float>> &features) {
   bool to_cpu = false; // Simplified for CPU-only build
 
-  std::vector<std::vector<float>> input_features = features;
+  // CTranslate2 Whisper model expects 3D input: [batch_size, n_mels, n_frames]
+  // Input features are 2D: [n_mels, n_frames], so we need to add batch dimension
 
-  // Expand dims if 2D -> add batch dimension
-  if (input_features.size() > 0 && input_features[0].size() > 0) {
-  // Assuming 2D features -> wrap in batch of 1
-  if (input_features.size() == features.size() &&
-      input_features[0].size() == features[0].size()) {
-    input_features = {features};
-  }
+  if (features.empty() || features[0].empty()) {
+    throw std::runtime_error("Cannot encode empty features");
   }
 
-  auto storage = get_ctranslate2_storage(input_features);
+  // Create 3D tensor by adding batch dimension
+  auto storage = get_ctranslate2_storage_3d(features);
   auto future = model->encode(storage, to_cpu);
   return future.get();
 }
@@ -1077,6 +1106,37 @@ ctranslate2::StorageView get_ctranslate2_storage(const std::vector<std::vector<f
 
   // Create shape for 2D tensor: [num_rows, num_cols]
   ctranslate2::Shape shape = {static_cast<long>(segment.size()), static_cast<long>(segment[0].size())};
+  return ctranslate2::StorageView(shape, contiguous);
+}
+
+ctranslate2::StorageView get_ctranslate2_storage_3d(const std::vector<std::vector<float>> &features) {
+  // Create 3D tensor with batch dimension: [batch_size=1, n_mels, n_frames]
+  // Input features are 2D: [n_mels, n_frames]
+
+  if (features.empty() || features[0].empty()) {
+    throw std::runtime_error("Cannot create storage from empty features");
+  }
+
+  size_t n_mels = features.size();
+  size_t n_frames = features[0].size();
+  size_t batch_size = 1;
+
+  // Flatten into contiguous memory with batch dimension
+  std::vector<float> contiguous;
+  contiguous.reserve(batch_size * n_mels * n_frames);
+
+  // Add batch dimension by copying features once
+  for (const auto &row : features) {
+    contiguous.insert(contiguous.end(), row.begin(), row.end());
+  }
+
+  // Create 3D shape: [batch_size, n_mels, n_frames]
+  ctranslate2::Shape shape = {
+    static_cast<long>(batch_size),
+    static_cast<long>(n_mels),
+    static_cast<long>(n_frames)
+  };
+
   return ctranslate2::StorageView(shape, contiguous);
 }
 
