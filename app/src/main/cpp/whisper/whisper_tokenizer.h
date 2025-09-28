@@ -16,15 +16,15 @@ namespace whisper {
  */
 class WhisperTokenizer {
 public:
-  // Special token IDs (matching whisper.cpp)
-  static constexpr int EOT_TOKEN = 50256;
-  static constexpr int SOT_TOKEN = 50257;
+  // Special token IDs (matching actual model vocabulary)
+  static constexpr int EOT_TOKEN = 50257;      // '<|endoftext|>'
+  static constexpr int SOT_TOKEN = 50258;      // '<|startoftranscript|>' - CORRECTED!
   static constexpr int TRANSCRIBE_TOKEN = 50359;
   static constexpr int TRANSLATE_TOKEN = 50358;
   static constexpr int NO_TIMESTAMPS_TOKEN = 50363;
   static constexpr int TIMESTAMP_BEGIN = 50364;
-  static constexpr int SOT_PREV_TOKEN = 50362;
-  static constexpr int SOT_LM_TOKEN = 50361;
+  static constexpr int SOT_PREV_TOKEN = 50361;  // '<|startofprev|>' - CORRECTED!
+  static constexpr int SOT_LM_TOKEN = 50360;    // '<|startoflm|>' - CORRECTED!
 
   // Language token IDs (starting from 50259)
   static constexpr int LANGUAGE_TOKEN_START = 50259;

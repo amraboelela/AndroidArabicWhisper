@@ -18,12 +18,8 @@
 
 // Forward declarations of utility functions
 std::vector<std::vector<float>> slice_features(const std::vector<std::vector<float>>& features, int start, int length);
-ctranslate2::StorageView get_ctranslate2_storage(const std::vector<std::vector<float>>& features);
 ctranslate2::StorageView get_ctranslate2_storage_3d(const std::vector<std::vector<float>>& features);
 float get_compression_ratio(const std::string& text);
-void merge_punctuations(std::vector<std::pair<std::string, float>>& alignment,
-           const std::vector<std::string>& prepend_punctuations,
-           const std::vector<std::string>& append_punctuations);
 std::vector<std::vector<float>> pad_or_trim(const std::vector<std::vector<float>>& segment);
 #include <stdexcept>
 #include <numeric>
@@ -65,17 +61,8 @@ WhisperModel::WhisperModel(
   //std::string model_path;
   //std::string preprocessor_config;
 
-  std::string model_path;
-  if (!files.empty()) {
-  // If model files are already provided in memory (not implemented here)
-  model_path = model_size_or_path;
-  } else if (std::filesystem::is_directory(model_size_or_path)) {
-  model_path = model_size_or_path;
-  } else {
-  // In Python: download_model(...)
-  // In C++: You must implement downloading manually or assume pre-downloaded
-  model_path = model_size_or_path;
-  }
+  // All branches lead to the same result, so we can simplify
+  std::string model_path = model_size_or_path;
 
   ctranslate2::ReplicaPoolConfig config;
   config.num_threads_per_replica = cpu_threads;   // map your params here
@@ -611,6 +598,13 @@ std::vector<Segment> WhisperModel::generate_segments(
     }
     __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "%s", prompt_str.c_str());
 
+    // Debug: Try to decode the prompt using our tokenizer to see what it looks like
+    std::string decoded_prompt = tokenizer.decode(prompt);
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Decoded prompt: '%s'", decoded_prompt.c_str());
+
+    // Debug: Check specific token decoding
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Token 50257 decodes to: '%s'", tokenizer.decode({50257}).c_str());
+
     auto [result, avg_logprob, temperature, compression_ratio] = generate_with_fallback(
       encoder_output, prompt, tokenizer, options
     );
@@ -844,7 +838,7 @@ std::vector<int> WhisperModel::get_prompt(
     size_t start_idx = std::max(0, static_cast<int>(previous_tokens.size()) - max_length / 2 + 1);
     prompt.insert(prompt.end(), previous_tokens.begin() + start_idx, previous_tokens.end());
   }
-  }
+}
 
   __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Before adding SOT sequence, prompt.size()=%zu", prompt.size());
 
@@ -862,8 +856,7 @@ std::vector<int> WhisperModel::get_prompt(
   }
   __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "%s", prompt_debug.c_str());
 
-  // Debug: Check if SOT token is in the prompt
-  auto sot_sequence = tokenizer.get_sot_sequence();
+  // Debug: Check if SOT token is in the prompt (reuse existing sot_sequence)
   std::string sot_debug = "SOT sequence: ";
   for (int token : sot_sequence) {
     sot_debug += std::to_string(token) + " ";
@@ -871,19 +864,19 @@ std::vector<int> WhisperModel::get_prompt(
   __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "%s", sot_debug.c_str());
 
   if (without_timestamps) {
-  prompt.push_back(tokenizer.get_no_timestamps());
+    prompt.push_back(tokenizer.get_no_timestamps());
   }
 
   if (prefix.has_value()) {
-  std::string pre = " " + prefix.value();
-  std::vector<int> prefix_tokens = tokenizer.encode(pre);
-  if (prefix_tokens.size() >= max_length / 2) {
-    prefix_tokens.resize(max_length / 2 - 1);
-  }
-  if (!without_timestamps) {
-    prompt.push_back(tokenizer.get_timestamp_begin());
-  }
-  prompt.insert(prompt.end(), prefix_tokens.begin(), prefix_tokens.end());
+    std::string pre = " " + prefix.value();
+    std::vector<int> prefix_tokens = tokenizer.encode(pre);
+    if (prefix_tokens.size() >= max_length / 2) {
+      prefix_tokens.resize(max_length / 2 - 1);
+    }
+    if (!without_timestamps) {
+      prompt.push_back(tokenizer.get_timestamp_begin());
+    }
+    prompt.insert(prompt.end(), prefix_tokens.begin(), prefix_tokens.end());
   }
 
   return prompt;
@@ -969,8 +962,8 @@ float WhisperModel::add_word_timestamps(
           {"probability", timing["probability"]}
               });
       }
-      auto tokens = std::any_cast<std::vector<int>>(timing["tokens"]);
-      saved_tokens += static_cast<int>(tokens.size());
+      auto timing_tokens = std::any_cast<std::vector<int>>(timing["tokens"]);
+      saved_tokens += static_cast<int>(timing_tokens.size());
       word_index++;
     }
     subsegment["words"] = words;
@@ -994,7 +987,7 @@ WhisperModel::find_alignment(
 
   // Convert vector<int> to vector<size_t> for CTranslate2 API
   auto sot_sequence_int = tokenizer.get_sot_sequence();
-  std::vector<size_t> sot_sequence(sot_sequence_int.begin(), sot_sequence_int.end());
+  std::vector<size_t> sot_sequence_size_t(sot_sequence_int.begin(), sot_sequence_int.end());
 
   // Convert text_tokens from vector<vector<int>> to vector<vector<size_t>>
   std::vector<std::vector<size_t>> text_tokens_size_t;
@@ -1006,7 +999,7 @@ WhisperModel::find_alignment(
   // Create num_frames vector - one entry per text sequence
   std::vector<size_t> num_frames_vec(text_tokens_size_t.size(), static_cast<size_t>(num_frames));
 
-  auto results_future = model->align(encoder_output, sot_sequence, text_tokens_size_t, num_frames_vec,
+  auto results_future = model->align(encoder_output, sot_sequence_size_t, text_tokens_size_t, num_frames_vec,
          static_cast<long>(median_filter_width));
 
   // Process each future in the vector
@@ -1168,17 +1161,6 @@ pad_or_trim(const std::vector<std::vector<float>> &segment) {
   }
 
   return result;
-}
-
-ctranslate2::StorageView get_ctranslate2_storage(const std::vector<std::vector<float>> &segment) {
-  // Flatten 2D vector into contiguous memory and wrap in StorageView
-  std::vector<float> contiguous;
-  for (const auto &row: segment)
-  contiguous.insert(contiguous.end(), row.begin(), row.end());
-
-  // Create shape for 2D tensor: [num_rows, num_cols]
-  ctranslate2::Shape shape = {static_cast<long>(segment.size()), static_cast<long>(segment[0].size())};
-  return ctranslate2::StorageView(shape, contiguous);
 }
 
 ctranslate2::StorageView get_ctranslate2_storage_3d(const std::vector<std::vector<float>> &features) {

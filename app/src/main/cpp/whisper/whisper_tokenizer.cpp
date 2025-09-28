@@ -120,15 +120,15 @@ bool WhisperTokenizer::load_vocab_from_file(const std::string& vocab_file) {
 }
 
 void WhisperTokenizer::initialize_special_tokens() {
-  // Add special tokens to vocabulary if not present
+  // Add special tokens to vocabulary if not present (matching actual model vocabulary)
   std::unordered_map<std::string, int> special_tokens = {
-      {"<|endoftext|>", EOT_TOKEN},
-      {"<|startoftranscript|>", SOT_TOKEN},
-      {"<|transcribe|>", TRANSCRIBE_TOKEN},
-      {"<|translate|>", TRANSLATE_TOKEN},
-      {"<|notimestamps|>", NO_TIMESTAMPS_TOKEN},
-      {"<|startofprev|>", SOT_PREV_TOKEN},
-      {"<|startoflm|>", SOT_LM_TOKEN}
+      {"<|endoftext|>", EOT_TOKEN},           // 50257
+      {"<|startoftranscript|>", SOT_TOKEN},   // 50258 - CORRECTED!
+      {"<|transcribe|>", TRANSCRIBE_TOKEN},   // 50359
+      {"<|translate|>", TRANSLATE_TOKEN},     // 50358
+      {"<|notimestamps|>", NO_TIMESTAMPS_TOKEN}, // 50363
+      {"<|startofprev|>", SOT_PREV_TOKEN},    // 50361 - CORRECTED!
+      {"<|startoflm|>", SOT_LM_TOKEN}         // 50360 - CORRECTED!
   };
 
   for (const auto& [token, id] : special_tokens) {
