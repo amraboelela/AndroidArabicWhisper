@@ -33,13 +33,16 @@ class MainActivity : ComponentActivity() {
 
     whisperHelper = WhisperHelper(this)
 
+    // Create the audio file path using Context.getFilesDir()
+    val audioFilePath = File(this.filesDir, "001.wav").absolutePath
+
     setContent {
       ArabicWhisperTheme {
         Surface(
           modifier = Modifier.fillMaxSize(),
           color = MaterialTheme.colorScheme.background
         ) {
-          MainScreen(whisperHelper)
+          MainScreen(whisperHelper, audioFilePath)
         }
       }
     }
@@ -47,15 +50,15 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun MainScreen(whisperHelper: WhisperHelper) {
+fun MainScreen(whisperHelper: WhisperHelper, audioFilePath: String) {
   Text(
     text = "Arabic Whisper App",
     style = MaterialTheme.typography.headlineMedium
   )
 
-  // Example transcription calls
+  // Example transcription calls using dynamic file path
   // val text = whisperHelper.transcribe("hello world")
-  val transcription = whisperHelper.transcribe("/data/data/org.amr.arabicwhisper/files/001.wav")
+  val transcription = whisperHelper.transcribe(audioFilePath)
   Log.d("#transcribe", "transcription: $transcription")
 }
 
