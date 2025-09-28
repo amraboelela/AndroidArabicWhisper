@@ -343,7 +343,6 @@ std::vector<Word> WhisperModel::generate_word_timestamps(
     words.push_back(word);
     current_time = word.end;
   }
-  }
 
   return words;
 }
@@ -513,9 +512,10 @@ std::vector<Segment> WhisperModel::generate_segments(
 
     // Language detection per segment if multilingual (Python line 1178-1184)
     if (options.multilingual && model->is_multilingual()) {
-      auto results = model->detect_language(encoder_output);
-      if (!results.empty() && !results[0].empty()) {
-        std::string language_token = results[0][0].first;
+      auto results_future = model->detect_language(encoder_output);
+      auto results = results_future[0].get(); // Get result from first future in vector
+      if (!results.empty()) {
+        std::string language_token = results[0].first;
         // Extract language code (Python line 1181: language = language_token[2:-2])
         if (language_token.length() > 4) {
           std::string language = language_token.substr(2, language_token.length() - 4);
@@ -663,11 +663,11 @@ WhisperModel::generate_with_fallback(
     whisper_options.max_initial_timestamp_index = max_initial_timestamp_index;
 
     if (options.suppress_tokens.has_value()) {
-      std::vector<size_t> suppress_tokens_size_t;
+      std::vector<int> suppress_tokens_int;
       for (int token : options.suppress_tokens.value()) {
-        suppress_tokens_size_t.push_back(static_cast<size_t>(token));
+        suppress_tokens_int.push_back(token);
       }
-      whisper_options.suppress_tokens = suppress_tokens_size_t;
+      whisper_options.suppress_tokens = suppress_tokens_int;
     }
 
     // Convert prompt to size_t for CTranslate2 (Python line 1432-1445)
@@ -905,8 +905,14 @@ WhisperModel::find_alignment(
   // Create num_frames vector - one entry per text sequence
   std::vector<size_t> num_frames_vec(text_tokens_size_t.size(), static_cast<size_t>(num_frames));
 
-  auto results = model->align(encoder_output, sot_sequence, text_tokens_size_t, num_frames_vec,
-         median_filter_width);
+  auto results_future = model->align(encoder_output, sot_sequence, text_tokens_size_t, num_frames_vec,
+         static_cast<long>(median_filter_width));
+
+  // Process each future in the vector
+  std::vector<ctranslate2::models::WhisperAlignmentResult> results;
+  for (auto& future : results_future) {
+    results.push_back(future.get());
+  }
 
   for (size_t i = 0; i < results.size(); ++i) {
   const auto &result = results[i];
