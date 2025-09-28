@@ -35,6 +35,7 @@ std::vector<std::vector<float>> pad_or_trim(const std::vector<std::vector<float>
 #include <utility>
 #include "audio_decoder.h"
 #include "feature_extractor.h"
+#include <android/log.h>
 
 // Forward declarations and constants
 
@@ -233,7 +234,37 @@ std::tuple<std::vector<Segment>, TranscriptionInfo> WhisperModel::transcribe(
   }
 
   // Step 5: Initialize tokenizer (Python line 949-954)
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Creating tokenizer with multilingual=%d, task=transcribe, language=%s",
+                      model->is_multilingual(), detected_language.c_str());
+
   Tokenizer tokenizer(hf_tokenizer.get(), model->is_multilingual(), std::string("transcribe"), detected_language);
+
+  // Debug tokenizer initialization
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Tokenizer created successfully");
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Testing tokenizer methods...");
+
+  try {
+    int sot = tokenizer.get_sot();
+    int sot_prev = tokenizer.get_sot_prev();
+    int eot = tokenizer.get_eot();
+    int transcribe_token = tokenizer.get_transcribe();
+    auto sot_seq = tokenizer.get_sot_sequence();
+
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "SOT token: %d", sot);
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "SOT_PREV token: %d", sot_prev);
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "EOT token: %d", eot);
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "TRANSCRIBE token: %d", transcribe_token);
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "SOT sequence length: %zu", sot_seq.size());
+
+    std::string sot_seq_str = "SOT sequence: ";
+    for (size_t i = 0; i < sot_seq.size(); ++i) {
+      sot_seq_str += std::to_string(sot_seq[i]);
+      if (i < sot_seq.size() - 1) sot_seq_str += ", ";
+    }
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "%s", sot_seq_str.c_str());
+  } catch (const std::exception& e) {
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Error testing tokenizer methods: %s", e.what());
+  }
 
   // Step 6: Set up transcription options (Python line 956-989)
   TranscriptionOptions options;
@@ -536,6 +567,7 @@ std::vector<Segment> WhisperModel::generate_segments(
 
     // Get previous tokens for prompt (Python line 1173)
     std::vector<int> previous_tokens(all_tokens.begin() + prompt_reset_since, all_tokens.end());
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "previous_tokens.size(): %zu", previous_tokens.size());
 
     // Encode segment if needed (Python line 1175-1176)
     if (seek > 0 || encoder_output.empty()) {
@@ -566,10 +598,24 @@ std::vector<Segment> WhisperModel::generate_segments(
       options.hotwords
     );
 
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "get_prompt returned prompt.size(): %zu", prompt.size());
+
     // Generate with fallback (Python line 1194-1199)
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "About to call generate_with_fallback");
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Prompt length: %zu", prompt.size());
+
+    std::string prompt_str = "Full prompt tokens: ";
+    for (size_t i = 0; i < prompt.size(); ++i) {
+      prompt_str += std::to_string(prompt[i]);
+      if (i < prompt.size() - 1) prompt_str += ", ";
+    }
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "%s", prompt_str.c_str());
+
     auto [result, avg_logprob, temperature, compression_ratio] = generate_with_fallback(
       encoder_output, prompt, tokenizer, options
     );
+
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "generate_with_fallback completed successfully");
 
     // No speech detection (Python line 1201-1221)
     if (options.no_speech_threshold.has_value()) {
@@ -776,9 +822,13 @@ std::vector<int> WhisperModel::get_prompt(
   std::optional<std::string> prefix,
   std::optional<std::string> hotwords
 ) {
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "get_prompt called with previous_tokens.size()=%zu, without_timestamps=%d",
+                      previous_tokens.size(), without_timestamps);
+
   std::vector<int> prompt;
 
   if (!previous_tokens.empty() || (hotwords.has_value() && !prefix.has_value())) {
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Adding SOT_PREV token");
   prompt.push_back(tokenizer.get_sot_prev());
 
   if (hotwords.has_value() && !prefix.has_value()) {
@@ -796,7 +846,29 @@ std::vector<int> WhisperModel::get_prompt(
   }
   }
 
-  prompt.insert(prompt.end(), tokenizer.get_sot_sequence().begin(), tokenizer.get_sot_sequence().end());
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Before adding SOT sequence, prompt.size()=%zu", prompt.size());
+
+  auto sot_sequence = tokenizer.get_sot_sequence();
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "SOT sequence size: %zu", sot_sequence.size());
+
+  prompt.insert(prompt.end(), sot_sequence.begin(), sot_sequence.end());
+
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "After adding SOT sequence, prompt.size()=%zu", prompt.size());
+
+  // Debug: Log the prompt tokens to help diagnose the issue
+  std::string prompt_debug = "Generated prompt tokens: ";
+  for (size_t i = 0; i < std::min(prompt.size(), size_t(10)); ++i) {
+    prompt_debug += std::to_string(prompt[i]) + " ";
+  }
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "%s", prompt_debug.c_str());
+
+  // Debug: Check if SOT token is in the prompt
+  auto sot_sequence = tokenizer.get_sot_sequence();
+  std::string sot_debug = "SOT sequence: ";
+  for (int token : sot_sequence) {
+    sot_debug += std::to_string(token) + " ";
+  }
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "%s", sot_debug.c_str());
 
   if (without_timestamps) {
   prompt.push_back(tokenizer.get_no_timestamps());

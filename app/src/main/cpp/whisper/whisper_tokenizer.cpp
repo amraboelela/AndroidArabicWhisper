@@ -1,4 +1,5 @@
 #include "whisper_tokenizer.h"
+#include <android/log.h>
 #include <fstream>
 #include <sstream>
 #include <algorithm>
@@ -226,20 +227,39 @@ int WhisperTokenizer::get_language_token(const std::string& language_code) const
 
 std::vector<int> WhisperTokenizer::get_sot_sequence(const std::string& language_code,
                      const std::string& task) const {
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "WhisperTokenizer::get_sot_sequence called");
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "WhisperTokenizer params - language_code='%s', task='%s', multilingual_=%d",
+                      language_code.c_str(), task.c_str(), multilingual_);
+
   std::vector<int> sequence = {SOT_TOKEN};
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "WhisperTokenizer - Added SOT_TOKEN: %d", SOT_TOKEN);
 
   if (multilingual_ && !language_code.empty()) {
       int lang_token = get_language_token(language_code);
+      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "WhisperTokenizer - Language token for '%s': %d",
+                          language_code.c_str(), lang_token);
       if (lang_token != -1) {
       sequence.push_back(lang_token);
+      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "WhisperTokenizer - Added language token: %d", lang_token);
       }
   }
 
   if (task == "transcribe") {
       sequence.push_back(TRANSCRIBE_TOKEN);
+      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "WhisperTokenizer - Added TRANSCRIBE_TOKEN: %d", TRANSCRIBE_TOKEN);
   } else if (task == "translate") {
       sequence.push_back(TRANSLATE_TOKEN);
+      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "WhisperTokenizer - Added TRANSLATE_TOKEN: %d", TRANSLATE_TOKEN);
   }
+
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "WhisperTokenizer::get_sot_sequence final sequence length: %zu", sequence.size());
+
+  std::string seq_str = "WhisperTokenizer::get_sot_sequence final sequence: ";
+  for (size_t i = 0; i < sequence.size(); ++i) {
+    seq_str += std::to_string(sequence[i]);
+    if (i < sequence.size() - 1) seq_str += ", ";
+  }
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "%s", seq_str.c_str());
 
   return sequence;
 }
@@ -378,6 +398,19 @@ TokenizerWrapper::TokenizerWrapper(bool multilingual, const std::string& languag
   : tokenizer_(std::make_unique<WhisperTokenizer>("", multilingual))
   , language_(language)
   , task_(task) {
+
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "TokenizerWrapper constructor called");
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "TokenizerWrapper params - multilingual: %d, language: %s, task: %s",
+                      multilingual, language.c_str(), task.c_str());
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "WhisperTokenizer created in TokenizerWrapper");
+
+  // Test basic token retrieval
+  try {
+    int sot = tokenizer_->get_sot_token();
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "TokenizerWrapper - SOT token from WhisperTokenizer: %d", sot);
+  } catch (const std::exception& e) {
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "TokenizerWrapper - Error getting SOT token: %s", e.what());
+  }
 }
 
 int TokenizerWrapper::get_transcribe() const {
@@ -413,7 +446,22 @@ int TokenizerWrapper::get_timestamp_begin() const {
 }
 
 std::vector<int> TokenizerWrapper::get_sot_sequence() const {
-  return tokenizer_->get_sot_sequence(language_, task_);
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "TokenizerWrapper::get_sot_sequence called");
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Calling tokenizer_->get_sot_sequence with language='%s', task='%s'",
+                      language_.c_str(), task_.c_str());
+
+  auto result = tokenizer_->get_sot_sequence(language_, task_);
+
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "TokenizerWrapper::get_sot_sequence result length: %zu", result.size());
+
+  std::string result_str = "TokenizerWrapper::get_sot_sequence result: ";
+  for (size_t i = 0; i < result.size(); ++i) {
+    result_str += std::to_string(result[i]);
+    if (i < result.size() - 1) result_str += ", ";
+  }
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "%s", result_str.c_str());
+
+  return result;
 }
 
 std::vector<int> TokenizerWrapper::get_non_speech_tokens() const {

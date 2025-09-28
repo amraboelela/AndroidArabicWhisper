@@ -1,5 +1,6 @@
 #include "tokenizer.h"
 #include "whisper_tokenizer.h"
+#include <android/log.h>
 
 #include <iostream>
 #include <stdexcept>
@@ -56,12 +57,19 @@ Tokenizer::Tokenizer(
   std::optional<std::string> language
 ) : _tokenizer(tokenizer), _multilingual(multilingual) {
 
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Tokenizer constructor called");
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Parameters - multilingual: %d, task: %s, language: %s",
+                      multilingual, task ? task.value().c_str() : "none",
+                      language ? language.value().c_str() : "none");
+
   // Create whisper tokenizer wrapper for enhanced functionality
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Creating TokenizerWrapper...");
   whisper_wrapper_ = std::make_unique<whisper::TokenizerWrapper>(
     multilingual,
     language.value_or("en"),
     task.value_or("transcribe")
   );
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "TokenizerWrapper created successfully");
 
   if (multilingual) {
   if (task && _TASKS.find(task.value()) == _TASKS.end()) {

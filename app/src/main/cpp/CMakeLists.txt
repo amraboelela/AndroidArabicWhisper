@@ -54,6 +54,6 @@ target_link_libraries(
         whisper_jni
         ctranslate2     # Will be resolved from jniLibs at runtime
         z               # zlib for compression functions
-        log
+        log             # Android logging
         ${BLAS_LIBS}    # Add BLAS libraries if available
 )
