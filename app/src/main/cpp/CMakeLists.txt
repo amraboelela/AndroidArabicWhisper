@@ -6,9 +6,7 @@ add_library(
         whisper_jni
         SHARED
         whisper_jni.cpp       # your JNI wrapper file
-        whisper_model_core.cpp
-        whisper_model_segments.cpp
-        whisper_model_utils.cpp
+        whisper_model.cpp
         utils.cpp
         tokenizer.cpp
         feature_extractor.cpp

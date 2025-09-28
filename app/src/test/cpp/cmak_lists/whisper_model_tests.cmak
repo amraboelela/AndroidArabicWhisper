@@ -1,0 +1,58 @@
+cmake_minimum_required(VERSION 3.10)
+project(arabicwhisper_model_tests)
+
+# Set C++ standard
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# Include directories
+set(CTRANSLATE2_ROOT "/Users/amraboelela/develop/android/CTranslate2")
+include_directories(${CTRANSLATE2_ROOT}/include)
+include_directories(../../../main/cpp/include)
+include_directories(../../../main/cpp/whisper)
+
+# Find required packages
+find_package(ZLIB REQUIRED)
+
+# Find CTranslate2 (try to link if available)
+find_library(CTRANSLATE2_LIB ctranslate2 PATHS ${CTRANSLATE2_ROOT}/lib ${CTRANSLATE2_ROOT}/build/lib NO_DEFAULT_PATH)
+
+# Create test executable for WhisperModel tests
+add_executable(
+    test_whisper_model
+    ../whisper_model_tests.cpp
+    ../../../main/cpp/feature_extractor.cpp
+    ../../../main/cpp/audio_decoder.cpp
+    ../../../main/cpp/whisper/whisper_audio.cpp
+)
+
+# Link libraries for test
+target_link_libraries(
+    test_whisper_model
+    ${ZLIB_LIBRARIES}
+    m  # math library
+)
+
+# Try to link CTranslate2 if found
+if(CTRANSLATE2_LIB)
+    message(STATUS "Found CTranslate2: ${CTRANSLATE2_LIB}")
+    target_link_libraries(test_whisper_model ${CTRANSLATE2_LIB})
+    target_compile_definitions(test_whisper_model PRIVATE HAVE_CTRANSLATE2)
+else()
+    message(STATUS "CTranslate2 not found - WhisperModel will fall back to mock transcription")
+endif()
+
+# Enable testing
+enable_testing()
+
+# Add the test
+add_test(NAME whisper_model_test COMMAND test_whisper_model)
+
+# Print instructions
+message(STATUS "To run WhisperModel tests:")
+message(STATUS "  mkdir build && cd build")
+message(STATUS "  cp ../whisper_model_tests.cmak ./CMakeLists.txt")
+message(STATUS "  cmake .")
+message(STATUS "  make")
+message(STATUS "  ./test_whisper_model")
+message(STATUS "  OR: make test")
