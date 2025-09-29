@@ -95,9 +95,8 @@ Tokenizer::Tokenizer(
     _task = whisper_wrapper_->get_translate();
   }
 
-  // Use whisper tokenizer to get language token
-  auto whisper_tok = whisper::WhisperTokenizer();
-  _language = whisper_tok.get_language_token(language.value_or("en"));
+  // Use the existing whisper_wrapper_ to get language token (it already has full vocabulary)
+  _language = whisper_wrapper_->get_language_token(language.value_or("en"));
   _language_code = language.value_or("en");
   } else {
   _task = std::nullopt;
@@ -142,9 +141,8 @@ Tokenizer::Tokenizer(
     _task = whisper_wrapper_->get_translate();
   }
 
-  // Use whisper tokenizer to get language token
-  auto whisper_tok = whisper::WhisperTokenizer();
-  _language = whisper_tok.get_language_token(language.value_or("en"));
+  // Use the existing whisper_wrapper_ to get language token (it already has full vocabulary)
+  _language = whisper_wrapper_->get_language_token(language.value_or("en"));
   _language_code = language.value_or("en");
   } else {
   _task = std::nullopt;

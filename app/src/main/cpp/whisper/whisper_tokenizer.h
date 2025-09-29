@@ -235,6 +235,9 @@ public:
   std::vector<int> encode(const std::string& text) const;
   std::string decode(const std::vector<int>& tokens) const;
 
+  // Add language token method
+  int get_language_token(const std::string& language_code) const;
+
   std::pair<std::vector<std::string>, std::vector<std::vector<int>>>
   split_to_word_tokens(const std::vector<int>& tokens) const;
 

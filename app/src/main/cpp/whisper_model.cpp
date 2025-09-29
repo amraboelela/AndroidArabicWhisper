@@ -8,6 +8,8 @@
 #include <memory>
 #include <filesystem>
 #include <iostream>
+#include <fstream>  // Add missing fstream header
+#include <optional>
 #include <vector>
 #include <map>
 #include <tuple>
@@ -72,6 +74,7 @@ WhisperModel::WhisperModel(
 
   // All branches lead to the same result, so we can simplify
   std::string model_path = model_size_or_path;
+  model_path_ = model_path;  // Store in member variable for later use
 
   ctranslate2::ReplicaPoolConfig config;
   config.num_threads_per_replica = cpu_threads;   // map your params here
@@ -233,10 +236,10 @@ std::tuple<std::vector<Segment>, TranscriptionInfo> WhisperModel::transcribe(
   __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "🔧 TOKENIZER INITIALIZATION DEBUG");
   __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Creating tokenizer with multilingual=%d, task=transcribe, language=%s",
                       model->is_multilingual(), detected_language.c_str());
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Model path received: '%s'", model_path.c_str());
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Model path received: '%s'", model_path_.c_str());
 
   // Load vocabulary from copied assets in internal storage
-  std::string vocab_path = model_path + "/vocabulary.json";
+  std::string vocab_path = model_path_ + "/vocabulary.json";
   __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "📁 Constructed vocabulary path: '%s'", vocab_path.c_str());
 
   // Check if vocabulary file exists before trying to load it
@@ -248,14 +251,18 @@ std::tuple<std::vector<Segment>, TranscriptionInfo> WhisperModel::transcribe(
     __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "✅ Vocabulary file found! Size: %zu bytes", file_size);
   } else {
     __android_log_print(ANDROID_LOG_ERROR, "#transcribe", "❌ Vocabulary file NOT FOUND at: %s", vocab_path.c_str());
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "📂 Checking what files exist in model directory...");
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "📂 Trying to debug what files exist in model directory: %s", model_path_.c_str());
 
-    // List files in model directory to debug
-    std::string ls_command = "ls -la " + model_path;
-    system(ls_command.c_str()); // This might not work on Android, but worth trying
+    // Try to check if model directory exists
+    std::ifstream model_dir_test(model_path_ + "/config.json");
+    if (model_dir_test.good()) {
+      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "✅ Model directory exists (found config.json)");
+      model_dir_test.close();
+    } else {
+      __android_log_print(ANDROID_LOG_ERROR, "#transcribe", "❌ Model directory might not exist or be accessible");
+    }
 
-    // Alternative: try to list directory contents manually
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "🔍 Model directory contents check completed");
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "🔍 Model directory existence check completed");
   }
 
   __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "🚀 About to create Tokenizer object...");
@@ -922,6 +929,21 @@ WhisperModel::generate_with_fallback(
     // Convert prompt to size_t for CTranslate2 (Python line 1432-1445)
     std::vector<size_t> prompt_size_t(prompt.begin(), prompt.end());
     __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Prompt converted: %zu tokens", prompt_size_t.size());
+
+    // CRITICAL DEBUG: Log the actual prompt being sent to the model
+    std::string full_prompt_debug = "🚨 FULL PROMPT being sent to model: ";
+    for (size_t i = 0; i < prompt_size_t.size(); ++i) {
+      full_prompt_debug += std::to_string(prompt_size_t[i]) + " ";
+    }
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "%s", full_prompt_debug.c_str());
+
+    // Verify Arabic SOT sequence
+    if (prompt_size_t.size() >= 3) {
+      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "🔍 Checking Arabic SOT sequence:");
+      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "   Token 0 (should be SOT 50258): %zu", prompt_size_t[0]);
+      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "   Token 1 (should be Arabic lang 50272): %zu", prompt_size_t[1]);
+      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "   Token 2 (should be transcribe 50359): %zu", prompt_size_t[2]);
+    }
 
     __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "About to call model->generate() - THIS IS THE CRITICAL CALL");
     __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "WhisperOptions configured: beam_size=%zu, max_length=%zu, temperature=%.2f",

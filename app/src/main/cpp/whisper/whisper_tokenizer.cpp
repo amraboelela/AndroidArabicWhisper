@@ -699,6 +699,10 @@ TokenizerWrapper::split_to_word_tokens(const std::vector<int>& tokens) const {
   return tokenizer_->split_to_word_tokens(tokens);
 }
 
+int TokenizerWrapper::get_language_token(const std::string& language_code) const {
+  return tokenizer_->get_language_token(language_code);
+}
+
 bool TokenizerWrapper::is_multilingual() const {
   return tokenizer_->is_multilingual();
 }
