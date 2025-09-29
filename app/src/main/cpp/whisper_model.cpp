@@ -229,15 +229,43 @@ std::tuple<std::vector<Segment>, TranscriptionInfo> WhisperModel::transcribe(
     language_probability = 1;
   }
 
-  // Step 5: Initialize tokenizer (Python line 949-954)
+  // Step 5: Initialize tokenizer with vocabulary from assets (Python line 949-954)
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "🔧 TOKENIZER INITIALIZATION DEBUG");
   __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Creating tokenizer with multilingual=%d, task=transcribe, language=%s",
                       model->is_multilingual(), detected_language.c_str());
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Model path received: '%s'", model_path.c_str());
 
-  Tokenizer tokenizer(hf_tokenizer.get(), model->is_multilingual(), std::string("transcribe"), detected_language);
+  // Load vocabulary from copied assets in internal storage
+  std::string vocab_path = model_path + "/vocabulary.json";
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "📁 Constructed vocabulary path: '%s'", vocab_path.c_str());
+
+  // Check if vocabulary file exists before trying to load it
+  std::ifstream vocab_check(vocab_path);
+  if (vocab_check.good()) {
+    vocab_check.seekg(0, std::ios::end);
+    size_t file_size = vocab_check.tellg();
+    vocab_check.close();
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "✅ Vocabulary file found! Size: %zu bytes", file_size);
+  } else {
+    __android_log_print(ANDROID_LOG_ERROR, "#transcribe", "❌ Vocabulary file NOT FOUND at: %s", vocab_path.c_str());
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "📂 Checking what files exist in model directory...");
+
+    // List files in model directory to debug
+    std::string ls_command = "ls -la " + model_path;
+    system(ls_command.c_str()); // This might not work on Android, but worth trying
+
+    // Alternative: try to list directory contents manually
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "🔍 Model directory contents check completed");
+  }
+
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "🚀 About to create Tokenizer object...");
+
+  Tokenizer tokenizer(hf_tokenizer.get(), model->is_multilingual(), std::string("transcribe"), detected_language, vocab_path);
+
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "✅ Tokenizer object created successfully!");
 
   // Debug tokenizer initialization
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Tokenizer created successfully");
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Testing tokenizer methods...");
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "🧪 Testing tokenizer methods...");
 
   try {
     int sot = tokenizer.get_sot();
@@ -930,10 +958,26 @@ WhisperModel::generate_with_fallback(
       } else {
         __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "No tokens in result sequences!");
       }
-
+      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Before seq_len = tokens.size()");
       int seq_len = tokens.size();
-      float cum_logprob = result.scores[0] * std::pow(seq_len, options.length_penalty);
-      float avg_logprob = cum_logprob / (seq_len + 1);
+      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "After seq_len = tokens.size()");
+
+      // Check if scores array is available
+      float cum_logprob = 0.0f;
+      float avg_logprob = 0.0f;
+
+      if (!result.scores.empty()) {
+        __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Calculating scores - result.scores[0]: %.4f", result.scores[0]);
+        cum_logprob = result.scores[0] * std::pow(seq_len, options.length_penalty);
+        __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "After options.length_penalty calculation");
+        avg_logprob = cum_logprob / (seq_len + 1);
+        __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Calculated avg_logprob: %.4f", avg_logprob);
+      } else {
+        __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "⚠️ result.scores is EMPTY! Using default values: cum_logprob=0.0, avg_logprob=0.0");
+        // Use default values when scores are not available
+        cum_logprob = 0.0f;
+        avg_logprob = 0.0f;
+      }
 
       __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "About to call tokenizer.decode() - THIS IS THE LIKELY BOTTLENECK");
       __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Decoding %zu tokens...", tokens.size());

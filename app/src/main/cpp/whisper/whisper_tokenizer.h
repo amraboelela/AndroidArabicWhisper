@@ -7,6 +7,9 @@
 #include <unordered_set>
 #include <optional>
 #include <memory>
+#ifndef NO_CTRANSLATE2
+#include <ctranslate2/vocabulary.h>
+#endif
 
 namespace whisper {
 
@@ -35,6 +38,21 @@ public:
    * @param multilingual Whether to support multiple languages
    */
   explicit WhisperTokenizer(const std::string& vocab_file = "", bool multilingual = true);
+
+#ifndef NO_CTRANSLATE2
+  /**
+   * Constructor with CTranslate2 vocabulary
+   * @param vocabulary CTranslate2 vocabulary from the model
+   * @param multilingual Whether to support multiple languages
+   */
+  explicit WhisperTokenizer(const ctranslate2::Vocabulary& vocabulary, bool multilingual = true);
+
+  /**
+   * Load vocabulary from CTranslate2 vocabulary
+   * @param vocabulary CTranslate2 vocabulary from the model
+   */
+  void load_vocab_from_ctranslate2(const ctranslate2::Vocabulary& vocabulary);
+#endif
 
   /**
    * Initialize with built-in vocabulary (GPT-2 based)
@@ -192,7 +210,15 @@ class TokenizerWrapper {
 public:
   TokenizerWrapper(bool multilingual = true,
         const std::string& language = "en",
+        const std::string& task = "transcribe",
+        const std::string& vocab_path = "");
+
+#ifndef NO_CTRANSLATE2
+  TokenizerWrapper(const ctranslate2::Vocabulary& vocabulary,
+        bool multilingual = true,
+        const std::string& language = "en",
         const std::string& task = "transcribe");
+#endif
 
   // Interface matching the existing tokenizer
   int get_transcribe() const;

@@ -62,20 +62,23 @@ Tokenizer::Tokenizer(
   tokenizers::Tokenizer* tokenizer,
   bool multilingual,
   std::optional<std::string> task,
-  std::optional<std::string> language
+  std::optional<std::string> language,
+  std::optional<std::string> vocab_path
 ) : _tokenizer(tokenizer), _multilingual(multilingual) {
 
   __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Tokenizer constructor called");
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Parameters - multilingual: %d, task: %s, language: %s",
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Parameters - multilingual: %d, task: %s, language: %s, vocab_path: %s",
                       multilingual, task ? task.value().c_str() : "none",
-                      language ? language.value().c_str() : "none");
+                      language ? language.value().c_str() : "none",
+                      vocab_path ? vocab_path.value().c_str() : "none");
 
   // Create whisper tokenizer wrapper for enhanced functionality
   __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Creating TokenizerWrapper...");
   whisper_wrapper_ = std::make_unique<whisper::TokenizerWrapper>(
     multilingual,
     language.value_or("en"),
-    task.value_or("transcribe")
+    task.value_or("transcribe"),
+    vocab_path.value_or("")  // Pass vocabulary path
   );
   __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "TokenizerWrapper created successfully");
 
@@ -102,6 +105,56 @@ Tokenizer::Tokenizer(
   _language_code = "en";
   }
 }
+
+#ifndef NO_CTRANSLATE2
+Tokenizer::Tokenizer(
+  const ctranslate2::Vocabulary& vocabulary,
+  bool multilingual,
+  std::optional<std::string> task,
+  std::optional<std::string> language
+) : _tokenizer(nullptr), _multilingual(multilingual) {
+
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Tokenizer constructor (CTranslate2) called");
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Parameters - multilingual: %d, task: %s, language: %s",
+                      multilingual, task ? task.value().c_str() : "none",
+                      language ? language.value().c_str() : "none");
+
+  // Create whisper tokenizer wrapper with CTranslate2 vocabulary
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Creating TokenizerWrapper with CTranslate2 vocabulary...");
+  whisper_wrapper_ = std::make_unique<whisper::TokenizerWrapper>(
+    vocabulary,
+    multilingual,
+    language.value_or("en"),
+    task.value_or("transcribe")
+  );
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "TokenizerWrapper with CTranslate2 vocab created successfully");
+
+  if (multilingual) {
+  if (task && _TASKS.find(task.value()) == _TASKS.end()) {
+    throw std::invalid_argument("'" + task.value() + "' is not a valid task.");
+  }
+  if (language && std::find(_LANGUAGE_CODES.begin(), _LANGUAGE_CODES.end(), language.value()) == _LANGUAGE_CODES.end()) {
+    throw std::invalid_argument("'" + language.value() + "' is not a valid language code.");
+  }
+
+  _task = whisper_wrapper_->get_transcribe();
+  if (task.value_or("") == "translate") {
+    _task = whisper_wrapper_->get_translate();
+  }
+
+  // Use whisper tokenizer to get language token
+  auto whisper_tok = whisper::WhisperTokenizer();
+  _language = whisper_tok.get_language_token(language.value_or("en"));
+  _language_code = language.value_or("en");
+  } else {
+  _task = std::nullopt;
+  _language = std::nullopt;
+  _language_code = "en";
+  }
+
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Tokenizer (CTranslate2) created successfully");
+}
+#endif // NO_CTRANSLATE2
 
 int Tokenizer::get_transcribe() {
   return whisper_wrapper_->get_transcribe();

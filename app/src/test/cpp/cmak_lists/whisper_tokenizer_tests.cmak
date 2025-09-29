@@ -6,13 +6,14 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Include directories
-set(CTRANSLATE2_ROOT "/Users/amraboelela/develop/android/CTranslate2")
-include_directories(${CTRANSLATE2_ROOT}/include)
 include_directories(../../../main/cpp/include)
 include_directories(../../../main/cpp/whisper)
 
 # Find required packages
 find_package(ZLIB REQUIRED)
+
+# Define NO_CTRANSLATE2 to exclude CTranslate2-dependent code from whisper_tokenizer
+add_definitions(-DNO_CTRANSLATE2)
 
 # Create test executable for tokenizer tests
 add_executable(

@@ -5,6 +5,17 @@
 
 set -e  # Exit on any error
 
+# Cleanup function that runs on exit (success or failure)
+cleanup() {
+    echo "Cleaning up test_build directory..."
+    if [ -d "test_build" ]; then
+        rm -rf test_build
+        echo "✅ test_build directory removed"
+    fi
+}
+
+# Set trap to run cleanup on script exit
+trap cleanup EXIT
 echo "=== Building and Running Audio Processing Unit Tests ==="
 
 # Navigate to cpp directory

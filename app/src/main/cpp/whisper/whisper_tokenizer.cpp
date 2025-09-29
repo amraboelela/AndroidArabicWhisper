@@ -44,18 +44,60 @@ static const std::unordered_map<std::string, int> LANGUAGE_TO_TOKEN = {
 WhisperTokenizer::WhisperTokenizer(const std::string& vocab_file, bool multilingual)
   : multilingual_(multilingual) {
 
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "🔧 WhisperTokenizer constructor called");
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "   vocab_file: '%s'", vocab_file.c_str());
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "   multilingual: %d", multilingual);
+
   if (!vocab_file.empty()) {
-      if (!load_vocab_from_file(vocab_file)) {
-      std::cerr << "Failed to load vocabulary from file, using built-in vocab" << std::endl;
-      initialize_builtin_vocab();
+      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "📂 Attempting to load vocabulary from file...");
+      bool load_success = load_vocab_from_file(vocab_file);
+      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "📂 Vocabulary loading result: %s", load_success ? "SUCCESS" : "FAILED");
+
+      if (!load_success) {
+          __android_log_print(ANDROID_LOG_ERROR, "#transcribe", "❌ Failed to load vocabulary from file, using built-in vocab");
+          initialize_builtin_vocab();
       }
   } else {
+      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "📂 No vocab_file provided, using built-in vocabulary");
       initialize_builtin_vocab();
   }
 
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "📊 Final vocabulary size after constructor: %zu", vocab_to_id_.size());
+
+  initialize_special_tokens();
+  initialize_language_tokens();
+
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "✅ WhisperTokenizer constructor completed");
+}
+
+#ifndef NO_CTRANSLATE2
+WhisperTokenizer::WhisperTokenizer(const ctranslate2::Vocabulary& vocabulary, bool multilingual)
+  : multilingual_(multilingual) {
+
+  load_vocab_from_ctranslate2(vocabulary);
   initialize_special_tokens();
   initialize_language_tokens();
 }
+
+void WhisperTokenizer::load_vocab_from_ctranslate2(const ctranslate2::Vocabulary& vocabulary) {
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Loading vocabulary from CTranslate2 model...");
+
+  vocab_to_id_.clear();
+  id_to_vocab_.clear();
+
+  // Load all tokens from the CTranslate2 vocabulary
+  size_t vocab_size = vocabulary.size();
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "CTranslate2 vocabulary size: %zu", vocab_size);
+
+  for (size_t i = 0; i < vocab_size; ++i) {
+    const std::string& token = vocabulary.to_token(i);
+    vocab_to_id_[token] = static_cast<int>(i);
+    id_to_vocab_[static_cast<int>(i)] = token;
+  }
+
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "✅ Loaded %zu tokens from CTranslate2 vocabulary", vocab_size);
+}
+#endif // NO_CTRANSLATE2
 
 void WhisperTokenizer::initialize_builtin_vocab() {
   // Initialize with basic GPT-2 style vocabulary
@@ -105,26 +147,154 @@ void WhisperTokenizer::initialize_builtin_vocab() {
 }
 
 bool WhisperTokenizer::load_vocab_from_file(const std::string& vocab_file) {
-  std::ifstream file(vocab_file);
-  if (!file.is_open()) {
-      return false;
-  }
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Loading vocabulary from file: %s", vocab_file.c_str());
 
   vocab_to_id_.clear();
   id_to_vocab_.clear();
 
-  std::string line;
-  int token_id = 0;
-
-  while (std::getline(file, line)) {
-      if (!line.empty()) {
-      vocab_to_id_[line] = token_id;
-      id_to_vocab_[token_id] = line;
-      ++token_id;
-      }
+  if (vocab_file.empty()) {
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "No vocabulary file specified, using built-in");
+    return false;
   }
 
-  return true;
+  // Try different paths for Android assets
+  std::vector<std::string> paths_to_try = {
+    vocab_file,
+    "/android_asset/" + vocab_file,
+    "assets/" + vocab_file
+  };
+
+  std::ifstream file;
+  std::string successful_path;
+
+  for (const auto& path : paths_to_try) {
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Trying path: %s", path.c_str());
+    file.open(path);
+    if (file.is_open()) {
+      successful_path = path;
+      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Successfully opened: %s", path.c_str());
+      break;
+    }
+    file.clear(); // Reset error flags
+  }
+
+  if (!file.is_open()) {
+    __android_log_print(ANDROID_LOG_ERROR, "#transcribe", "Failed to open vocabulary file at any path");
+    return false;
+  }
+
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Reading vocabulary file...");
+
+  // Simple line-based parsing (assuming each line is a token)
+  std::string line;
+  int token_id = 0;
+  bool is_json_format = false;
+
+  // Check if first line starts with '[' (JSON format)
+  std::getline(file, line);
+  if (!line.empty() && line[0] == '[') {
+    is_json_format = true;
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Detected JSON format vocabulary");
+  } else {
+    // Treat first line as first token
+    if (!line.empty()) {
+      vocab_to_id_[line] = token_id;
+      id_to_vocab_[token_id] = line;
+      token_id++;
+    }
+  }
+
+  if (is_json_format) {
+    // JSON format: parse tokens from JSON array
+    std::string content;
+    file.seekg(0);
+    content.assign((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Loaded %zu characters, parsing JSON...", content.size());
+
+    // Simple JSON parsing: find tokens between quotes
+    size_t pos = 0;
+    token_id = 0;
+
+    while (pos < content.length()) {
+      // Find opening quote
+      pos = content.find('"', pos);
+      if (pos == std::string::npos) break;
+      pos++; // Skip opening quote
+
+      // Find closing quote, handling escape sequences
+      size_t end_pos = pos;
+      while (end_pos < content.length()) {
+        if (content[end_pos] == '"') {
+          break;
+        } else if (content[end_pos] == '\\' && end_pos + 1 < content.length()) {
+          end_pos += 2; // Skip escape sequence
+        } else {
+          end_pos++;
+        }
+      }
+
+      if (end_pos < content.length()) {
+        std::string token = content.substr(pos, end_pos - pos);
+
+        // Basic unescape for common sequences
+        std::string unescaped_token;
+        for (size_t i = 0; i < token.length(); i++) {
+          if (token[i] == '\\' && i + 1 < token.length()) {
+            char next = token[i + 1];
+            switch (next) {
+              case 'n': unescaped_token += '\n'; i++; break;
+              case 't': unescaped_token += '\t'; i++; break;
+              case 'r': unescaped_token += '\r'; i++; break;
+              case '\\': unescaped_token += '\\'; i++; break;
+              case '"': unescaped_token += '"'; i++; break;
+              case 'u':
+                // Keep unicode escape as-is for now (complex to parse properly)
+                unescaped_token += token.substr(i, std::min(6UL, token.length() - i));
+                i += 5;
+                break;
+              default:
+                unescaped_token += token[i];
+                break;
+            }
+          } else {
+            unescaped_token += token[i];
+          }
+        }
+
+        vocab_to_id_[unescaped_token] = token_id;
+        id_to_vocab_[token_id] = unescaped_token;
+        token_id++;
+
+        pos = end_pos + 1;
+      } else {
+        break;
+      }
+    }
+  } else {
+    // Line-based format: each line is a token
+    while (std::getline(file, line)) {
+      if (!line.empty()) {
+        vocab_to_id_[line] = token_id;
+        id_to_vocab_[token_id] = line;
+        token_id++;
+      }
+    }
+  }
+
+  file.close();
+
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "✅ Successfully loaded %d tokens from vocabulary file", token_id);
+
+  // Add a verification log for the problematic token
+  if (token_id > 28814) {
+    auto it = id_to_vocab_.find(28814);
+    if (it != id_to_vocab_.end()) {
+      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "✅ Verification: Token 28814 = '%s'", it->second.c_str());
+    }
+  }
+
+  return token_id > 0;
 }
 
 void WhisperTokenizer::initialize_special_tokens() {
@@ -419,14 +589,14 @@ std::vector<std::string> WhisperTokenizer::tokenize_text(const std::string& text
 }
 
 // TokenizerWrapper implementation
-TokenizerWrapper::TokenizerWrapper(bool multilingual, const std::string& language, const std::string& task)
-  : tokenizer_(std::make_unique<WhisperTokenizer>("", multilingual))
+TokenizerWrapper::TokenizerWrapper(bool multilingual, const std::string& language, const std::string& task, const std::string& vocab_path)
+  : tokenizer_(std::make_unique<WhisperTokenizer>(vocab_path, multilingual))
   , language_(language)
   , task_(task) {
 
   __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "TokenizerWrapper constructor called");
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "TokenizerWrapper params - multilingual: %d, language: %s, task: %s",
-                      multilingual, language.c_str(), task.c_str());
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "TokenizerWrapper params - multilingual: %d, language: %s, task: %s, vocab_path: %s",
+                      multilingual, language.c_str(), task.c_str(), vocab_path.c_str());
   __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "WhisperTokenizer created in TokenizerWrapper");
 
   // Test basic token retrieval
@@ -437,6 +607,29 @@ TokenizerWrapper::TokenizerWrapper(bool multilingual, const std::string& languag
     __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "TokenizerWrapper - Error getting SOT token: %s", e.what());
   }
 }
+
+#ifndef NO_CTRANSLATE2
+TokenizerWrapper::TokenizerWrapper(const ctranslate2::Vocabulary& vocabulary, bool multilingual, const std::string& language, const std::string& task)
+  : tokenizer_(std::make_unique<WhisperTokenizer>(vocabulary, multilingual))
+  , language_(language)
+  , task_(task) {
+
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "TokenizerWrapper constructor (with CTranslate2 vocab) called");
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "TokenizerWrapper params - multilingual: %d, language: %s, task: %s",
+                      multilingual, language.c_str(), task.c_str());
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "WhisperTokenizer created with CTranslate2 vocabulary");
+
+  // Test basic token retrieval
+  try {
+    int sot = tokenizer_->get_sot_token();
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "TokenizerWrapper - SOT token from WhisperTokenizer: %d", sot);
+  } catch (const std::exception& e) {
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "TokenizerWrapper - Error getting SOT token: %s", e.what());
+  }
+
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "TokenizerWrapper (CTranslate2) created successfully");
+}
+#endif // NO_CTRANSLATE2
 
 int TokenizerWrapper::get_transcribe() const {
   return tokenizer_->get_transcribe_token();

@@ -5,6 +5,7 @@
 #include <cassert>
 #include <string>
 #include <algorithm>
+#include <fstream>  // For std::ifstream
 
 /**
  * Unit tests for tokenizer functionality
@@ -36,8 +37,8 @@ namespace {
   bool test_special_token_constants() {
     std::cout << "\n=== Testing Special Token Constants ===" << std::endl;
 
-    ASSERT_EQ(whisper::WhisperTokenizer::EOT_TOKEN, 50256, "EOT token constant");
-    ASSERT_EQ(whisper::WhisperTokenizer::SOT_TOKEN, 50257, "SOT token constant");
+    ASSERT_EQ(whisper::WhisperTokenizer::EOT_TOKEN, 50257, "EOT token constant");
+    ASSERT_EQ(whisper::WhisperTokenizer::SOT_TOKEN, 50258, "SOT token constant");
     ASSERT_EQ(whisper::WhisperTokenizer::TRANSCRIBE_TOKEN, 50359, "Transcribe token constant");
     ASSERT_EQ(whisper::WhisperTokenizer::TRANSLATE_TOKEN, 50358, "Translate token constant");
     ASSERT_EQ(whisper::WhisperTokenizer::NO_TIMESTAMPS_TOKEN, 50363,
@@ -79,14 +80,14 @@ namespace {
 
     whisper::WhisperTokenizer tokenizer("", true);
 
-    ASSERT_EQ(tokenizer.get_eot_token(), 50256, "get_eot_token()");
-    ASSERT_EQ(tokenizer.get_sot_token(), 50257, "get_sot_token()");
+    ASSERT_EQ(tokenizer.get_eot_token(), 50257, "get_eot_token()");
+    ASSERT_EQ(tokenizer.get_sot_token(), 50258, "get_sot_token()");
     ASSERT_EQ(tokenizer.get_transcribe_token(), 50359, "get_transcribe_token()");
     ASSERT_EQ(tokenizer.get_translate_token(), 50358, "get_translate_token()");
     ASSERT_EQ(tokenizer.get_no_timestamps_token(), 50363, "get_no_timestamps_token()");
     ASSERT_EQ(tokenizer.get_timestamp_begin(), 50364, "get_timestamp_begin()");
-    ASSERT_EQ(tokenizer.get_sot_prev_token(), 50362, "get_sot_prev_token()");
-    ASSERT_EQ(tokenizer.get_sot_lm_token(), 50361, "get_sot_lm_token()");
+    ASSERT_EQ(tokenizer.get_sot_prev_token(), 50361, "get_sot_prev_token()");
+    ASSERT_EQ(tokenizer.get_sot_lm_token(), 50360, "get_sot_lm_token()");
 
     return true;
   }
@@ -284,15 +285,15 @@ namespace {
     whisper::TokenizerWrapper wrapper(true, "ar", "transcribe");
 
     // Test special token getters
-    ASSERT_EQ(wrapper.get_eot(), 50256, "Wrapper get_eot()");
-    ASSERT_EQ(wrapper.get_sot(), 50257, "Wrapper get_sot()");
+    ASSERT_EQ(wrapper.get_eot(), 50257, "Wrapper get_eot()");
+    ASSERT_EQ(wrapper.get_sot(), 50258, "Wrapper get_sot()");
     ASSERT_EQ(wrapper.get_transcribe(), 50359, "Wrapper get_transcribe()");
     ASSERT_EQ(wrapper.get_translate(), 50358, "Wrapper get_translate()");
 
     // Test SOT sequence
     auto sot_seq = wrapper.get_sot_sequence();
     ASSERT_TRUE(!sot_seq.empty(), "Wrapper SOT sequence not empty");
-    ASSERT_EQ(sot_seq[0], 50257, "Wrapper SOT sequence starts correctly");
+    ASSERT_EQ(sot_seq[0], 50258, "Wrapper SOT sequence starts correctly");
 
     // Test encoding/decoding
     std::string test_text = "test";
@@ -303,6 +304,256 @@ namespace {
 
     // Test multilingual flag
     ASSERT_TRUE(wrapper.is_multilingual(), "Wrapper reports multilingual correctly");
+
+    return true;
+  }
+
+/**
+ * Test vocabulary loading from file
+ */
+  bool test_vocabulary_loading() {
+    std::cout << "\n=== Testing Vocabulary Loading ===" << std::endl;
+
+    // Test paths to try for vocabulary file
+    std::vector<std::string> vocab_paths = {
+      "whisper_ct2/vocabulary.json",
+      "../../../main/assets/whisper_ct2/vocabulary.json",
+      "/Users/amraboelela/develop/android/AndroidArabicWhisper/app/src/main/assets/whisper_ct2/vocabulary.json"
+    };
+
+    bool found_vocab = false;
+    std::string working_path;
+
+    // Find working path
+    for (const auto& path : vocab_paths) {
+      std::ifstream test_file(path);
+      if (test_file.is_open()) {
+        found_vocab = true;
+        working_path = path;
+        test_file.close();
+        std::cout << "✓ Found vocabulary file at: " << path << std::endl;
+        break;
+      }
+    }
+
+    if (!found_vocab) {
+      std::cout << "⚠️ Could not find vocabulary.json file, testing with built-in vocab" << std::endl;
+      working_path = ""; // Use built-in
+    }
+
+    // Test tokenizer with vocabulary file
+    whisper::WhisperTokenizer tokenizer(working_path, true);
+
+    std::cout << "Loaded vocabulary size: " << tokenizer.vocab_size() << std::endl;
+
+    if (found_vocab) {
+      // Should have full vocabulary (~51k tokens)
+      ASSERT_TRUE(tokenizer.vocab_size() > 50000, "Full vocabulary should have 50k+ tokens");
+    } else {
+      // Built-in vocabulary
+      ASSERT_TRUE(tokenizer.vocab_size() > 0, "Built-in vocabulary should exist");
+    }
+
+    return true;
+  }
+
+/**
+ * Test specific failing token IDs
+ */
+  bool test_failing_token_ids() {
+    std::cout << "\n=== Testing Specific Failing Token IDs ===" << std::endl;
+
+    // Use the path we found working, or empty for built-in
+    whisper::WhisperTokenizer tokenizer("whisper_ct2/vocabulary.json", true);
+
+    std::cout << "Tokenizer vocabulary size: " << tokenizer.vocab_size() << std::endl;
+
+    // Test the specific token IDs that were failing in the logs
+    std::vector<int> failing_tokens = {479, 2407, 2423, 4032, 4117, 4587, 6808, 10859, 11082, 17195, 37746};
+
+    bool all_found = true;
+    for (int token_id : failing_tokens) {
+      std::string token_str = tokenizer.id_to_token(token_id);
+
+      if (token_str.empty()) {
+        std::cout << "❌ Token ID " << token_id << " NOT FOUND in vocabulary!" << std::endl;
+        all_found = false;
+      } else {
+        std::cout << "✓ Token ID " << token_id << " -> '" << token_str << "'" << std::endl;
+
+        // Test reverse mapping
+        int mapped_back = tokenizer.token_to_id(token_str);
+        if (mapped_back != token_id) {
+          std::cout << "⚠️ Token '" << token_str << "' maps back to " << mapped_back << " instead of " << token_id << std::endl;
+        }
+      }
+    }
+
+    if (tokenizer.vocab_size() > 50000) {
+      ASSERT_TRUE(all_found, "All failing tokens should be found in full vocabulary");
+    } else {
+      std::cout << "⚠️ Using built-in vocabulary, some tokens may not be found" << std::endl;
+    }
+
+    return true;
+  }
+
+/**
+ * Test vocabulary file access and parsing - ENHANCED VERSION
+ */
+  bool test_vocabulary_file_access() {
+    std::cout << "\n=== Testing Vocabulary File Access and Parsing ===" << std::endl;
+
+    // Test different potential paths
+    std::vector<std::string> paths_to_test = {
+      "whisper_ct2/vocabulary.json",
+      "../../../main/assets/whisper_ct2/vocabulary.json",
+      "/Users/amraboelela/develop/android/AndroidArabicWhisper/app/src/main/assets/whisper_ct2/vocabulary.json"
+    };
+
+    bool found_file = false;
+    std::string working_path;
+
+    for (const auto& path : paths_to_test) {
+      std::ifstream file(path);
+      if (file.is_open()) {
+        std::cout << "✅ Found vocabulary file at: " << path << std::endl;
+
+        // Read first few characters to verify it's JSON
+        std::string first_line;
+        std::getline(file, first_line);
+
+        if (!first_line.empty() && first_line[0] == '[') {
+          std::cout << "✓ File starts with JSON array bracket" << std::endl;
+          found_file = true;
+          working_path = path;
+
+          // Count lines to get approximate token count
+          file.seekg(0);
+          int line_count = 0;
+          std::string line;
+          while (std::getline(file, line) && line_count < 100) {
+            line_count++;
+          }
+          std::cout << "✓ File has valid JSON structure (checked first " << line_count << " lines)" << std::endl;
+        } else {
+          std::cout << "❌ File doesn't start with '[' - not valid JSON array" << std::endl;
+        }
+
+        file.close();
+        break;
+      } else {
+        std::cout << "❌ Could not access: " << path << std::endl;
+      }
+    }
+
+    if (found_file) {
+      // Test loading with the found file
+      std::cout << "Testing vocabulary loading with found file..." << std::endl;
+      whisper::WhisperTokenizer tokenizer;
+      bool load_success = tokenizer.load_vocab_from_file(working_path);
+
+      ASSERT_TRUE(load_success, "Vocabulary loading should succeed with valid file");
+      std::cout << "✓ Successfully loaded " << tokenizer.vocab_size() << " tokens" << std::endl;
+
+      // Test a few known mappings
+      std::string token_0 = tokenizer.id_to_token(0);
+      std::string token_1 = tokenizer.id_to_token(1);
+      std::cout << "✓ Token 0: '" << token_0 << "'" << std::endl;
+      std::cout << "✓ Token 1: '" << token_1 << "'" << std::endl;
+
+    } else {
+      std::cout << "⚠️ No vocabulary file found - this explains why tokens are missing!" << std::endl;
+      std::cout << "The app will use built-in vocabulary which has limited tokens." << std::endl;
+    }
+
+    return found_file; // Return success only if we found the file
+  }
+
+/**
+ * Test comprehensive vocabulary loading with detailed JSON parsing
+ */
+  bool test_comprehensive_vocabulary_loading() {
+    std::cout << "\n=== Testing Comprehensive Vocabulary Loading ===" << std::endl;
+
+    // Find the vocabulary file first
+    std::vector<std::string> paths_to_try = {
+      "whisper_ct2/vocabulary.json",
+      "../../../main/assets/whisper_ct2/vocabulary.json",
+      "/Users/amraboelela/develop/android/AndroidArabicWhisper/app/src/main/assets/whisper_ct2/vocabulary.json"
+    };
+
+    std::string vocab_path;
+    for (const auto& path : paths_to_try) {
+      std::ifstream test_file(path);
+      if (test_file.is_open()) {
+        vocab_path = path;
+        test_file.close();
+        break;
+      }
+    }
+
+    if (vocab_path.empty()) {
+      std::cout << "⚠️ No vocabulary file found, skipping comprehensive test" << std::endl;
+      return true; // Don't fail the test, just skip
+    }
+
+    std::cout << "Using vocabulary file: " << vocab_path << std::endl;
+
+    // Test the vocabulary loading
+    whisper::WhisperTokenizer tokenizer;
+    bool success = tokenizer.load_vocab_from_file(vocab_path);
+
+    ASSERT_TRUE(success, "Comprehensive vocabulary loading should succeed");
+
+    size_t vocab_size = tokenizer.vocab_size();
+    std::cout << "Loaded vocabulary size: " << vocab_size << std::endl;
+
+    // Should have full vocabulary (around 51k tokens)
+    ASSERT_TRUE(vocab_size > 50000, "Should load full vocabulary with 50k+ tokens");
+
+    // Test specific failing token IDs from the Android app logs
+    std::vector<int> failing_tokens = {479, 2407, 2423, 4032, 4117, 4587, 6808, 10859, 11082, 17195, 37746};
+
+    std::cout << "Testing specific failing token IDs from Android app..." << std::endl;
+    bool all_found = true;
+
+    for (int token_id : failing_tokens) {
+      std::string token_str = tokenizer.id_to_token(token_id);
+
+      if (token_str.empty()) {
+        std::cout << "❌ Token ID " << token_id << " NOT FOUND in vocabulary!" << std::endl;
+        all_found = false;
+      } else {
+        std::cout << "✓ Token ID " << token_id << " -> '" << token_str << "'" << std::endl;
+      }
+    }
+
+    ASSERT_TRUE(all_found, "All failing tokens should be found in full vocabulary");
+
+    // Test first few tokens to ensure correct indexing
+    std::cout << "Testing first 10 tokens for correct indexing..." << std::endl;
+    for (int i = 0; i < 10; ++i) {
+      std::string token = tokenizer.id_to_token(i);
+      std::cout << "  Token " << i << " -> '" << token << "'" << std::endl;
+      ASSERT_TRUE(!token.empty(), "First 10 tokens should all exist");
+    }
+
+    // Test specific range around the 'bakal' token mentioned by user
+    std::cout << "Testing tokens around 28814 range..." << std::endl;
+    bool found_bakal = false;
+    for (int i = 28810; i < 28820; ++i) {
+      std::string token = tokenizer.id_to_token(i);
+      if (!token.empty()) {
+        std::cout << "  Token " << i << " -> '" << token << "'" << std::endl;
+        if (token.find("bakal") != std::string::npos) {
+          std::cout << "    ^^^ Found 'bakal' token at ID " << i << std::endl;
+          found_bakal = true;
+        }
+      }
+    }
+
+    ASSERT_TRUE(found_bakal, "Should find 'bakal' token in expected range");
 
     return true;
   }
@@ -499,6 +750,13 @@ bool run_tokenizer_unit_tests() {
   all_passed &= test_non_speech_tokens();
   all_passed &= test_edge_cases();
   all_passed &= test_tokenizer_wrapper();
+
+  // NEW VOCABULARY LOADING TESTS
+  std::cout << "\n=== VOCABULARY LOADING TESTS ===" << std::endl;
+  all_passed &= test_vocabulary_file_access();
+  all_passed &= test_vocabulary_loading();
+  all_passed &= test_failing_token_ids();
+  all_passed &= test_comprehensive_vocabulary_loading();
 
   std::cout << "\n=== UNIT TEST SUMMARY ===" << std::endl;
   if (all_passed) {

@@ -15,19 +15,44 @@ include_directories(../../../main/cpp/whisper)
 find_package(ZLIB REQUIRED)
 
 # Find CTranslate2 library (try multiple possible locations)
-find_library(CTRANSLATE2_LIB
-  NAMES ctranslate2 libctranslate2.so
-  PATHS
-    ${CTRANSLATE2_ROOT}/lib
-    ${CTRANSLATE2_ROOT}/build/lib
-    ${CTRANSLATE2_ROOT}/build-android-arm64
-  NO_DEFAULT_PATH
-)
+# Platform-specific library search
+if(APPLE)
+  # macOS: look for .dylib and .a files
+  find_library(CTRANSLATE2_LIB
+    NAMES ctranslate2 libctranslate2.dylib libctranslate2.a
+    PATHS
+      ${CTRANSLATE2_ROOT}/lib
+      ${CTRANSLATE2_ROOT}/build/lib
+      ${CTRANSLATE2_ROOT}/build-macos
+      /usr/local/lib
+      /opt/homebrew/lib
+    NO_DEFAULT_PATH
+  )
+elseif(UNIX AND NOT APPLE)
+  # Linux: look for .so files
+  find_library(CTRANSLATE2_LIB
+    NAMES ctranslate2 libctranslate2.so
+    PATHS
+      ${CTRANSLATE2_ROOT}/lib
+      ${CTRANSLATE2_ROOT}/build/lib
+      ${CTRANSLATE2_ROOT}/build-linux
+    NO_DEFAULT_PATH
+  )
+else()
+  # Android or other platforms
+  find_library(CTRANSLATE2_LIB
+    NAMES ctranslate2 libctranslate2.so
+    PATHS
+      ${CTRANSLATE2_ROOT}/lib
+      ${CTRANSLATE2_ROOT}/build/lib
+      ${CTRANSLATE2_ROOT}/build-android-arm64
+    NO_DEFAULT_PATH
+  )
+endif()
 
-# Set up source files - always include the real whisper_model.cpp
+# Set up source files - conditional compilation based on CTranslate2 availability
 set(WHISPER_MODEL_SOURCES
     ../whisper_model_tests.cpp
-    ../../../main/cpp/whisper_model.cpp
     ../../../main/cpp/feature_extractor.cpp
     ../../../main/cpp/audio_decoder.cpp
     ../../../main/cpp/tokenizer.cpp
@@ -35,6 +60,11 @@ set(WHISPER_MODEL_SOURCES
     ../../../main/cpp/whisper/whisper_audio.cpp
     ../../../main/cpp/whisper/whisper_tokenizer.cpp
 )
+
+# Only include whisper_model.cpp if CTranslate2 is available
+if(CTRANSLATE2_LIB)
+    list(APPEND WHISPER_MODEL_SOURCES ../../../main/cpp/whisper_model.cpp)
+endif()
 
 # Create test executable for WhisperModel tests
 add_executable(test_whisper_model ${WHISPER_MODEL_SOURCES})
@@ -63,7 +93,9 @@ if(CTRANSLATE2_LIB)
     target_link_libraries(test_whisper_model Threads::Threads)
 
 else()
-    message(FATAL_ERROR "CTranslate2 library not found! Please ensure CTranslate2 is built.")
+    message(WARNING "CTranslate2 library not found! Running tests without CTranslate2 support.")
+    message(STATUS "Tests will run with limited functionality (no full model inference tests)")
+    target_compile_definitions(test_whisper_model PRIVATE NO_CTRANSLATE2)
 endif()
 
 # Enable testing

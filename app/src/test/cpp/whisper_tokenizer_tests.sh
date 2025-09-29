@@ -10,6 +10,18 @@ echo "=== Building and Running Tokenizer Unit Tests ==="
 # Navigate to cpp directory
 cd "$(dirname "$0")"
 
+# Cleanup function that runs on exit (success or failure)
+cleanup() {
+    echo "Cleaning up test_build directory..."
+    if [ -d "test_build" ]; then
+        rm -rf test_build
+        echo "✅ test_build directory removed"
+    fi
+}
+
+# Set trap to run cleanup on script exit
+trap cleanup EXIT
+
 # Create build directory
 if [ ! -d "test_build" ]; then
     mkdir test_build
@@ -38,6 +50,5 @@ echo "Running with CTest for detailed results..."
 make test
 
 cd ..
-rm -rf test_build
 
 echo "Done!"

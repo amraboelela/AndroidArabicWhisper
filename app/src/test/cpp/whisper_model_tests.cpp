@@ -224,6 +224,11 @@ bool test_whisper_model_constructor_variations() {
 bool test_whisper_model_core_functions() {
     std::cout << "\n=== Testing WhisperModel Core Functions ===" << std::endl;
 
+#ifdef NO_CTRANSLATE2
+    std::cout << "⚠️  Core functions test skipped: CTranslate2 not available" << std::endl;
+    std::cout << "    WhisperModel functions require CTranslate2 support" << std::endl;
+    return true; // Skip test when CTranslate2 is not available
+#else
     try {
         // Test get_feature_kwargs
         std::string mock_path = "/tmp/mock_model";
@@ -241,6 +246,7 @@ bool test_whisper_model_core_functions() {
         std::cout << "⚠️  Core functions test skipped: " << e.what() << std::endl;
         return true; // Don't fail test suite
     }
+#endif
 }
 
 /**

@@ -8,6 +8,9 @@
 #include <optional>
 #include <tuple>
 #include <memory>
+#ifndef NO_CTRANSLATE2
+#include <ctranslate2/vocabulary.h>
+#endif
 #include "whisper_tokenizer.h"  // Include complete definition of TokenizerWrapper
 
 // Forward declaration of the mock tokenizers::Tokenizer class
@@ -26,8 +29,19 @@ public:
     tokenizers::Tokenizer* tokenizer,
     bool multilingual,
     std::optional<std::string> task = std::nullopt,
+    std::optional<std::string> language = std::nullopt,
+    std::optional<std::string> vocab_path = std::nullopt
+  );
+
+#ifndef NO_CTRANSLATE2
+  // Constructor with CTranslate2 vocabulary
+  Tokenizer(
+    const ctranslate2::Vocabulary& vocabulary,
+    bool multilingual,
+    std::optional<std::string> task = std::nullopt,
     std::optional<std::string> language = std::nullopt
   );
+#endif
 
   // C++ equivalent of the @cached_property methods.
   int get_transcribe();
