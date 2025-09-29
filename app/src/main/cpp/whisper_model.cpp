@@ -29,9 +29,18 @@ std::vector<std::vector<float>> pad_or_trim(const std::vector<std::vector<float>
 #include <cstring>
 #include <variant>
 #include <utility>
+#include <chrono>
 #include "audio_decoder.h"
 #include "feature_extractor.h"
+#ifdef ANDROID
 #include <android/log.h>
+#else
+#include <iostream>
+// Define Android logging macros for non-Android builds
+#define __android_log_print(level, tag, ...) printf(__VA_ARGS__); printf("\n")
+#define ANDROID_LOG_DEBUG 0
+#define ANDROID_LOG_ERROR 0
+#endif
 
 // Forward declarations and constants
 
@@ -298,6 +307,9 @@ std::tuple<std::vector<Segment>, TranscriptionInfo> WhisperModel::transcribe(
   info.transcription_options = options;
   info.all_language_probs = all_language_probs;
 
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "🎯 TRANSCRIBE FUNCTION ABOUT TO RETURN!");
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Returning %zu segments, language: %s", segments.size(), info.language.c_str());
+
   return {segments, info};
 }
 
@@ -562,8 +574,14 @@ std::vector<Segment> WhisperModel::generate_segments(
     __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "previous_tokens.size(): %zu", previous_tokens.size());
 
     // Encode segment if needed (Python line 1175-1176)
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Checking if encoding needed: seek=%d, encoder_output.empty()=%d",
+                        seek, encoder_output.empty());
     if (seek > 0 || encoder_output.empty()) {
+      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Encoding segment features...");
       encoder_output = encode(segment_features);
+      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Segment encoding completed");
+    } else {
+      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Reusing existing encoder_output");
     }
 
     // Language detection per segment if multilingual (Python line 1178-1184)
@@ -648,8 +666,9 @@ std::vector<Segment> WhisperModel::generate_segments(
     // Process current segments (Python line 1330-1356)
     __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Processing %zu segments", current_segments.size());
     for (auto& segment : current_segments) {
+      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "About to decode segment with %zu tokens...", segment.tokens.size());
       std::string text = tokenizer.decode(segment.tokens);
-      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Segment text: '%s' (tokens: %zu)", text.c_str(), segment.tokens.size());
+      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "✅ Segment decode completed! Text: '%s' (tokens: %zu)", text.c_str(), segment.tokens.size());
 
       if (segment.start == segment.end || text.empty()) {
         __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Skipping empty segment");
@@ -694,19 +713,40 @@ std::vector<Segment> WhisperModel::generate_segments(
 // Encode features using the Whisper model
 // --------------------------
 ctranslate2::StorageView WhisperModel::encode(const std::vector<std::vector<float>> &features) {
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "=== ENTERING encode() ===");
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Features dimensions: %zu x %zu", features.size(),
+                      features.empty() ? 0 : features[0].size());
+
   bool to_cpu = false; // Simplified for CPU-only build
 
   // CTranslate2 Whisper model expects 3D input: [batch_size, n_mels, n_frames]
   // Input features are 2D: [n_mels, n_frames], so we need to add batch dimension
 
   if (features.empty() || features[0].empty()) {
+    __android_log_print(ANDROID_LOG_ERROR, "#transcribe", "encode() called with empty features!");
     throw std::runtime_error("Cannot encode empty features");
   }
 
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Creating 3D storage tensor...");
   // Create 3D tensor by adding batch dimension
   auto storage = get_ctranslate2_storage_3d(features);
-  auto future = model->encode(storage, to_cpu);
-  return future.get();
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Storage created with shape: [%lld, %lld, %lld]",
+                      (long long)storage.shape()[0], (long long)storage.shape()[1], (long long)storage.shape()[2]);
+
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Calling model->encode()...");
+  try {
+    auto future = model->encode(storage, to_cpu);
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "model->encode() returned future, getting result...");
+
+    auto result = future.get();
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "encode() completed successfully!");
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "=== EXITING encode() ===");
+    return result;
+
+  } catch (const std::exception& e) {
+    __android_log_print(ANDROID_LOG_ERROR, "#transcribe", "EXCEPTION in model->encode(): %s", e.what());
+    throw;
+  }
 }
 
 // --------------------------
@@ -719,37 +759,54 @@ WhisperModel::generate_with_fallback(
   Tokenizer &tokenizer,
   const TranscriptionOptions &options
 ) {
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "=== ENTERING generate_with_fallback ===");
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Encoder output shape: [%lld, %lld, %lld]",
+                      (long long)encoder_output.shape()[0], (long long)encoder_output.shape()[1], (long long)encoder_output.shape()[2]);
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Prompt size: %zu", prompt.size());
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Temperature options count: %zu", options.temperatures.size());
+
   // Follow Python implementation from line 1388-1516
   std::tuple<std::vector<int>, float, float, float> decode_result;
   std::vector<std::tuple<std::vector<int>, float, float, float>> all_results;
   std::vector<std::tuple<std::vector<int>, float, float, float>> below_cr_threshold_results;
 
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Calculating max_initial_timestamp_index...");
   int max_initial_timestamp_index = static_cast<int>(
     std::round(options.max_initial_timestamp / time_precision)
   );
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "max_initial_timestamp_index: %d", max_initial_timestamp_index);
 
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Calculating max_length...");
+  // OPTIMIZATION: Reduce max_length for faster generation
   int max_length = options.max_new_tokens.has_value() ?
                    prompt.size() + options.max_new_tokens.value() :
-                   this->max_length;
+                   256; // Reduced from 448 to 256 for Arabic speech
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "max_length: %d (OPTIMIZED), this->max_length: %d", max_length, this->max_length);
 
   if (max_length > this->max_length) {
     throw std::runtime_error("Prompt + max_new_tokens exceeds Whisper max_length");
   }
 
   // Iterate through temperatures (Python line 1418)
-  for (float temperature : options.temperatures) {
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Starting temperature loop...");
+
+  // OPTIMIZATION: Use sampling instead of greedy for faster generation
+  std::vector<float> optimized_temperatures = {0.7f}; // Sampling is faster than greedy
+
+  for (size_t temp_idx = 0; temp_idx < optimized_temperatures.size(); ++temp_idx) {
+    float temperature = optimized_temperatures[temp_idx];
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "=== Temperature iteration %zu/1: %.2f (OPTIMIZED: SAMPLING) ===",
+                        temp_idx + 1, temperature);
+
     // Configure generation options based on temperature (Python line 1419-1430)
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Configuring whisper_options...");
     ctranslate2::models::WhisperOptions whisper_options;
 
-    if (temperature > 0) {
-      whisper_options.beam_size = 1;
-      whisper_options.num_hypotheses = options.best_of;
-      whisper_options.sampling_topk = 0;
-      whisper_options.sampling_temperature = temperature;
-    } else {
-      whisper_options.beam_size = options.beam_size;
-      whisper_options.patience = options.patience;
-    }
+    // OPTIMIZATION: Use sampling configuration for speed
+    whisper_options.beam_size = 1;  // Single beam
+    whisper_options.num_hypotheses = 1;  // Single hypothesis
+    whisper_options.sampling_topk = 0;  // No top-k restriction
+    whisper_options.sampling_temperature = temperature;  // Use sampling temperature
 
     whisper_options.length_penalty = options.length_penalty;
     whisper_options.repetition_penalty = options.repetition_penalty;
@@ -759,80 +816,144 @@ WhisperModel::generate_with_fallback(
     whisper_options.max_initial_timestamp_index = max_initial_timestamp_index;
 
     if (options.suppress_tokens.has_value()) {
+      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Setting suppress_tokens...");
       std::vector<int> suppress_tokens_int;
       for (int token : options.suppress_tokens.value()) {
         suppress_tokens_int.push_back(token);
       }
       whisper_options.suppress_tokens = suppress_tokens_int;
+      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "suppress_tokens set with %zu tokens", suppress_tokens_int.size());
     }
 
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Converting prompt to size_t...");
     // Convert prompt to size_t for CTranslate2 (Python line 1432-1445)
     std::vector<size_t> prompt_size_t(prompt.begin(), prompt.end());
-    auto result_futures = model->generate(encoder_output, {prompt_size_t}, whisper_options);
-    auto result = result_futures[0].get();
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Prompt converted: %zu tokens", prompt_size_t.size());
 
-    // Extract tokens and calculate metrics (Python line 1447-1455)
-    std::vector<int> tokens;
-    if (!result.sequences_ids.empty() && !result.sequences_ids[0].empty()) {
-      const auto &tokens_size_t = result.sequences_ids[0];
-      tokens.assign(tokens_size_t.begin(), tokens_size_t.end());
-    }
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "About to call model->generate() - THIS IS THE CRITICAL CALL");
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "WhisperOptions configured: beam_size=%zu, max_length=%zu, temperature=%.2f",
+                        (size_t)whisper_options.beam_size, (size_t)whisper_options.max_length, temperature);
 
-    int seq_len = tokens.size();
-    float cum_logprob = result.scores[0] * std::pow(seq_len, options.length_penalty);
-    float avg_logprob = cum_logprob / (seq_len + 1);
+    try {
+      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Calling model->generate()...");
+      auto result_futures = model->generate(encoder_output, {prompt_size_t}, whisper_options);
+      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "model->generate() returned futures, getting result...");
 
-    // Calculate compression ratio (Python line 1454-1455)
-    std::string text = tokenizer.decode(tokens);
-    float compression_ratio = get_compression_ratio(text);
+      // Add timeout logging to track how long result.get() takes
+      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "About to call result_futures[0].get() - monitoring for hang...");
 
-    decode_result = std::make_tuple(tokens, avg_logprob, temperature, compression_ratio);
-    all_results.push_back(decode_result);
+      auto start_time = std::chrono::steady_clock::now();
+      auto result = result_futures[0].get();
+      auto end_time = std::chrono::steady_clock::now();
 
-    bool needs_fallback = false;
+      auto duration = std::chrono::duration_cast<std::chrono::seconds>(end_time - start_time);
+      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "result.get() completed in %lld seconds!", (long long)duration.count());
 
-    // Check compression ratio threshold (Python line 1467-1478)
-    if (options.compression_ratio_threshold.has_value() &&
-        compression_ratio > options.compression_ratio_threshold.value()) {
-      needs_fallback = true;
-    } else {
-      below_cr_threshold_results.push_back(decode_result);
-    }
+      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Result sequences count: %zu", result.sequences_ids.size());
+      if (!result.sequences_ids.empty()) {
+        __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "First sequence length: %zu", result.sequences_ids[0].size());
+      }
+      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Result scores count: %zu", result.scores.size());
 
-    // Check log probability threshold (Python line 1480-1491)
-    if (options.log_prob_threshold.has_value() &&
-        avg_logprob < options.log_prob_threshold.value()) {
-      needs_fallback = true;
-    }
+      // Extract tokens and calculate metrics (Python line 1447-1455)
+      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Extracting tokens from result...");
+      std::vector<int> tokens;
+      if (!result.sequences_ids.empty() && !result.sequences_ids[0].empty()) {
+        const auto &tokens_size_t = result.sequences_ids[0];
+        tokens.assign(tokens_size_t.begin(), tokens_size_t.end());
+        __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Extracted %zu tokens", tokens.size());
+      } else {
+        __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "No tokens in result sequences!");
+      }
 
-    // Check no speech threshold (Python line 1493-1499)
-    if (options.no_speech_threshold.has_value() &&
-        result.no_speech_prob > options.no_speech_threshold.value() &&
-        options.log_prob_threshold.has_value() &&
-        avg_logprob < options.log_prob_threshold.value()) {
-      needs_fallback = false; // silence
-    }
+      int seq_len = tokens.size();
+      float cum_logprob = result.scores[0] * std::pow(seq_len, options.length_penalty);
+      float avg_logprob = cum_logprob / (seq_len + 1);
 
-    if (!needs_fallback) {
-      break; // Success, return this result
+      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "About to call tokenizer.decode() - THIS IS THE LIKELY BOTTLENECK");
+      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Decoding %zu tokens...", tokens.size());
+
+      // Calculate compression ratio (Python line 1454-1455)
+      // CRITICAL: This decode() call is likely where we're getting stuck
+      std::string text = tokenizer.decode(tokens);
+
+      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "✅ tokenizer.decode() COMPLETED!");
+      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Generated text: '%s'", text.c_str());
+
+      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Calculating compression ratio...");
+      float compression_ratio = get_compression_ratio(text);
+      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "✅ Compression ratio calculated: %.2f, avg_logprob: %.4f", compression_ratio, avg_logprob);
+
+      decode_result = std::make_tuple(tokens, avg_logprob, temperature, compression_ratio);
+      all_results.push_back(decode_result);
+
+      bool needs_fallback = false;
+
+      // Check compression ratio threshold (Python line 1467-1478)
+      if (options.compression_ratio_threshold.has_value() &&
+          compression_ratio > options.compression_ratio_threshold.value()) {
+        __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Compression ratio %.2f > threshold %.2f, needs fallback",
+                            compression_ratio, options.compression_ratio_threshold.value());
+        needs_fallback = true;
+      } else {
+        below_cr_threshold_results.push_back(decode_result);
+      }
+
+      // Check log probability threshold (Python line 1480-1491)
+      if (options.log_prob_threshold.has_value() &&
+          avg_logprob < options.log_prob_threshold.value()) {
+        __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "avg_logprob %.4f < threshold %.4f, needs fallback",
+                            avg_logprob, options.log_prob_threshold.value());
+        needs_fallback = true;
+      }
+
+      // Check no speech threshold (Python line 1493-1499)
+      if (options.no_speech_threshold.has_value() &&
+          result.no_speech_prob > options.no_speech_threshold.value() &&
+          options.log_prob_threshold.has_value() &&
+          avg_logprob < options.log_prob_threshold.value()) {
+        __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "No speech detected, silence");
+        needs_fallback = false; // silence
+      }
+
+      if (!needs_fallback) {
+        __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Temperature %.2f successful, breaking loop", temperature);
+        break; // Success, return this result
+      } else {
+        __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Temperature %.2f failed, trying next", temperature);
+      }
+
+    } catch (const std::exception& e) {
+      __android_log_print(ANDROID_LOG_ERROR, "#transcribe", "EXCEPTION in model->generate(): %s", e.what());
+      throw;
     }
   }
 
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Temperature loop completed");
+
   // All temperatures failed, select best result (Python line 1504-1515)
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Selecting best result from %zu below_cr_threshold and %zu all_results",
+                      below_cr_threshold_results.size(), all_results.size());
+
   if (!below_cr_threshold_results.empty()) {
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Using best from below_cr_threshold_results");
     auto best_it = std::max_element(
       below_cr_threshold_results.begin(), below_cr_threshold_results.end(),
       [](const auto &a, const auto &b) { return std::get<1>(a) < std::get<1>(b); }
     );
     decode_result = *best_it;
   } else if (!all_results.empty()) {
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Using best from all_results");
     auto best_it = std::max_element(
       all_results.begin(), all_results.end(),
       [](const auto &a, const auto &b) { return std::get<1>(a) < std::get<1>(b); }
     );
     decode_result = *best_it;
+  } else {
+    __android_log_print(ANDROID_LOG_ERROR, "#transcribe", "No results available! This should not happen");
   }
 
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "=== EXITING generate_with_fallback successfully ===");
   return decode_result;
 }
 

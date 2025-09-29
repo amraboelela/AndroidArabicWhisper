@@ -1,6 +1,7 @@
 #include <jni.h>
 #include "whisper_model.h"
 #include "audio_decoder.h"
+#include <android/log.h>
 #include <string>
 #include <vector>
 #include <fstream>
@@ -40,13 +41,16 @@ Java_org_amr_arabicwhisper_WhisperHelper_transcribe(JNIEnv* env, jobject thiz, j
       return env->NewStringUTF(("Failed to decode audio file: " + audio_path).c_str());
     }
 
-    // Transcribe the audio using WhisperModel
-    auto [segments, info] = whisper_model->transcribe(audio_data, std::nullopt, true);
+    // Transcribe the audio using WhisperModel with Arabic language
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "🚀 JNI about to call whisper_model->transcribe()");
+    auto [segments, info] = whisper_model->transcribe(audio_data, "ar", true);
 
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "JNI received %zu segments from whisper_model->transcribe", segments.size());
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "🎯 JNI received %zu segments from whisper_model->transcribe - TRANSCRIBE CALL COMPLETED!", segments.size());
 
     // Build result string from segments
     std::string result;
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "JNI building result string from %zu segments...", segments.size());
+
     for (const auto& segment : segments) {
       __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "JNI processing segment: '%s'", segment.text.c_str());
       result += segment.text;
@@ -55,7 +59,7 @@ Java_org_amr_arabicwhisper_WhisperHelper_transcribe(JNIEnv* env, jobject thiz, j
       }
     }
 
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "JNI final result: '%s'", result.c_str());
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "✅ JNI result string built! Final result: '%s'", result.c_str());
 
     // Remove trailing space
     if (!result.empty() && result.back() == ' ') {
@@ -66,7 +70,11 @@ Java_org_amr_arabicwhisper_WhisperHelper_transcribe(JNIEnv* env, jobject thiz, j
       result = "No speech detected in audio file";
     }
 
-    return env->NewStringUTF(result.c_str());
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "🏁 JNI about to call env->NewStringUTF() and return to Kotlin");
+    jstring java_result = env->NewStringUTF(result.c_str());
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "✅ JNI NewStringUTF completed, returning to Kotlin...");
+
+    return java_result;
   } catch (const std::exception& e) {
     return env->NewStringUTF(("Transcription error: " + std::string(e.what())).c_str());
   }

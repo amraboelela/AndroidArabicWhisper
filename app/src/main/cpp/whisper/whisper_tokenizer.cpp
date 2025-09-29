@@ -1,5 +1,13 @@
 #include "whisper_tokenizer.h"
+#ifdef ANDROID
 #include <android/log.h>
+#else
+#include <iostream>
+// Define Android logging macros for non-Android builds
+#define __android_log_print(level, tag, ...) printf(__VA_ARGS__); printf("\n")
+#define ANDROID_LOG_DEBUG 0
+#define ANDROID_LOG_ERROR 0
+#endif
 #include <fstream>
 #include <sstream>
 #include <algorithm>

@@ -17,14 +17,30 @@ find_package(ZLIB REQUIRED)
 # Find CTranslate2 (try to link if available)
 find_library(CTRANSLATE2_LIB ctranslate2 PATHS ${CTRANSLATE2_ROOT}/lib ${CTRANSLATE2_ROOT}/build/lib NO_DEFAULT_PATH)
 
-# Create test executable for WhisperModel tests
-add_executable(
-    test_whisper_model
+# Set up source files based on CTranslate2 availability
+set(WHISPER_MODEL_SOURCES
     ../whisper_model_tests.cpp
     ../../../main/cpp/feature_extractor.cpp
     ../../../main/cpp/audio_decoder.cpp
+    ../../../main/cpp/tokenizer.cpp
+    ../../../main/cpp/utils.cpp
     ../../../main/cpp/whisper/whisper_audio.cpp
+    ../../../main/cpp/whisper/whisper_tokenizer.cpp
 )
+
+# Try to link CTranslate2 if found
+if(CTRANSLATE2_LIB)
+    message(STATUS "Found CTranslate2: ${CTRANSLATE2_LIB}")
+    list(APPEND WHISPER_MODEL_SOURCES ../../../main/cpp/whisper_model.cpp)
+    set(USE_REAL_CTRANSLATE2 ON)
+else()
+    message(STATUS "CTranslate2 not found - using mock CTranslate2 implementation for testing")
+    list(APPEND WHISPER_MODEL_SOURCES ../mock_ctranslate2.cpp)
+    set(USE_REAL_CTRANSLATE2 OFF)
+endif()
+
+# Create test executable for WhisperModel tests
+add_executable(test_whisper_model ${WHISPER_MODEL_SOURCES})
 
 # Link libraries for test
 target_link_libraries(
@@ -33,13 +49,12 @@ target_link_libraries(
     m  # math library
 )
 
-# Try to link CTranslate2 if found
-if(CTRANSLATE2_LIB)
-    message(STATUS "Found CTranslate2: ${CTRANSLATE2_LIB}")
+# Configure based on CTranslate2 availability
+if(USE_REAL_CTRANSLATE2)
     target_link_libraries(test_whisper_model ${CTRANSLATE2_LIB})
     target_compile_definitions(test_whisper_model PRIVATE HAVE_CTRANSLATE2)
 else()
-    message(STATUS "CTranslate2 not found - WhisperModel will fall back to mock transcription")
+    target_compile_definitions(test_whisper_model PRIVATE MOCK_CTRANSLATE2)
 endif()
 
 # Enable testing
