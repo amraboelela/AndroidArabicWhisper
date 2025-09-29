@@ -150,7 +150,7 @@ std::vector<std::string> WhisperModel::supported_languages() const {
   if (model->is_multilingual()) {
     return _LANGUAGE_CODES;
   }
-  return {"en"};
+  return {"ar"};
 }
 
 std::map<std::string, std::string> WhisperModel::get_feature_kwargs(
@@ -206,7 +206,7 @@ std::tuple<std::vector<Segment>, TranscriptionInfo> WhisperModel::transcribe(
 
   if (!language.has_value()) {
     if (!model->is_multilingual()) {
-      detected_language = "en";
+      detected_language = "ar";
       language_probability = 1;
     } else {
       // Detect language using the features (like Python line 924-932)
@@ -220,7 +220,7 @@ std::tuple<std::vector<Segment>, TranscriptionInfo> WhisperModel::transcribe(
       std::cout << "Detected language '" << detected_language << "' with probability " << language_probability << std::endl;
     }
   } else {
-    if (!model->is_multilingual() && language.value() != "en") {
+    if (!model->is_multilingual() && language.value() != "ar") {
       std::cerr << "The current model is English-only but language parameter is set to '" << language.value() << "'; using 'en' instead." << std::endl;
       detected_language = "en";
     } else {
@@ -422,29 +422,71 @@ std::tuple<std::vector<Segment>, int, bool> WhisperModel::split_segments_by_time
   float segment_duration,
   int seek
 ) {
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "🔍 === ENTERING split_segments_by_timestamps ===");
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Input tokens count: %zu", tokens.size());
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "time_offset: %.2f, segment_size: %d, segment_duration: %.2f, seek: %d",
+                     time_offset, segment_size, segment_duration, seek);
+
+  // Log first 20 tokens for debugging
+  std::string tokens_debug = "First 20 tokens: ";
+  for (size_t i = 0; i < std::min(tokens.size(), size_t(20)); ++i) {
+    tokens_debug += std::to_string(tokens[i]) + " ";
+  }
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "%s", tokens_debug.c_str());
+
+  // Log tokenizer constants for reference
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Tokenizer constants - timestamp_begin: %d, eot: %d, sot: %d",
+                     tokenizer.get_timestamp_begin(), tokenizer.get_eot(), tokenizer.get_sot());
+
   std::vector<Segment> current_segments;
   bool single_timestamp_ending = (tokens.size() >= 2 &&
               tokens[tokens.size() - 2] < tokenizer.get_timestamp_begin() &&
               tokens.back() >= tokenizer.get_timestamp_begin());
 
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "single_timestamp_ending: %s", single_timestamp_ending ? "true" : "false");
+  if (tokens.size() >= 2) {
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Last two tokens: [%d, %d]",
+                       tokens[tokens.size() - 2], tokens[tokens.size() - 1]);
+  }
+
   std::vector<int> consecutive_timestamps;
   for (size_t i = 1; i < tokens.size(); ++i) {
   if (tokens[i] >= tokenizer.get_timestamp_begin() && tokens[i - 1] >= tokenizer.get_timestamp_begin()) {
     consecutive_timestamps.push_back(static_cast<int>(i));
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Found consecutive timestamp at position %zu: [%d, %d]",
+                       i, tokens[i-1], tokens[i]);
   }
   }
 
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "consecutive_timestamps count: %zu", consecutive_timestamps.size());
+
   if (!consecutive_timestamps.empty()) {
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Processing consecutive timestamps path...");
   std::vector<int> slices = consecutive_timestamps;
   if (single_timestamp_ending) slices.push_back(tokens.size());
 
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Slices count: %zu", slices.size());
+
   int last_slice = 0;
   for (int current_slice: slices) {
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Processing slice from %d to %d", last_slice, current_slice);
     std::vector<int> sliced_tokens(tokens.begin() + last_slice, tokens.begin() + static_cast<std::vector<int>::difference_type>(current_slice));
+
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Sliced tokens count: %zu", sliced_tokens.size());
+    if (!sliced_tokens.empty()) {
+      std::string sliced_debug = "Sliced tokens: ";
+      for (size_t i = 0; i < std::min(sliced_tokens.size(), size_t(10)); ++i) {
+        sliced_debug += std::to_string(sliced_tokens[i]) + " ";
+      }
+      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "%s", sliced_debug.c_str());
+    }
+
     float start_time =
     time_offset + (sliced_tokens.front() - tokenizer.get_timestamp_begin()) * static_cast<float>(time_precision);
     float end_time =
     time_offset + (sliced_tokens.back() - tokenizer.get_timestamp_begin()) * static_cast<float>(time_precision);
+
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Calculated times - start: %.2f, end: %.2f", start_time, end_time);
 
     Segment seg;
     seg.seek = seek;
@@ -452,22 +494,38 @@ std::tuple<std::vector<Segment>, int, bool> WhisperModel::split_segments_by_time
     seg.end = end_time;
     seg.tokens = sliced_tokens;
     current_segments.push_back(seg);
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Added segment with %zu tokens", sliced_tokens.size());
     last_slice = current_slice;
   }
 
   if (single_timestamp_ending) {
     seek += segment_size;
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Updated seek (single_timestamp_ending): %d", seek);
   } else {
     int last_timestamp_position = tokens[last_slice - 1] - tokenizer.get_timestamp_begin();
     seek += static_cast<int>(last_timestamp_position) * input_stride;
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Updated seek (normal): %d", seek);
   }
   } else {
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Processing no consecutive timestamps path...");
   float duration = segment_duration;
   std::vector<int> timestamps;
   for (int token: tokens) if (token >= tokenizer.get_timestamp_begin()) timestamps.push_back(token);
 
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Found %zu timestamp tokens", timestamps.size());
+  if (!timestamps.empty()) {
+    std::string timestamp_debug = "Timestamp tokens: ";
+    for (size_t i = 0; i < std::min(timestamps.size(), size_t(10)); ++i) {
+      timestamp_debug += std::to_string(timestamps[i]) + " ";
+    }
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "%s", timestamp_debug.c_str());
+  }
+
   if (!timestamps.empty() && timestamps.back() != tokenizer.get_timestamp_begin()) {
     duration = (timestamps.back() - tokenizer.get_timestamp_begin()) * static_cast<float>(time_precision);
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Calculated duration from timestamps: %.2f", duration);
+  } else {
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Using segment_duration: %.2f", duration);
   }
 
   Segment seg;
@@ -476,8 +534,15 @@ std::tuple<std::vector<Segment>, int, bool> WhisperModel::split_segments_by_time
   seg.end = time_offset + duration;
   seg.tokens = tokens;
   current_segments.push_back(seg);
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Added single segment with %zu tokens, start: %.2f, end: %.2f",
+                     tokens.size(), seg.start, seg.end);
   seek += segment_size;
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Updated seek: %d", seek);
   }
+
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "🎯 === EXITING split_segments_by_timestamps ===");
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Returning %zu segments, seek: %d, single_timestamp_ending: %s",
+                     current_segments.size(), seek, single_timestamp_ending ? "true" : "false");
 
   return {current_segments, seek, single_timestamp_ending};
 }

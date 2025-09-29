@@ -34,6 +34,7 @@ class MainActivity : ComponentActivity() {
     whisperHelper = WhisperHelper(this)
 
     // Create the audio file path using Context.getFilesDir()
+    // 10001 90210 01803
     val audioFilePath = File(this.filesDir, "001.wav").absolutePath
 
     setContent {
@@ -56,8 +57,6 @@ fun MainScreen(whisperHelper: WhisperHelper, audioFilePath: String) {
     style = MaterialTheme.typography.headlineMedium
   )
 
-  // Example transcription calls using dynamic file path
-  // val text = whisperHelper.transcribe("hello world")
   val transcription = whisperHelper.transcribe(audioFilePath)
   Log.d("#transcribe", "transcription: $transcription")
 }

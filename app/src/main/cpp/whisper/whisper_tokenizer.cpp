@@ -199,22 +199,39 @@ std::vector<int> WhisperTokenizer::encode(const std::string& text, bool add_spec
 }
 
 std::string WhisperTokenizer::decode(const std::vector<int>& tokens, bool skip_special_tokens) const {
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "🔍 WhisperTokenizer::decode() called with %zu tokens, skip_special=%d", tokens.size(), skip_special_tokens);
+
   std::string result;
 
-  for (int token_id : tokens) {
-      auto it = id_to_vocab_.find(token_id);
-      if (it != id_to_vocab_.end()) {
+  for (size_t i = 0; i < tokens.size(); ++i) {
+    int token_id = tokens[i];
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Processing token %zu/%zu: ID=%d", i+1, tokens.size(), token_id);
+
+    auto it = id_to_vocab_.find(token_id);
+    if (it != id_to_vocab_.end()) {
       const std::string& token = it->second;
+      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Token %d -> '%s' (length: %zu)", token_id, token.c_str(), token.length());
 
       // Skip special tokens if requested
-      if (skip_special_tokens && (token.substr(0, 2) == "<|" && token.size() >= 4 && token.substr(token.size() - 2) == "|>")) {
+      if (skip_special_tokens) {
+        __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Checking if token '%s' is special...", token.c_str());
+
+        // SAFER special token detection - avoid substr on very long strings
+        if (token.length() >= 4 && token[0] == '<' && token[1] == '|' &&
+            token[token.length()-2] == '|' && token[token.length()-1] == '>') {
+          __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Skipping special token: '%s'", token.c_str());
           continue;
+        }
       }
 
       result += token;
-      }
+      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "✅ Token %zu processed, result length now: %zu", i+1, result.length());
+    } else {
+      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "⚠️ Token ID %d not found in vocabulary!", token_id);
+    }
   }
 
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "🎯 WhisperTokenizer::decode() COMPLETED! Final result: '%s'", result.c_str());
   return result;
 }
 
