@@ -196,6 +196,7 @@ private:
   // Helper methods
   void initialize_special_tokens();
   void initialize_language_tokens();
+  std::string decode_bpe(const std::string& raw_bpe) const;
   std::vector<std::string> bpe_encode(const std::string& text) const;
   std::string normalize_text(const std::string& text) const;
   std::vector<std::string> tokenize_text(const std::string& text) const;

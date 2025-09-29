@@ -35,7 +35,7 @@ class MainActivity : ComponentActivity() {
 
     // Create the audio file path using Context.getFilesDir()
     // 10001 90210 01803
-    val audioFilePath = File(this.filesDir, "001.wav").absolutePath
+    val audioFilePath = File(this.filesDir, "001.wav").absolutePath // 001.wav
 
     setContent {
       ArabicWhisperTheme {

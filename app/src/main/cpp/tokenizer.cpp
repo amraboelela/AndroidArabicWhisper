@@ -120,12 +120,19 @@ Tokenizer::Tokenizer(
 
   // Create whisper tokenizer wrapper with CTranslate2 vocabulary
   __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Creating TokenizerWrapper with CTranslate2 vocabulary...");
+
+#ifndef NO_CTRANSLATE2
+  // Explicitly use the CTranslate2 constructor
   whisper_wrapper_ = std::make_unique<whisper::TokenizerWrapper>(
-    vocabulary,
+    vocabulary,  // CTranslate2 vocabulary - this should trigger the CTranslate2 constructor
     multilingual,
     language.value_or("en"),
     task.value_or("transcribe")
   );
+#else
+  #error "CTranslate2 support is required for this tokenizer"
+#endif
+
   __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "TokenizerWrapper with CTranslate2 vocab created successfully");
 
   if (multilingual) {
