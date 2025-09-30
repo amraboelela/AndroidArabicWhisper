@@ -22,11 +22,11 @@ echo "=== Building and Running Utils Unit Tests ==="
 cd "$(dirname "$0")"
 
 # Create build directory
-if [ ! -d "utils_test_build" ]; then
-    mkdir utils_test_build
+if [ ! -d "test_build" ]; then
+    mkdir test_build
 fi
 
-cd utils_test_build
+cd test_build
 
 echo "Configuring build with CMake..."
 # Copy the test CMakeLists to be the main one for this build
@@ -49,6 +49,6 @@ echo "Running with CTest for detailed results..."
 make test
 
 cd ..
-rm -rf utils_test_build
+rm -rf test_build
 
 echo "Done!"

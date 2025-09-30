@@ -49,3 +49,4 @@ local.properties
 
 # CMake build directories
 test_build/
+output.txt

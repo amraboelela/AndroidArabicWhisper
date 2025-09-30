@@ -143,3 +143,17 @@ set(CTRANSLATE2_ROOT "/Users/amraboelela/develop/android/CTranslate2")
 - **CMake Config**: `app/src/main/cpp/CMakeLists.txt`
 - **Gradle Config**: `app/build.gradle`
 - **Models**: Should be placed in app assets or downloaded at runtime
+
+## General rules
+- Make test_whisper.sh like app/src/test/cpp/whisper_tokenizer_tests.sh
+- Never write python script in cpp files like: scriptFile << "import os\n";
+        scriptFile << "import sys\n";
+        scriptFile << "os.environ['HF_HUB_OFFLINE'] = '1'\n";
+        scriptFile << "from faster_whisper import WhisperModel\n";
+        scriptFile << "from faster_whisper.audio import decode_audio\n";
+        scriptFile << "\n";
+        scriptFile << "def main():\n"; The only python script you can write inside cpp file is to call another python file
+- We are trying to convert faster-whisper library from python to c++ one file at a time, from top to bottom.
+  - So when I ask you to convert e.g. test_whisper_ct2_offline.py to test_whisper_ct2_offline.cpp then do not call test_whisper_ct2_offline.py inside test_whisper_ct2_offline.cpp but rather call from faster_whisper import WhisperModel or any other python imported packages.
+- Inside faster_whisper do not do make test, just make is enough, all what i need to know that it is transcribing the audio 001.wav file to al-fatiha correctly, and i can know that by myself, no need to write code to verify that.
+- 
