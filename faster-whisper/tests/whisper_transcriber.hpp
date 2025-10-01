@@ -211,7 +211,7 @@ public:
 
     TranscriptionResult transcribe(const std::string& audioFile) {
         try {
-            std::string command = pythonPath + " whisper_model_caller.py \"" + modelPath + "\" \"" + audioFile + "\"";
+            std::string command = "./whisper_model_caller \"" + modelPath + "\" \"" + audioFile + "\"";
             std::string jsonOutput = executeCommandWithOutput(command);
 
             return parseTranscriptionJson(jsonOutput);

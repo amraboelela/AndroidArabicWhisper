@@ -303,8 +303,8 @@ std::tuple<std::vector<Segment>, TranscriptionInfo> WhisperModel::transcribe(
   options.best_of = 5;
   options.patience = 1.0f;
   options.length_penalty = 1.0f;
-  options.repetition_penalty = 1.0f;
-  options.no_repeat_ngram_size = 0;
+  options.repetition_penalty = 1.1f;
+  options.no_repeat_ngram_size = 3;
   options.log_prob_threshold = -1.0f;
   options.no_speech_threshold = 0.6f;
   options.compression_ratio_threshold = 2.4f;
@@ -317,7 +317,7 @@ std::tuple<std::vector<Segment>, TranscriptionInfo> WhisperModel::transcribe(
   options.suppress_tokens = std::nullopt;
   options.without_timestamps = false;
   options.max_initial_timestamp = 1.0f;
-  options.word_timestamps = false;
+  options.word_timestamps = true;
   options.prepend_punctuations = "\"'¿([{-";
   options.append_punctuations = "\"\'.。，！？：\")}]、";
   options.multilingual = multilingual;
@@ -770,6 +770,13 @@ std::vector<Segment> WhisperModel::generate_segments(
       std::string text = tokenizer.decode(segment.tokens);
       __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "✅ Segment decode completed! Text: '%s' (tokens: %zu)", text.c_str(), segment.tokens.size());
 
+      // Print Arabic text to console for visibility
+      if (!text.empty()) {
+        std::cout << "🎯 GENERATED ARABIC TEXT: \"" << text << "\"" << std::endl;
+        std::cout << "   Segment timing: " << segment.start << "s -> " << segment.end << "s" << std::endl;
+        std::cout << "   Token count: " << segment.tokens.size() << std::endl;
+      }
+
       if (segment.start == segment.end || text.empty()) {
         __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Skipping empty segment");
         continue;
@@ -890,23 +897,27 @@ WhisperModel::generate_with_fallback(
   // Iterate through temperatures (Python line 1418)
   __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Starting temperature loop...");
 
-  // OPTIMIZATION: Use sampling instead of greedy for faster generation
-  std::vector<float> optimized_temperatures = {0.7f}; // Sampling is faster than greedy
-
-  for (size_t temp_idx = 0; temp_idx < optimized_temperatures.size(); ++temp_idx) {
-    float temperature = optimized_temperatures[temp_idx];
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "=== Temperature iteration %zu/1: %.2f (OPTIMIZED: SAMPLING) ===",
-                        temp_idx + 1, temperature);
+  for (size_t temp_idx = 0; temp_idx < options.temperatures.size(); ++temp_idx) {
+    float temperature = options.temperatures[temp_idx];
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "=== Temperature iteration %zu/%zu: %.2f ===",
+                        temp_idx + 1, options.temperatures.size(), temperature);
 
     // Configure generation options based on temperature (Python line 1419-1430)
     __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Configuring whisper_options...");
     ctranslate2::models::WhisperOptions whisper_options;
 
-    // OPTIMIZATION: Use sampling configuration for speed
-    whisper_options.beam_size = 1;  // Single beam
-    whisper_options.num_hypotheses = 1;  // Single hypothesis
-    whisper_options.sampling_topk = 0;  // No top-k restriction
-    whisper_options.sampling_temperature = temperature;  // Use sampling temperature
+    // Use proper beam search like Python faster-whisper
+    whisper_options.beam_size = options.beam_size;  // Use configured beam size (5)
+    whisper_options.num_hypotheses = 1;  // Single best hypothesis
+    if (temperature == 0.0f) {
+      // Greedy search - no sampling
+      whisper_options.sampling_topk = 1;  // Greedy
+      whisper_options.sampling_temperature = 1.0f;  // No effect in greedy
+    } else {
+      // Sampling with temperature
+      whisper_options.sampling_topk = 0;  // No top-k restriction
+      whisper_options.sampling_temperature = temperature;  // Use sampling temperature
+    }
 
     whisper_options.length_penalty = options.length_penalty;
     whisper_options.repetition_penalty = options.repetition_penalty;
