@@ -128,6 +128,34 @@ class AudioProcessor:
     """Audio processing utilities for Whisper model."""
 
     @staticmethod
+    def decode_audio(input_file, sampling_rate=WHISPER_SAMPLE_RATE, split_stereo=False):
+        """Decode audio from file.
+
+        Args:
+            input_file: Path to audio file
+            sampling_rate: Target sampling rate (default 16kHz)
+            split_stereo: Whether to split stereo channels
+
+        Returns:
+            Numpy array of audio samples at specified sample rate
+        """
+        audio, header = WavReader.read_wav_file(input_file)
+
+        if audio is None:
+            print(f"Failed to load audio file: {input_file}")
+            return np.array([])
+
+        # Convert to mono if stereo (unless split_stereo is requested)
+        if header['num_channels'] == 2 and not split_stereo:
+            audio = AudioProcessor.stereo_to_mono(audio)
+
+        # Resample if needed
+        if header['sample_rate'] != sampling_rate:
+            audio = AudioProcessor.resample_audio(audio, header['sample_rate'])
+
+        return audio
+
+    @staticmethod
     def load_audio(filename):
         """Load audio file and preprocess for Whisper model.
 
@@ -198,25 +226,6 @@ class AudioProcessor:
         """
         mono_audio = (stereo_audio[0::2] + stereo_audio[1::2]) * 0.5
         return mono_audio
-
-    @staticmethod
-    def pad_or_trim(audio, length):
-        """Pad or trim audio to specified length.
-
-        Args:
-            audio: Input audio array
-            length: Target length
-
-        Returns:
-            Padded or trimmed audio array
-        """
-        if len(audio) == length:
-            return audio
-        elif len(audio) > length:
-            return audio[:length]
-        else:
-            padded = np.pad(audio, (0, length - len(audio)), mode='constant')
-            return padded
 
     @staticmethod
     def normalize_audio(audio):

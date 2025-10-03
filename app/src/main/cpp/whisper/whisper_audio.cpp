@@ -12,6 +12,28 @@
 
 namespace whisper {
 
+std::vector<float> AudioProcessor::decode_audio(const std::string& input_file, int sampling_rate, bool split_stereo) {
+  WavReader::WavHeader header;
+  std::vector<float> audio;
+
+  if (!WavReader::read_wav_file(input_file, audio, header)) {
+      std::cerr << "Failed to load audio file: " << input_file << std::endl;
+      return {};
+  }
+
+  // Convert to mono if stereo (unless split_stereo is requested)
+  if (header.num_channels == 2 && !split_stereo) {
+      audio = stereo_to_mono(audio);
+  }
+
+  // Resample if needed
+  if (header.sample_rate != sampling_rate) {
+      audio = resample_audio(audio, header.sample_rate);
+  }
+
+  return audio;
+}
+
 std::vector<float> AudioProcessor::load_audio(const std::string& filename) {
   WavReader::WavHeader header;
   std::vector<float> audio;
@@ -71,20 +93,6 @@ std::vector<float> AudioProcessor::stereo_to_mono(const std::vector<float>& ster
   }
 
   return mono_audio;
-}
-
-std::vector<float> AudioProcessor::pad_or_trim(const std::vector<float>& audio, size_t length) {
-  if (audio.size() == length) {
-      return audio;
-  } else if (audio.size() > length) {
-      // Trim
-      return std::vector<float>(audio.begin(), audio.begin() + length);
-  } else {
-      // Pad with zeros
-      std::vector<float> padded = audio;
-      padded.resize(length, 0.0f);
-      return padded;
-  }
 }
 
 std::vector<float> AudioProcessor::normalize_audio(const std::vector<float>& audio) {

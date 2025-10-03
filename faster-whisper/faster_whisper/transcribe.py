@@ -17,11 +17,7 @@ import tokenizers
 
 from tqdm import tqdm
 
-# Import whisper_audio from the C++ directory
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../app/src/main/cpp'))
-from whisper.whisper_audio import AudioProcessor
-
-from faster_whisper.audio import decode_audio
+from faster_whisper.audio import pad_or_trim
 from faster_whisper.feature_extractor import FeatureExtractor
 from faster_whisper.tokenizer import _LANGUAGE_CODES, Tokenizer
 from faster_whisper.utils import download_model, format_timestamp, get_end, get_logger
@@ -32,6 +28,8 @@ from faster_whisper.vad import (
     get_speech_timestamps,
 )
 
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../app/src/main/cpp'))
+from whisper.whisper_audio import AudioProcessor
 
 @dataclass
 class Word:
@@ -389,14 +387,8 @@ class BatchedInferencePipeline:
             multilingual = False
 
         if not isinstance(audio, np.ndarray):
-            # Use AudioProcessor to load and preprocess audio
-            if isinstance(audio, str):
-                audio = AudioProcessor.load_audio(audio)
-                # Resample if needed
-                if sampling_rate != 16000:
-                    audio = AudioProcessor.resample_audio(audio, 16000)
-            else:
-                audio = decode_audio(audio, sampling_rate=sampling_rate)
+            # Use AudioProcessor to decode and preprocess audio
+            audio = AudioProcessor.decode_audio(audio, sampling_rate)
         duration = audio.shape[0] / sampling_rate
 
         self.model.logger.info(
@@ -513,7 +505,7 @@ class BatchedInferencePipeline:
         )
 
         features = (
-            np.stack([AudioProcessor.pad_or_trim(feature, 3000, axis=-1) for feature in features]) if features else []
+            np.stack([pad_or_trim(feature) for feature in features]) if features else []
         )
 
         options = TranscriptionOptions(
@@ -871,14 +863,8 @@ class WhisperModel:
             multilingual = False
 
         if not isinstance(audio, np.ndarray):
-            # Use AudioProcessor to load and preprocess audio
-            if isinstance(audio, str):
-                audio = AudioProcessor.load_audio(audio)
-                # Resample if needed
-                if sampling_rate != 16000:
-                    audio = AudioProcessor.resample_audio(audio, 16000)
-            else:
-                audio = decode_audio(audio, sampling_rate=sampling_rate)
+            # Use AudioProcessor to decode and preprocess audio
+            audio = AudioProcessor.decode_audio(audio, sampling_rate)
 
         duration = audio.shape[0] / sampling_rate
         duration_after_vad = duration
@@ -1182,7 +1168,7 @@ class WhisperModel:
             )
             segment = features[:, seek : seek + segment_size]
             segment_duration = segment_size * self.feature_extractor.time_per_frame
-            segment = AudioProcessor.pad_or_trim(segment, 3000, axis=-1)
+            segment = pad_or_trim(segment)
 
             if self.logger.isEnabledFor(logging.DEBUG):
                 self.logger.debug(
@@ -1822,7 +1808,7 @@ class WhisperModel:
         detected_language_info = {}
         for i in range(0, features.shape[-1], self.feature_extractor.nb_max_frames):
             encoder_output = self.encode(
-                AudioProcessor.pad_or_trim(features[..., i : i + self.feature_extractor.nb_max_frames], 3000, axis=-1)
+                pad_or_trim(features[..., i : i + self.feature_extractor.nb_max_frames])
             )
             # results is a list of tuple[str, float] with language names and probabilities.
             results = self.model.detect_language(encoder_output)[0]

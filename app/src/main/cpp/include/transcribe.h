@@ -109,7 +109,7 @@ struct TranscriptionInfo {
   TranscriptionOptions transcription_options;
 };
 
-class WhisperModel {
+class  WhisperModel {
 public:
   // C++ constructor to match the Python `__init__`.
   WhisperModel(

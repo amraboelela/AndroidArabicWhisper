@@ -1,4 +1,4 @@
-#include "audio_decoder.h"
+#include "audio.h"
 #include "whisper_audio.h"
 
 #include <iostream>
@@ -51,7 +51,17 @@ std::vector<float> AudioDecoder::pad_or_trim(
   const std::vector<float>& array,
   size_t length
 ) {
-  return whisper::AudioProcessor::pad_or_trim(array, length);
+  if (array.size() == length) {
+    return array;
+  } else if (array.size() > length) {
+    // Trim
+    return std::vector<float>(array.begin(), array.begin() + length);
+  } else {
+    // Pad with zeros
+    std::vector<float> padded = array;
+    padded.resize(length, 0.0f);
+    return padded;
+  }
 }
 
 void AudioDecoder::_ignore_invalid_frames() {

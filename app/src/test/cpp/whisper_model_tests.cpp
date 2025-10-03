@@ -1,5 +1,5 @@
-#include "whisper_model.h"
-#include "audio_decoder.h"
+#include "transcribe.h"
+#include "audio.h"
 #include "feature_extractor.h"
 #include "tokenizer.h"
 #include <iostream>

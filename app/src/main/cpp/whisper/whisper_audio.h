@@ -21,6 +21,15 @@ namespace whisper {
 class AudioProcessor {
 public:
   /**
+   * Decode audio from file
+   * @param input_file Path to audio file
+   * @param sampling_rate Target sampling rate (default 16kHz)
+   * @param split_stereo Whether to split stereo channels
+   * @return Vector of float samples at specified sample rate
+   */
+  static std::vector<float> decode_audio(const std::string& input_file, int sampling_rate = WHISPER_SAMPLE_RATE, bool split_stereo = false);
+
+  /**
    * Load audio from file and convert to whisper-compatible format
    * @param filename Path to audio file
    * @return Vector of float samples at 16kHz mono
@@ -41,14 +50,6 @@ public:
    * @return Mono audio samples
    */
   static std::vector<float> stereo_to_mono(const std::vector<float>& stereo_audio);
-
-  /**
-   * Pad or trim audio to specified length
-   * @param audio Input audio
-   * @param length Target length in samples
-   * @return Padded or trimmed audio
-   */
-  static std::vector<float> pad_or_trim(const std::vector<float>& audio, size_t length);
 
   /**
    * Normalize audio to [-1, 1] range

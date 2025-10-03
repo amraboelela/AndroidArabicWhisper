@@ -1,6 +1,6 @@
 #include <jni.h>
-#include "whisper_model.h"
-#include "audio_decoder.h"
+#include "transcribe.h"
+#include "audio.h"
 #include <android/log.h>
 #include <string>
 #include <vector>
