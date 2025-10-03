@@ -1,7 +1,6 @@
 #!/bin/bash
 
 # Script to build and run whisper audio integration test
-# Usage: ./run_test.sh
 
 set -e  # Exit on any error
 

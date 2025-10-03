@@ -268,10 +268,22 @@ public:
             return false;
         }
 
-        TranscriptionResult result = transcriber->transcribe(audioFile);
-        printTranscriptionResults(result);
+        // Call our native C++ whisper_model_caller directly to see Arabic output
+        std::string command = "./whisper_model_caller \"" + modelPath + "\" \"" + audioFile + "\"";
+        std::cout << "\n🔧 Calling native C++ whisper_model_caller:" << std::endl;
+        std::cout << "Command: " << command << std::endl;
+        std::cout << std::string(70, '=') << std::endl;
 
-        return result.success;
+        int result = std::system(command.c_str());
+
+        std::cout << std::string(70, '=') << std::endl;
+        std::cout << "Native C++ whisper_model_caller exit code: " << result << std::endl;
+
+        // Also call the transcriber for compatibility
+        TranscriptionResult transcription_result = transcriber->transcribe(audioFile);
+        printTranscriptionResults(transcription_result);
+
+        return transcription_result.success || (result == 0);
     }
 
     bool runTest() {

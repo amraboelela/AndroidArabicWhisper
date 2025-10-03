@@ -10,7 +10,7 @@ echo "=== Building and Running Whisper Unit Tests ==="
 # Navigate to current directory
 cd "$(dirname "$0")"
 
-rm -rf test_build
+#rm -rf test_build
 
 # Create build directory
 if [ ! -d "test_build" ]; then
