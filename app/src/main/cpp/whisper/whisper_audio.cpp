@@ -134,27 +134,124 @@ std::vector<float> AudioProcessor::apply_preemphasis(const std::vector<float>& a
 }
 
 std::vector<std::vector<float>> AudioProcessor::extract_mel_spectrogram(const std::vector<float>& audio) {
-  // Apply pre-emphasis
-  auto filtered_audio = apply_preemphasis(audio);
+  // Compute STFT directly (no pre-emphasis to match Python's faster-whisper)
+  auto stft = compute_stft(audio);
 
-  // Compute STFT
-  auto stft = compute_stft(filtered_audio);
+  // Log window statistics (computed inside compute_stft, so log it here separately)
+  auto window = apply_hann_window(WHISPER_N_FFT);
+  float win_min = *std::min_element(window.begin(), window.end());
+  float win_max = *std::max_element(window.begin(), window.end());
+  double win_sum = std::accumulate(window.begin(), window.end(), 0.0);
+  float win_mean = win_sum / window.size();
+  std::cout << "  Window stats: min=" << win_min << ", max=" << win_max << ", mean=" << win_mean << std::endl;
+
+  // Print first 10 window values
+  std::cout << "  First 10 window values: [";
+  for (size_t i = 0; i < std::min(size_t(10), window.size()); ++i) {
+    std::cout << (i > 0 ? " " : "") << window[i];
+  }
+  std::cout << "]" << std::endl;
+
+  // Note: STFT in C++ produces real magnitudes (power), not complex values
+  // So we can't log complex stats like Python does
+  std::cout << "  STFT output shape (magnitude squared): (" << stft.size() << ", " << (stft.empty() ? 0 : stft[0].size()) << ")" << std::endl;
+
+  // Drop the last frame to match Python's behavior (stft[..., :-1])
+  // Python intentionally drops the last time frame
+  // After transposition, stft is [freq_bins][time_frames]
+  if (!stft.empty() && !stft[0].empty()) {
+    for (auto& freq_band : stft) {
+      freq_band.pop_back();
+    }
+  }
+
+  // Log STFT magnitudes shape (after dropping last frame, to match Python)
+  // stft is now [freq_bins][time_frames]
+  size_t n_freq_bins = stft.size();
+  size_t n_frames = stft.empty() ? 0 : stft[0].size();
+  std::cout << "  STFT magnitudes shape: (" << n_freq_bins << ", " << n_frames << ")" << std::endl;
+
+  // Calculate and log STFT magnitudes statistics
+  float stft_min = std::numeric_limits<float>::infinity();
+  float stft_max = -std::numeric_limits<float>::infinity();
+  double stft_sum = 0.0;
+  size_t stft_count = 0;
+  for (const auto& freq_band : stft) {
+    for (float val : freq_band) {
+      stft_min = std::min(stft_min, val);
+      stft_max = std::max(stft_max, val);
+      stft_sum += val;
+      stft_count++;
+    }
+  }
+  float stft_mean = stft_sum / stft_count;
+  std::cout << "  STFT magnitudes stats: min=" << stft_min << ", max=" << stft_max << ", mean=" << stft_mean << std::endl;
+
+  // Print first 5 magnitude values from first frequency bin (same as Python)
+  std::cout << "  First 5 magnitude values: [";
+  for (size_t i = 0; i < std::min(size_t(5), stft.empty() ? 0 : stft[0].size()); ++i) {
+    std::cout << (i > 0 ? " " : "") << stft[0][i];
+  }
+  std::cout << "]" << std::endl;
 
   // Apply mel filter bank
   auto mel_filters = get_mel_filter_bank();
 
+  // Debug: Log mel filter stats
+  float mel_filter_min = std::numeric_limits<float>::infinity();
+  float mel_filter_max = -std::numeric_limits<float>::infinity();
+  double mel_filter_sum = 0.0;
+  size_t mel_filter_count = 0;
+  for (const auto& mel_filter_band : mel_filters) {
+    for (float val : mel_filter_band) {
+      mel_filter_min = std::min(mel_filter_min, val);
+      mel_filter_max = std::max(mel_filter_max, val);
+      mel_filter_sum += val;
+      mel_filter_count++;
+    }
+  }
+  float mel_filter_mean = mel_filter_sum / mel_filter_count;
+  std::cout << "  Mel filter stats: min=" << mel_filter_min << ", max=" << mel_filter_max << ", mean=" << mel_filter_mean << std::endl;
+
   // Apply mel filters to STFT magnitude
+  // STFT is now [freq_bins][time_frames], mel_spec should be [mel_bins][time_frames]
   std::vector<std::vector<float>> mel_spec(WHISPER_N_MEL);
+  size_t num_time_frames = stft.empty() ? 0 : stft[0].size();
+
   for (int mel = 0; mel < WHISPER_N_MEL; ++mel) {
-      mel_spec[mel].resize(stft.size());
-      for (size_t frame = 0; frame < stft.size(); ++frame) {
+      mel_spec[mel].resize(num_time_frames);
+      for (size_t frame = 0; frame < num_time_frames; ++frame) {
       float mel_value = 0.0f;
-      for (size_t freq = 0; freq < stft[frame].size() && freq < mel_filters[mel].size(); ++freq) {
-          mel_value += stft[frame][freq] * mel_filters[mel][freq];
+      // Sum over frequency bins: mel_value = sum(mel_filter[freq] * stft[freq][frame])
+      for (size_t freq = 0; freq < stft.size() && freq < mel_filters[mel].size(); ++freq) {
+          mel_value += mel_filters[mel][freq] * stft[freq][frame];
       }
       mel_spec[mel][frame] = mel_value;
       }
   }
+
+  // Log raw mel spec statistics
+  float mel_min = std::numeric_limits<float>::infinity();
+  float mel_max = -std::numeric_limits<float>::infinity();
+  double mel_sum = 0.0;
+  size_t mel_count = 0;
+  for (const auto& mel_band : mel_spec) {
+    for (float val : mel_band) {
+      mel_min = std::min(mel_min, val);
+      mel_max = std::max(mel_max, val);
+      mel_sum += val;
+      mel_count++;
+    }
+  }
+  float mel_mean = mel_sum / mel_count;
+  std::cout << "  Raw mel spec stats: min=" << mel_min << ", max=" << mel_max << ", mean=" << mel_mean << std::endl;
+
+  // Print first 5 mel values from first mel band
+  std::cout << "  First 5 mel values: [";
+  for (size_t i = 0; i < std::min(size_t(5), mel_spec[0].size()); ++i) {
+    std::cout << (i > 0 ? " " : "") << mel_spec[0][i];
+  }
+  std::cout << "]" << std::endl;
 
   return mel_spec;
 }
@@ -168,6 +265,22 @@ std::vector<std::vector<float>> AudioProcessor::apply_log_transform(const std::v
       }
   }
 
+  // Log statistics after log10
+  float log_min = std::numeric_limits<float>::infinity();
+  float log_max = -std::numeric_limits<float>::infinity();
+  double log_sum = 0.0;
+  size_t log_count = 0;
+  for (const auto& mel_band : log_mel_spec) {
+    for (float val : mel_band) {
+      log_min = std::min(log_min, val);
+      log_max = std::max(log_max, val);
+      log_sum += val;
+      log_count++;
+    }
+  }
+  float log_mean = log_sum / log_count;
+  std::cout << "  After log10 stats: min=" << log_min << ", max=" << log_max << ", mean=" << log_mean << std::endl;
+
   return log_mel_spec;
 }
 
@@ -177,8 +290,13 @@ std::vector<std::vector<float>> AudioProcessor::compute_stft(const std::vector<f
 
   auto window = apply_hann_window(window_size);
 
-  // Calculate number of frames
-  int num_frames = (audio.size() - window_size) / hop_size + 1;
+  // Apply center padding (matches Python's center=True in STFT)
+  const int pad_amount = window_size / 2;
+  std::vector<float> padded_audio(audio.size() + 2 * pad_amount, 0.0f);
+  std::copy(audio.begin(), audio.end(), padded_audio.begin() + pad_amount);
+
+  // Calculate number of frames using padded length
+  int num_frames = (padded_audio.size() - window_size) / hop_size + 1;
   if (num_frames <= 0) num_frames = 1;
 
   std::vector<std::vector<float>> stft_magnitude(num_frames);
@@ -188,23 +306,55 @@ std::vector<std::vector<float>> AudioProcessor::compute_stft(const std::vector<f
 
       // Extract and window the frame
       std::vector<float> frame_data(window_size, 0.0f);
-      for (int n = 0; n < window_size && start_idx + n < audio.size(); ++n) {
-          frame_data[n] = audio[start_idx + n] * window[n];
+      for (int n = 0; n < window_size && start_idx + n < padded_audio.size(); ++n) {
+          frame_data[n] = padded_audio[start_idx + n] * window[n];
+      }
+
+      // Debug: log first frame data for frame 100
+      static bool logged_frame_data = false;
+      if (!logged_frame_data && frame == 100) {
+        std::cout << "  DEBUG frame 100 input: First 10 values: [";
+        for (size_t i = 0; i < std::min(size_t(10), frame_data.size()); ++i) {
+          std::cout << (i > 0 ? ", " : "") << frame_data[i];
+        }
+        std::cout << "]" << std::endl;
+        logged_frame_data = true;
       }
 
       // Compute FFT using proper FFT implementation
       auto fft_result = FFT::rfft(frame_data);
 
+      // Debug: log first FFT result for first non-zero frame
+      static bool logged_fft = false;
+      if (!logged_fft && frame == 100) {  // Check frame 100 to avoid all-zero frames
+        std::cout << "  DEBUG FFT frame 100: First 5 complex values: [";
+        for (size_t i = 0; i < std::min(size_t(5), fft_result.size()); ++i) {
+          std::cout << (i > 0 ? ", " : "") << "(" << fft_result[i].real() << "," << fft_result[i].imag() << ")";
+        }
+        std::cout << "]" << std::endl;
+        logged_fft = true;
+      }
+
       // Compute magnitude squared (power spectrum), matching Python's ** 2
-      // Also drop the last bin like Python does with [..., :-1]
-      stft_magnitude[frame].resize(fft_result.size() - 1);
-      for (size_t i = 0; i < fft_result.size() - 1; ++i) {
+      stft_magnitude[frame].resize(fft_result.size());
+      for (size_t i = 0; i < fft_result.size(); ++i) {
           float mag = std::abs(fft_result[i]);
           stft_magnitude[frame][i] = mag * mag;  // Square the magnitude
       }
   }
 
-  return stft_magnitude;
+  // Transpose to match Python's output format: [freq_bins, time_frames]
+  // Python outputs shape (n_freq_bins, n_frames) but C++ produces (n_frames, n_freq_bins)
+  int n_freq_bins = stft_magnitude.empty() ? 0 : stft_magnitude[0].size();
+  std::vector<std::vector<float>> transposed(n_freq_bins, std::vector<float>(num_frames));
+
+  for (int frame = 0; frame < num_frames; ++frame) {
+    for (int freq = 0; freq < n_freq_bins; ++freq) {
+      transposed[freq][frame] = stft_magnitude[frame][freq];
+    }
+  }
+
+  return transposed;
 }
 
 std::vector<float> AudioProcessor::apply_hann_window(int window_size) {
@@ -223,49 +373,80 @@ std::vector<float> AudioProcessor::apply_hann_window(int window_size) {
 std::vector<std::vector<float>> AudioProcessor::get_mel_filter_bank() {
   std::vector<std::vector<float>> mel_filters(WHISPER_N_MEL);
 
-  // Create mel filter bank
-  float mel_low = hz_to_mel(0.0f);
-  float mel_high = hz_to_mel(WHISPER_SAMPLE_RATE / 2.0f);
+  // Match Python's Slaney-style mel scale (not HTK mel scale)
+  // Python uses a piecewise linear/logarithmic scale
+  const int n_fft = WHISPER_N_FFT;
+  const int sr = WHISPER_SAMPLE_RATE;
+
+  // Center freqs of each FFT bin
+  std::vector<float> fftfreqs(n_fft / 2 + 1);
+  for (int i = 0; i <= n_fft / 2; ++i) {
+    fftfreqs[i] = i * sr / static_cast<float>(n_fft);
+  }
+
+  // Mel scale parameters (from Python's faster-whisper)
+  const float min_mel = 0.0f;
+  const float max_mel = 45.245640471924965f;
 
   // Create equally spaced mel points
-  std::vector<float> mel_points(WHISPER_N_MEL + 2);
+  std::vector<float> mels(WHISPER_N_MEL + 2);
   for (int i = 0; i < WHISPER_N_MEL + 2; ++i) {
-      mel_points[i] = mel_low + (mel_high - mel_low) * i / (WHISPER_N_MEL + 1);
+    mels[i] = min_mel + (max_mel - min_mel) * i / (WHISPER_N_MEL + 1);
   }
 
-  // Convert mel points back to Hz
-  std::vector<float> hz_points(WHISPER_N_MEL + 2);
-  for (int i = 0; i < WHISPER_N_MEL + 2; ++i) {
-      hz_points[i] = mel_to_hz(mel_points[i]);
+  // Fill in the linear scale
+  const float f_min = 0.0f;
+  const float f_sp = 200.0f / 3.0f;
+  std::vector<float> freqs(mels.size());
+  for (size_t i = 0; i < mels.size(); ++i) {
+    freqs[i] = f_min + f_sp * mels[i];
   }
 
-  // Convert Hz to FFT bin numbers
-  std::vector<int> bin_points(WHISPER_N_MEL + 2);
-  for (int i = 0; i < WHISPER_N_MEL + 2; ++i) {
-      bin_points[i] = static_cast<int>(std::floor((WHISPER_N_FFT + 1) * hz_points[i] / WHISPER_SAMPLE_RATE));
+  // And now the nonlinear scale
+  const float min_log_hz = 1000.0f;  // beginning of log region (Hz)
+  const float min_log_mel = (min_log_hz - f_min) / f_sp;  // same (Mels)
+  const float logstep = std::log(6.4f) / 27.0f;  // step size for log region
+
+  for (size_t i = 0; i < mels.size(); ++i) {
+    if (mels[i] >= min_log_mel) {
+      freqs[i] = min_log_hz * std::exp(logstep * (mels[i] - min_log_mel));
+    }
   }
 
-  // Create triangular filters
+  // Compute fdiff
+  std::vector<float> fdiff(freqs.size() - 1);
+  for (size_t i = 0; i < fdiff.size(); ++i) {
+    fdiff[i] = freqs[i + 1] - freqs[i];
+  }
+
+  // Create ramps matrix: freqs.reshape(-1, 1) - fftfreqs.reshape(1, -1)
+  // ramps[i][j] = freqs[i] - fftfreqs[j]
+  std::vector<std::vector<float>> ramps(freqs.size(), std::vector<float>(fftfreqs.size()));
+  for (size_t i = 0; i < freqs.size(); ++i) {
+    for (size_t j = 0; j < fftfreqs.size(); ++j) {
+      ramps[i][j] = freqs[i] - fftfreqs[j];
+    }
+  }
+
+  // Create mel filters
   for (int mel = 0; mel < WHISPER_N_MEL; ++mel) {
-      mel_filters[mel].resize(WHISPER_N_FFT / 2 + 1, 0.0f);
+    mel_filters[mel].resize(fftfreqs.size(), 0.0f);
 
-      int left = bin_points[mel];
-      int center = bin_points[mel + 1];
-      int right = bin_points[mel + 2];
+    // lower = -ramps[mel] / fdiff[mel]
+    // upper = ramps[mel+2] / fdiff[mel+1]
+    // weights = max(0, min(lower, upper))
 
-      // Left slope
-      for (int bin = left; bin < center; ++bin) {
-      if (bin < mel_filters[mel].size()) {
-          mel_filters[mel][bin] = static_cast<float>(bin - left) / (center - left);
-      }
-      }
+    for (size_t j = 0; j < fftfreqs.size(); ++j) {
+      float lower = -ramps[mel][j] / fdiff[mel];
+      float upper = ramps[mel + 2][j] / fdiff[mel + 1];
+      mel_filters[mel][j] = std::max(0.0f, std::min(lower, upper));
+    }
 
-      // Right slope
-      for (int bin = center; bin < right; ++bin) {
-      if (bin < mel_filters[mel].size()) {
-          mel_filters[mel][bin] = static_cast<float>(right - bin) / (right - center);
-      }
-      }
+    // Apply Slaney-style normalization
+    float enorm = 2.0f / (freqs[mel + 2] - freqs[mel]);
+    for (size_t j = 0; j < mel_filters[mel].size(); ++j) {
+      mel_filters[mel][j] *= enorm;
+    }
   }
 
   return mel_filters;

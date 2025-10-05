@@ -189,6 +189,11 @@ Matrix FeatureExtractor::compute_mel_spectrogram(
     int padding,
     std::optional<int> chunk_length
 ) {
+  std::cout << "DEBUG: feature_extractor.__call__ called" << std::endl;
+  std::cout << "  Input waveform shape: (" << waveform.size() << ",)" << std::endl;
+  std::cout << "  Padding: " << padding << std::endl;
+  std::cout << "  Chunk length: " << (chunk_length.has_value() ? std::to_string(chunk_length.value()) : "None") << std::endl;
+
   // Handle chunking if specified
   std::vector<float> audio_to_process = waveform;
 
@@ -200,6 +205,26 @@ Matrix FeatureExtractor::compute_mel_spectrogram(
     }
   }
 
+  // Apply padding (matches Python's np.pad(waveform, (0, padding)))
+  if (padding > 0) {
+    audio_to_process.insert(audio_to_process.end(), padding, 0.0f);
+    std::cout << "  After padding shape: (" << audio_to_process.size() << ",)" << std::endl;
+  }
+
+  // Log audio statistics before STFT
+  float audio_min = *std::min_element(audio_to_process.begin(), audio_to_process.end());
+  float audio_max = *std::max_element(audio_to_process.begin(), audio_to_process.end());
+  double audio_sum = std::accumulate(audio_to_process.begin(), audio_to_process.end(), 0.0);
+  float audio_mean = audio_sum / audio_to_process.size();
+  std::cout << "  Audio stats before STFT: min=" << audio_min << ", max=" << audio_max << ", mean=" << audio_mean << std::endl;
+
+  // Print first 10 audio samples
+  std::cout << "  First 10 audio samples: [";
+  for (size_t i = 0; i < std::min(size_t(10), audio_to_process.size()); ++i) {
+    std::cout << (i > 0 ? " " : "") << audio_to_process[i];
+  }
+  std::cout << "]" << std::endl;
+
   // Use whisper-compatible mel spectrogram extraction
   auto whisper_mel_spec = whisper::AudioProcessor::extract_mel_spectrogram(audio_to_process);
 
@@ -208,6 +233,8 @@ Matrix FeatureExtractor::compute_mel_spectrogram(
     // Fall back to original implementation
     return compute_mel_spectrogram_original(waveform, padding, chunk_length);
   }
+
+  std::cout << "  Raw mel spec shape: (" << whisper_mel_spec.size() << ", " << whisper_mel_spec[0].size() << ")" << std::endl;
 
   // Apply log transform for whisper compatibility
   auto log_mel_spec = whisper::AudioProcessor::apply_log_transform(whisper_mel_spec);
@@ -236,20 +263,49 @@ Matrix FeatureExtractor::compute_mel_spectrogram(
     }
   }
 
-  // Log after normalization
-  float max_after = -std::numeric_limits<float>::infinity();
-  float min_after = std::numeric_limits<float>::infinity();
-  for (const auto& row : log_mel_spec) {
-    for (float val : row) {
-      max_after = std::max(max_after, val);
-      min_after = std::min(min_after, val);
+  // Log statistics after clamping and before final scaling
+  float clamp_min = std::numeric_limits<float>::infinity();
+  float clamp_max = -std::numeric_limits<float>::infinity();
+  double clamp_sum = 0.0;
+  size_t clamp_count = 0;
+
+  // Recalculate with clamping only (before division)
+  auto temp_spec = whisper::AudioProcessor::apply_log_transform(whisper_mel_spec);
+  for (auto& row : temp_spec) {
+    for (float& val : row) {
+      val = std::max(val, max_val - 8.0f);
     }
   }
-  // std::cout << "After normalization - max: " << max_after << ", min: " << min_after << std::endl;
+  for (const auto& row : temp_spec) {
+    for (float val : row) {
+      clamp_min = std::min(clamp_min, val);
+      clamp_max = std::max(clamp_max, val);
+      clamp_sum += val;
+      clamp_count++;
+    }
+  }
+  float clamp_mean = clamp_sum / clamp_count;
+  std::cout << "  After clamping stats: min=" << clamp_min << ", max=" << clamp_max << ", mean=" << clamp_mean << std::endl;
 
-  // std::cout << "Successfully extracted mel spectrogram with dimensions: "
-  //           << log_mel_spec.size() << " x "
-  //           << (log_mel_spec.empty() ? 0 : log_mel_spec[0].size()) << std::endl;
+  // Log final shape after normalization
+  std::cout << "  Final log_spec shape: (" << log_mel_spec.size() << ", "
+            << (log_mel_spec.empty() ? 0 : log_mel_spec[0].size()) << ")" << std::endl;
+
+  // Log final statistics
+  float final_min = std::numeric_limits<float>::infinity();
+  float final_max = -std::numeric_limits<float>::infinity();
+  double final_sum = 0.0;
+  size_t final_count = 0;
+  for (const auto& row : log_mel_spec) {
+    for (float val : row) {
+      final_min = std::min(final_min, val);
+      final_max = std::max(final_max, val);
+      final_sum += val;
+      final_count++;
+    }
+  }
+  float final_mean = final_sum / final_count;
+  std::cout << "  Final log_spec stats: min=" << final_min << ", max=" << final_max << ", mean=" << final_mean << std::endl;
 
   return log_mel_spec;
 }

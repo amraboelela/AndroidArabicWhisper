@@ -90,7 +90,7 @@ public:
 
     std::string transcribe(const std::string& audioFile) {
         try {
-            std::cout << "\nLoading WhisperModel..." << std::endl;
+            std::cout << "\nLoading WhisperModel in offline mode..." << std::endl;
 
             // Initialize WhisperModel with the same parameters as Python version
             WhisperModel model(
@@ -134,7 +134,13 @@ public:
 
             std::cout << "First 20 samples: [";
             for (size_t i = 0; i < std::min(size_t(20), audio.size()); ++i) {
-                std::cout << audio[i];
+                // Format like Python: show minimal decimals (0. instead of 0.000000)
+                float val = audio[i];
+                if (val == 0.0f) {
+                    std::cout << "0.";
+                } else {
+                    std::cout << val;
+                }
                 if (i < 19 && i < audio.size() - 1) std::cout << " ";
             }
             std::cout << "]" << std::endl;

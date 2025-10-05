@@ -170,6 +170,10 @@ class FeatureExtractor:
         if window_ is not None:
             input_array = input_array * window_
 
+        # Debug: log frame 100 input after windowing (if it exists)
+        if n_frames > 100:
+            print(f"  DEBUG frame 100 input: First 10 values: {input_array[0, 100, :10]}")
+
         # FFT and transpose
         complex_fft = input_is_complex
         onesided = onesided if onesided is not None else not complex_fft
@@ -193,12 +197,20 @@ class FeatureExtractor:
         if input_array_1d:
             output = output.squeeze(0)
 
+        # Debug: print frame 100 FFT output (if it exists)
+        if return_complex and output.ndim >= 2 and output.shape[1] > 100:
+            print(f"  DEBUG FFT frame 100: First 5 complex values: {output[:5, 100]}")
+
         return output if return_complex else np.real(output)
 
     def __call__(self, waveform: np.ndarray, padding=160, chunk_length=None):
         """
         Compute the log-Mel spectrogram of the provided audio.
         """
+        print("DEBUG: feature_extractor.__call__ called")
+        print(f"  Input waveform shape: {waveform.shape}")
+        print(f"  Padding: {padding}")
+        print(f"  Chunk length: {chunk_length}")
 
         if chunk_length is not None:
             self.n_samples = chunk_length * self.sampling_rate
@@ -209,8 +221,14 @@ class FeatureExtractor:
 
         if padding:
             waveform = np.pad(waveform, (0, padding))
+            print(f"  After padding shape: {waveform.shape}")
+
+        print(f"  Audio stats before STFT: min={waveform.min():.6f}, max={waveform.max():.6f}, mean={waveform.mean():.6f}")
+        print(f"  First 10 audio samples: {waveform[:10]}")
 
         window = np.hanning(self.n_fft + 1)[:-1].astype("float32")
+        print(f"  Window stats: min={window.min():.6f}, max={window.max():.6f}, mean={window.mean():.6f}")
+        print(f"  First 10 window values: {window[:10]}")
 
         stft = self.stft(
             waveform,
@@ -219,12 +237,37 @@ class FeatureExtractor:
             window=window,
             return_complex=True,
         ).astype("complex64")
+
+        print(f"  STFT output shape (complex): {stft.shape}")
+        print(f"  STFT complex stats: min_real={np.real(stft).min():.6f}, max_real={np.real(stft).max():.6f}")
+        print(f"  STFT complex stats: min_imag={np.imag(stft).min():.6f}, max_imag={np.imag(stft).max():.6f}")
+
         magnitudes = np.abs(stft[..., :-1]) ** 2
+
+        print(f"  STFT magnitudes shape: {magnitudes.shape}")
+        print(f"  STFT magnitudes stats: min={magnitudes.min():.6f}, max={magnitudes.max():.6f}, mean={magnitudes.mean():.6f}")
+        print(f"  First 5 magnitude values: {magnitudes[0, :5]}")
+
+        # Debug: log mel filter stats
+        print(f"  Mel filter stats: min={self.mel_filters.min():.6f}, max={self.mel_filters.max():.6f}, mean={self.mel_filters.mean():.6f}")
 
         mel_spec = self.mel_filters @ magnitudes
 
+        print(f"  Raw mel spec shape: {mel_spec.shape}")
+        print(f"  Raw mel spec stats: min={mel_spec.min():.6f}, max={mel_spec.max():.6f}, mean={mel_spec.mean():.6f}")
+        print(f"  First 5 mel values: {mel_spec[0, :5]}")
+
         log_spec = np.log10(np.clip(mel_spec, a_min=1e-10, a_max=None))
+
+        print(f"  After log10 stats: min={log_spec.min():.6f}, max={log_spec.max():.6f}, mean={log_spec.mean():.6f}")
+
         log_spec = np.maximum(log_spec, log_spec.max() - 8.0)
+
+        print(f"  After clamping stats: min={log_spec.min():.6f}, max={log_spec.max():.6f}, mean={log_spec.mean():.6f}")
+
         log_spec = (log_spec + 4.0) / 4.0
+
+        print(f"  Final log_spec shape: {log_spec.shape}")
+        print(f"  Final log_spec stats: min={log_spec.min():.6f}, max={log_spec.max():.6f}, mean={log_spec.mean():.6f}")
 
         return log_spec

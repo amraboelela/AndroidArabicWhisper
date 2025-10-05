@@ -199,7 +199,9 @@ std::tuple<std::vector<Segment>, TranscriptionInfo> WhisperModel::transcribe(
   float duration = static_cast<float>(audio.size()) / feature_extractor.sampling_rate();
   float duration_after_vad = duration;
 
-  std::cout << "Processing audio with duration " << duration << "s" << std::endl;
+  // std::cout << "Processing audio with duration " << duration << "s" << std::endl;
+
+  std::cout << "\n=== Extracting features ===" << std::endl;
 
   // Step 3: Extract features from the full audio
   auto features = feature_extractor.extract(audio);
@@ -207,7 +209,7 @@ std::tuple<std::vector<Segment>, TranscriptionInfo> WhisperModel::transcribe(
     throw std::runtime_error("Failed to extract features from audio");
   }
 
-  std::cout << "Extracted features: " << features.size() << " x " << features[0].size() << " mel spectrogram" << std::endl;
+  std::cout << "Features shape: (" << features.size() << ", " << features[0].size() << ")" << std::endl;
 
   // Log feature statistics
   if (!features.empty() && !features[0].empty()) {
@@ -236,14 +238,19 @@ std::tuple<std::vector<Segment>, TranscriptionInfo> WhisperModel::transcribe(
     std::cout << "Features stats: min=" << min_val << ", max=" << max_val
               << ", mean=" << mean << ", std=" << std_dev << std::endl;
 
-    // Print first 5x5 of features
+    // Print first 5x5 of features in numpy-style format
     std::cout << "First 5x5 of features:" << std::endl;
+    std::cout << "[";
     for (size_t i = 0; i < std::min(size_t(5), features.size()); ++i) {
+      std::cout << "[";
       for (size_t j = 0; j < std::min(size_t(5), features[i].size()); ++j) {
-        std::cout << features[i][j] << " ";
+        std::cout << features[i][j];
+        if (j < std::min(size_t(5), features[i].size()) - 1) std::cout << " ";
       }
-      std::cout << std::endl;
+      std::cout << "]";
+      if (i < std::min(size_t(5), features.size()) - 1) std::cout << "\n ";
     }
+    std::cout << "]" << std::endl;
   }
 
   // Step 4: Language detection - follows Python logic exactly

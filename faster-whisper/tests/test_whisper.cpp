@@ -189,7 +189,6 @@ public:
         for (const auto& path : possiblePaths) {
             std::string modelFile = path + "/model.bin";
             if (std::filesystem::exists(modelFile)) {
-                std::cout << "Found whisper model at: " << path << std::endl;
                 return std::filesystem::absolute(path);
             }
         }
@@ -208,8 +207,6 @@ public:
     }
 
     bool createTokenizerJson() {
-        std::cout << "\n=== Creating tokenizer.json if needed ===" << std::endl;
-
         return tokenizerCreator.createTokenizerJson(modelPath);
     }
 
@@ -260,9 +257,6 @@ public:
     }
 
     bool transcribeAudio(const std::string& audioFile) {
-        std::cout << "\n=== Transcribing Audio File ===" << std::endl;
-        std::cout << "Audio file: " << audioFile << std::endl;
-
         if (!fileExists(audioFile)) {
             std::cerr << "❌ Audio file not found: " << audioFile << std::endl;
             return false;
@@ -270,14 +264,8 @@ public:
 
         // Call our native C++ whisper_model_caller directly to see Arabic output
         std::string command = "./whisper_model_caller \"" + modelPath + "\" \"" + audioFile + "\"";
-        std::cout << "\n🔧 Calling native C++ whisper_model_caller:" << std::endl;
-        std::cout << "Command: " << command << std::endl;
-        std::cout << std::string(70, '=') << std::endl;
 
         int result = std::system(command.c_str());
-
-        std::cout << std::string(70, '=') << std::endl;
-        std::cout << "Native C++ whisper_model_caller exit code: " << result << std::endl;
 
         // Also call the transcriber for compatibility
         TranscriptionResult transcription_result = transcriber->transcribe(audioFile);
@@ -287,15 +275,16 @@ public:
     }
 
     bool runTest() {
-        std::cout << "🚀 Whisper Audio Transcription Test" << std::endl;
-        std::cout << "===================================" << std::endl;
-
         try {
-            // Step 1: Create tokenizer.json if needed
+            // Step 1: Create tokenizer.json if needed (do this first to match Python order)
             if (!createTokenizerJson()) {
                 std::cerr << "❌ Failed to create tokenizer.json" << std::endl;
                 return false;
             }
+
+            // Canonicalize the path to remove ../ components
+            std::string cleanPath = std::filesystem::canonical(modelPath).string();
+            std::cout << "Testing CTranslate2 model at: " << cleanPath << std::endl;
 
             // Step 2: Transcribe the audio file
             if (!transcribeAudio("data/001.wav")) {
@@ -303,7 +292,6 @@ public:
                 return false;
             }
 
-            std::cout << "\n🎉 Test completed successfully!" << std::endl;
             return true;
 
         } catch (const std::exception& e) {
