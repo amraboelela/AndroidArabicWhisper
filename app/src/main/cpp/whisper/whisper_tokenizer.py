@@ -7,6 +7,31 @@ including special tokens, language tokens, and text encoding/decoding.
 import json
 import re
 from typing import List, Tuple, Dict, Optional
+from functools import lru_cache
+
+@lru_cache()
+def bytes_to_unicode():
+    """
+    Returns mapping from byte values to unicode strings.
+    This is needed for byte-level BPE as used in GPT-2.
+    """
+    bs = list(range(ord("!"), ord("~")+1))+list(range(ord("¡"), ord("¬")+1))+list(range(ord("®"), ord("ÿ")+1))
+    cs = bs[:]
+    n = 0
+    for b in range(2**8):
+        if b not in bs:
+            bs.append(b)
+            cs.append(2**8+n)
+            n += 1
+    cs = [chr(n) for n in cs]
+    return dict(zip(bs, cs))
+
+@lru_cache()
+def unicode_to_bytes():
+    """
+    Returns reverse mapping from unicode strings to byte values.
+    """
+    return {v: k for k, v in bytes_to_unicode().items()}
 
 # Special token IDs
 EOT_TOKEN = 50257
@@ -85,14 +110,28 @@ class WhisperTokenizer:
             with open(vocab_file, 'r', encoding='utf-8') as f:
                 content = f.read()
 
-            # Parse JSON array
-            vocab = json.loads(content)
+            # Parse JSON
+            data = json.loads(content)
 
-            for token_id, token in enumerate(vocab):
-                self.vocab_to_id[token] = token_id
-                self.id_to_vocab[token_id] = token
+            # Check if it's HuggingFace tokenizers format
+            if 'model' in data and 'vocab' in data['model']:
+                vocab = data['model']['vocab']
+                print(f"Loading HuggingFace tokenizer format with {len(vocab)} tokens")
 
-            print(f"Loaded {len(vocab)} tokens from vocabulary file")
+                for token, token_id in vocab.items():
+                    self.vocab_to_id[token] = token_id
+                    self.id_to_vocab[token_id] = token
+
+            # Or if it's a simple array of tokens
+            elif isinstance(data, list):
+                for token_id, token in enumerate(data):
+                    self.vocab_to_id[token] = token_id
+                    self.id_to_vocab[token_id] = token
+            else:
+                print("Unknown tokenizer format")
+                return False
+
+            print(f"Loaded {len(self.vocab_to_id)} tokens from vocabulary file")
             return True
 
         except Exception as e:
@@ -217,21 +256,28 @@ class WhisperTokenizer:
         Returns:
             Decoded text
         """
-        result = ""
-        i = 0
+        # Get the unicode-to-bytes mapping
+        byte_decoder = unicode_to_bytes()
 
-        while i < len(raw_bpe):
-            # Handle BPE space prefix 'Ġ' (U+0120 encoded as UTF-8: 0xC4 0xA0)
-            if (i + 1 < len(raw_bpe) and
-                ord(raw_bpe[i]) == 0xC4 and
-                ord(raw_bpe[i + 1]) == 0xA0):
-                result += ' '
-                i += 2
+        # Convert unicode characters back to bytes
+        byte_list = []
+        for char in raw_bpe:
+            if char in byte_decoder:
+                byte_list.append(byte_decoder[char])
             else:
-                result += raw_bpe[i]
-                i += 1
+                # If character not in mapping, use its byte value directly
+                byte_list.append(ord(char))
 
-        return result
+        # Convert bytes to string
+        try:
+            text = bytearray(byte_list).decode('utf-8', errors='replace')
+        except Exception:
+            text = raw_bpe
+
+        # Replace BPE space token with regular space
+        text = text.replace('\u0120', ' ')
+
+        return text
 
     def token_to_id(self, token: str) -> int:
         """Convert token to ID.

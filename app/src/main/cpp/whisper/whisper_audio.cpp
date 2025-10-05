@@ -53,8 +53,8 @@ std::vector<float> AudioProcessor::load_audio(const std::string& filename) {
       audio = resample_audio(audio, header.sample_rate);
   }
 
-  // Normalize audio
-  audio = normalize_audio(audio);
+  // DO NOT normalize audio - faster-whisper expects raw audio values
+  // The audio is already normalized to [-1, 1] range when converting from int16 PCM
 
   return audio;
 }

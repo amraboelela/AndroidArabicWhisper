@@ -212,6 +212,41 @@ Matrix FeatureExtractor::compute_mel_spectrogram(
   // Apply log transform for whisper compatibility
   auto log_mel_spec = whisper::AudioProcessor::apply_log_transform(whisper_mel_spec);
 
+  // Apply normalization matching Python's faster-whisper implementation:
+  // log_spec = np.maximum(log_spec, log_spec.max() - 8.0)
+  // log_spec = (log_spec + 4.0) / 4.0
+
+  // Find max value before normalization
+  float max_val = -std::numeric_limits<float>::infinity();
+  float min_val = std::numeric_limits<float>::infinity();
+  for (const auto& row : log_mel_spec) {
+    for (float val : row) {
+      max_val = std::max(max_val, val);
+      min_val = std::min(min_val, val);
+    }
+  }
+
+  std::cout << "Before normalization - max: " << max_val << ", min: " << min_val << std::endl;
+
+  // Apply normalization
+  for (auto& row : log_mel_spec) {
+    for (float& val : row) {
+      val = std::max(val, max_val - 8.0f);  // Clamp to max - 8
+      val = (val + 4.0f) / 4.0f;            // Scale to [-1, ~1.5] range
+    }
+  }
+
+  // Log after normalization
+  float max_after = -std::numeric_limits<float>::infinity();
+  float min_after = std::numeric_limits<float>::infinity();
+  for (const auto& row : log_mel_spec) {
+    for (float val : row) {
+      max_after = std::max(max_after, val);
+      min_after = std::min(min_after, val);
+    }
+  }
+  std::cout << "After normalization - max: " << max_after << ", min: " << min_after << std::endl;
+
   std::cout << "Successfully extracted mel spectrogram with dimensions: "
             << log_mel_spec.size() << " x "
             << (log_mel_spec.empty() ? 0 : log_mel_spec[0].size()) << std::endl;

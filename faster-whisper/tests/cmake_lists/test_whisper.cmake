@@ -31,8 +31,8 @@ file(COPY ${FASTER_WHISPER_CPP_DIR}/whisper DESTINATION ${CMAKE_SOURCE_DIR}/cpp)
 
 # Add whisper model caller with C++ implementation
 add_executable(whisper_model_caller whisper_model_caller.cpp
-    ${FASTER_WHISPER_CPP_DIR}/whisper_model.cpp
-    ${FASTER_WHISPER_CPP_DIR}/audio_decoder.cpp
+    ${FASTER_WHISPER_CPP_DIR}/transcribe.cpp
+    ${FASTER_WHISPER_CPP_DIR}/audio.cpp
     ${FASTER_WHISPER_CPP_DIR}/feature_extractor.cpp
     ${FASTER_WHISPER_CPP_DIR}/tokenizer.cpp
     ${FASTER_WHISPER_CPP_DIR}/utils.cpp

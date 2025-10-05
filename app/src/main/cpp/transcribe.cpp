@@ -202,6 +202,43 @@ std::tuple<std::vector<Segment>, TranscriptionInfo> WhisperModel::transcribe(
 
   std::cout << "Extracted features: " << features.size() << " x " << features[0].size() << " mel spectrogram" << std::endl;
 
+  // Log feature statistics
+  if (!features.empty() && !features[0].empty()) {
+    float min_val = features[0][0], max_val = features[0][0];
+    double sum = 0.0;
+    size_t count = 0;
+
+    for (const auto& row : features) {
+      for (float val : row) {
+        min_val = std::min(min_val, val);
+        max_val = std::max(max_val, val);
+        sum += val;
+        count++;
+      }
+    }
+
+    float mean = sum / count;
+    double sq_sum = 0.0;
+    for (const auto& row : features) {
+      for (float val : row) {
+        sq_sum += (val - mean) * (val - mean);
+      }
+    }
+    float std_dev = std::sqrt(sq_sum / count);
+
+    std::cout << "Features stats: min=" << min_val << ", max=" << max_val
+              << ", mean=" << mean << ", std=" << std_dev << std::endl;
+
+    // Print first 5x5 of features
+    std::cout << "First 5x5 of features:" << std::endl;
+    for (size_t i = 0; i < std::min(size_t(5), features.size()); ++i) {
+      for (size_t j = 0; j < std::min(size_t(5), features[i].size()); ++j) {
+        std::cout << features[i][j] << " ";
+      }
+      std::cout << std::endl;
+    }
+  }
+
   // Step 4: Language detection - follows Python logic exactly
   std::string detected_language;
   float language_probability = 1.0f;
@@ -265,11 +302,26 @@ std::tuple<std::vector<Segment>, TranscriptionInfo> WhisperModel::transcribe(
     __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "🔍 Model directory existence check completed");
   }
 
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "🚀 About to create Tokenizer object...");
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "🚀 About to create Tokenizer object with CTranslate2 vocabulary...");
 
-  Tokenizer tokenizer(hf_tokenizer.get(), model->is_multilingual(), std::string("transcribe"), detected_language, vocab_path);
+  // Load vocabulary from the model directory
+  std::string vocab_file = model_path_ + "/vocabulary.json";
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "📁 Loading vocabulary from: %s", vocab_file.c_str());
 
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "✅ Tokenizer object created successfully!");
+  std::ifstream vocab_stream(vocab_file);
+  if (!vocab_stream.is_open()) {
+    throw std::runtime_error("Failed to open vocabulary file: " + vocab_file);
+  }
+
+  ctranslate2::Vocabulary vocabulary = ctranslate2::Vocabulary::from_json_file(vocab_stream);
+  vocab_stream.close();
+
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "✅ Vocabulary loaded successfully with %zu tokens", vocabulary.size());
+
+  // Use the CTranslate2 vocabulary to create the tokenizer
+  Tokenizer tokenizer(vocabulary, model->is_multilingual(), std::string("transcribe"), detected_language);
+
+  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "✅ Tokenizer object created successfully with CTranslate2 vocabulary!");
 
   // Debug tokenizer initialization
   __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "🧪 Testing tokenizer methods...");

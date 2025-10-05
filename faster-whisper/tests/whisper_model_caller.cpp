@@ -5,10 +5,13 @@
 #include <fstream>
 #include <sstream>
 #include <iomanip>
+#include <algorithm>
+#include <numeric>
+#include <cmath>
 
 // Include the faster_whisper_cpp headers
-#include "whisper_model.h"
-#include "audio_decoder.h"
+#include "transcribe.h"
+#include "audio.h"
 
 class WhisperModelCaller {
 private:
@@ -93,6 +96,26 @@ public:
             if (audio.empty()) {
                 return createErrorJson("Failed to decode audio file: " + audioFile);
             }
+
+            // Log audio statistics
+            float min_val = *std::min_element(audio.begin(), audio.end());
+            float max_val = *std::max_element(audio.begin(), audio.end());
+            float sum = std::accumulate(audio.begin(), audio.end(), 0.0f);
+            float mean = sum / audio.size();
+            float sq_sum = std::inner_product(audio.begin(), audio.end(), audio.begin(), 0.0f);
+            float std = std::sqrt(sq_sum / audio.size() - mean * mean);
+
+            std::cout << "Audio loaded: " << audio.size() << " samples ("
+                      << (audio.size() / 16000.0) << " seconds)" << std::endl;
+            std::cout << "Audio stats: min=" << min_val << ", max=" << max_val
+                      << ", mean=" << mean << ", std=" << std << std::endl;
+
+            std::cout << "First 20 samples: ";
+            for (size_t i = 0; i < std::min(size_t(20), audio.size()); ++i) {
+                std::cout << audio[i];
+                if (i < 19) std::cout << ", ";
+            }
+            std::cout << std::endl;
 
             // Initialize WhisperModel with the same parameters as Python version
             WhisperModel model(

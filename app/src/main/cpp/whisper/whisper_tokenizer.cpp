@@ -21,6 +21,58 @@
 
 namespace whisper {
 
+// Helper function to create bytes-to-unicode mapping
+// This is needed for byte-level BPE as used in GPT-2
+static std::unordered_map<uint8_t, wchar_t> create_bytes_to_unicode() {
+  std::unordered_map<uint8_t, wchar_t> mapping;
+  std::vector<uint8_t> bs;
+
+  // Add printable ASCII range
+  for (int b = static_cast<int>('!'); b <= static_cast<int>('~'); ++b) {
+    bs.push_back(static_cast<uint8_t>(b));
+  }
+  // Add Latin-1 supplement range
+  for (int b = 0xA1; b <= 0xAC; ++b) {
+    bs.push_back(static_cast<uint8_t>(b));
+  }
+  for (int b = 0xAE; b <= 0xFF; ++b) {
+    bs.push_back(static_cast<uint8_t>(b));
+  }
+
+  std::vector<wchar_t> cs = {};
+  for (auto b : bs) {
+    cs.push_back(static_cast<wchar_t>(b));
+  }
+
+  int n = 0;
+  for (int b = 0; b < 256; ++b) {
+    if (std::find(bs.begin(), bs.end(), static_cast<uint8_t>(b)) == bs.end()) {
+      bs.push_back(static_cast<uint8_t>(b));
+      cs.push_back(static_cast<wchar_t>(256 + n));
+      n++;
+    }
+  }
+
+  for (size_t i = 0; i < bs.size(); ++i) {
+    mapping[bs[i]] = cs[i];
+  }
+
+  return mapping;
+}
+
+// Helper function to create unicode-to-bytes mapping (reverse)
+static std::unordered_map<wchar_t, uint8_t> create_unicode_to_bytes() {
+  auto bytes_to_unicode = create_bytes_to_unicode();
+  std::unordered_map<wchar_t, uint8_t> mapping;
+  for (const auto& pair : bytes_to_unicode) {
+    mapping[pair.second] = pair.first;
+  }
+  return mapping;
+}
+
+// Static maps initialized once
+static const std::unordered_map<wchar_t, uint8_t> unicode_to_bytes_map = create_unicode_to_bytes();
+
 // Language codes to token ID mapping (matching whisper.cpp)
   static const std::unordered_map<std::string, int> LANGUAGE_TO_TOKEN = {
       {"en",  50259},
@@ -131,6 +183,23 @@ namespace whisper {
     __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "   vocab_file: '%s'",
                         vocab_file.c_str());
     __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "   multilingual: %d", multilingual);
+
+    // Verify bytes_to_unicode mapping
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
+                        "Verifying unicode_to_bytes_map for key bytes:");
+    std::vector<uint8_t> test_bytes = {0xD8, 0xD9, 0xA5, 0xA8, 0x88, 0x8E};
+    for (uint8_t b : test_bytes) {
+      // Find the wchar_t that maps to this byte
+      wchar_t found_char = 0;
+      for (const auto& pair : unicode_to_bytes_map) {
+        if (pair.second == b) {
+          found_char = pair.first;
+          break;
+        }
+      }
+      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
+                          "  byte 0x%02X <- U+%04X", b, (unsigned int)found_char);
+    }
 
     if (!vocab_file.empty()) {
       __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
@@ -537,6 +606,19 @@ namespace whisper {
       auto it = id_to_vocab_.find(token_id);
       if (it != id_to_vocab_.end()) {
         const std::string &token = it->second;
+
+        // Log hex bytes of the first 10 non-special tokens
+        if (i < 10 && token_id < 50000) {
+          std::string hex_dump;
+          for (unsigned char c : token) {
+            char buf[8];
+            snprintf(buf, sizeof(buf), "0x%02X ", c);
+            hex_dump += buf;
+          }
+          __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
+                              "🔍 Token %d hex bytes: %s", token_id, hex_dump.c_str());
+        }
+
         __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Token %d -> '%s' (length: %zu)",
                             token_id, token.c_str(), token.length());
 
@@ -577,41 +659,132 @@ namespace whisper {
     __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "🔧 decode_bpe() called with length: %zu",
                         raw_bpe.length());
 
-    // For now, implement the basic approach similar to faster-whisper:
-    // Replace Ġ (U+0120) with spaces and return the result
-    std::string result;
-    result.reserve(raw_bpe.length());
-
-    for (size_t i = 0; i < raw_bpe.length();) {
-      // Handle BPE space prefix 'Ġ' (U+0120 encoded as UTF-8: 0xC4 0xA0)
-      if (i + 1 < raw_bpe.length() &&
-          (unsigned char) raw_bpe[i] == 0xC4 &&
-          (unsigned char) raw_bpe[i + 1] == 0xA0) {
-        result += ' ';  // Replace Ġ with space
-        i += 2;
-        __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
-                            "🔧 Converted Ġ to space at position %zu", i - 2);
-      } else {
-        // Copy character as-is - let UTF-8 handle the rest
-        result += raw_bpe[i];
-        i++;
+    // Log first 40 bytes of raw_bpe as hex
+    if (raw_bpe.length() > 0) {
+      std::string hex_dump;
+      size_t max_bytes = std::min<size_t>(40, raw_bpe.length());
+      for (size_t i = 0; i < max_bytes; ++i) {
+        char buf[8];
+        snprintf(buf, sizeof(buf), "%02X ", (unsigned char)raw_bpe[i]);
+        hex_dump += buf;
       }
+      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
+                          "📝 First %zu bytes of raw_bpe: %s", max_bytes, hex_dump.c_str());
+    }
+
+    // Convert unicode characters back to bytes using the mapping
+    std::vector<uint8_t> byte_list;
+
+    // Process the raw_bpe string byte by byte (matching Python's approach)
+    // In Python, when iterating through a string with "for char in raw_bpe:",
+    // it iterates through Unicode characters, where each character represents
+    // a codepoint from the bytes_to_unicode mapping
+    size_t i = 0;
+    while (i < raw_bpe.length()) {
+      uint32_t codepoint = 0;
+      size_t char_len = 1;
+
+      // Decode UTF-8 character to get the codepoint
+      unsigned char c = static_cast<unsigned char>(raw_bpe[i]);
+      if ((c & 0x80) == 0) {
+        // 1-byte character (ASCII)
+        codepoint = c;
+      } else if ((c & 0xE0) == 0xC0 && i + 1 < raw_bpe.length()) {
+        // 2-byte character
+        codepoint = ((c & 0x1F) << 6) | (static_cast<unsigned char>(raw_bpe[i + 1]) & 0x3F);
+        char_len = 2;
+      } else if ((c & 0xF0) == 0xE0 && i + 2 < raw_bpe.length()) {
+        // 3-byte character
+        codepoint = ((c & 0x0F) << 12) |
+                    ((static_cast<unsigned char>(raw_bpe[i + 1]) & 0x3F) << 6) |
+                    (static_cast<unsigned char>(raw_bpe[i + 2]) & 0x3F);
+        char_len = 3;
+      } else if ((c & 0xF8) == 0xF0 && i + 3 < raw_bpe.length()) {
+        // 4-byte character
+        codepoint = ((c & 0x07) << 18) |
+                    ((static_cast<unsigned char>(raw_bpe[i + 1]) & 0x3F) << 12) |
+                    ((static_cast<unsigned char>(raw_bpe[i + 2]) & 0x3F) << 6) |
+                    (static_cast<unsigned char>(raw_bpe[i + 3]) & 0x3F);
+        char_len = 4;
+      } else {
+        // Invalid UTF-8, skip this byte
+        __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
+                            "⚠️ Invalid UTF-8 byte at position %zu: 0x%02X", i, c);
+        i++;
+        continue;
+      }
+
+      // Look up in the unicode-to-bytes mapping
+      // The Python version checks: if char in byte_decoder
+      auto it = unicode_to_bytes_map.find(static_cast<wchar_t>(codepoint));
+      if (it != unicode_to_bytes_map.end()) {
+        byte_list.push_back(it->second);
+        // Log first few mappings
+        if (byte_list.size() <= 10) {
+          __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
+                              "✅ Mapped codepoint U+%04X -> byte 0x%02X", codepoint, it->second);
+        }
+      } else {
+        // Python version: else: byte_list.append(ord(char))
+        // If not in mapping, use the codepoint directly if it fits in a byte
+        if (codepoint < 256) {
+          byte_list.push_back(static_cast<uint8_t>(codepoint));
+          if (byte_list.size() <= 10) {
+            __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
+                                "⚠️ Codepoint U+%04X not in mapping, using byte 0x%02X directly",
+                                codepoint, static_cast<uint8_t>(codepoint));
+          }
+        } else {
+          __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
+                              "❌ Codepoint U+%04X not in mapping and > 255, skipping",
+                              codepoint);
+        }
+      }
+
+      i += char_len;
+    }
+
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
+                        "🔧 Converted %zu UTF-8 characters to %zu bytes", raw_bpe.length(),
+                        byte_list.size());
+
+    // Log first 40 decoded bytes
+    if (byte_list.size() > 0) {
+      std::string hex_dump;
+      size_t max_bytes = std::min<size_t>(40, byte_list.size());
+      for (size_t i = 0; i < max_bytes; ++i) {
+        char buf[8];
+        snprintf(buf, sizeof(buf), "%02X ", byte_list[i]);
+        hex_dump += buf;
+      }
+      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
+                          "📝 First %zu decoded bytes: %s", max_bytes, hex_dump.c_str());
+    }
+
+    // Convert bytes to UTF-8 string
+    // Python: text = bytearray(byte_list).decode('utf-8', errors='replace')
+    std::string result;
+    try {
+      result = std::string(reinterpret_cast<const char*>(byte_list.data()), byte_list.size());
+    } catch (...) {
+      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
+                          "❌ Failed to convert bytes to string, using raw_bpe");
+      result = raw_bpe;
+    }
+
+    // Replace BPE space token U+0120 with regular space
+    // Python: text = text.replace('\u0120', ' ')
+    // U+0120 in UTF-8 is: 0xC4 0xA0
+    std::string space_token = "\xC4\xA0";
+    size_t pos = 0;
+    while ((pos = result.find(space_token, pos)) != std::string::npos) {
+      result.replace(pos, space_token.length(), " ");
+      pos += 1;
     }
 
     __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
                         "🔧 decode_bpe() result: '%s' (length: %zu)", result.c_str(),
                         result.length());
-
-    // Log some bytes for debugging
-    if (result.length() > 0) {
-      std::string bytes_debug = "First 20 result bytes: ";
-      for (size_t i = 0; i < std::min(result.length(), size_t(20)); ++i) {
-        char byte_str[10];
-        sprintf(byte_str, "\\x%02x", (unsigned char) result[i]);
-        bytes_debug += byte_str;
-      }
-      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "%s", bytes_debug.c_str());
-    }
 
     return result;
   }

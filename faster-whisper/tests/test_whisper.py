@@ -96,6 +96,19 @@ def test_whisper_ct2_offline():
             audio = decode_audio(audio_file)
             print(f"Audio loaded: {len(audio)} samples ({len(audio)/16000:.2f} seconds)")
 
+            # Log audio statistics
+            print(f"Audio stats: min={audio.min():.6f}, max={audio.max():.6f}, mean={audio.mean():.6f}, std={audio.std():.6f}")
+            print(f"First 20 samples: {audio[:20]}")
+
+            # Extract features to check the encoder input
+            print("\n=== Extracting features ===")
+            from faster_whisper.feature_extractor import FeatureExtractor
+            feature_extractor = FeatureExtractor()
+            features = feature_extractor(audio)
+            print(f"Features shape: {features.shape}")
+            print(f"Features stats: min={features.min():.6f}, max={features.max():.6f}, mean={features.mean():.6f}, std={features.std():.6f}")
+            print(f"First 5x5 of features:\n{features[:5, :5]}")
+
             # Transcribe the audio
             segments, info = model.transcribe(audio, word_timestamps=True)
             segments_list = list(segments)
