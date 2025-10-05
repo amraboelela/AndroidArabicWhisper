@@ -109,8 +109,8 @@ def test_whisper_ct2_offline():
             print(f"Features stats: min={features.min():.6f}, max={features.max():.6f}, mean={features.mean():.6f}, std={features.std():.6f}")
             print(f"First 5x5 of features:\n{features[:5, :5]}")
 
-            # Transcribe the audio
-            segments, info = model.transcribe(audio, word_timestamps=True)
+            # Transcribe the audio (disable VAD to match C++ behavior)
+            segments, info = model.transcribe(audio, word_timestamps=True, vad_filter=False)
             segments_list = list(segments)
 
             print(f"Real audio transcription results:")
@@ -123,6 +123,8 @@ def test_whisper_ct2_offline():
                 print(f"    Segment {i}: '{segment.text}'")
                 print(f"      Time: {segment.start:.2f}s - {segment.end:.2f}s")
                 print(f"      Confidence: avg_logprob={segment.avg_logprob:.3f}")
+                print(f"      Token count: {len(segment.tokens)}")
+                print(f"      Tokens: {segment.tokens[:20]}")  # Show first 20 tokens
 
                 # Show word-level timestamps if available
                 if segment.words and len(segment.words) > 0:

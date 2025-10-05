@@ -1,4 +1,5 @@
 #include "whisper_audio.h"
+#include "fft.h"
 #include <fstream>
 #include <algorithm>
 #include <cstring>
@@ -163,7 +164,7 @@ std::vector<std::vector<float>> AudioProcessor::apply_log_transform(const std::v
 
   for (auto& mel_band : log_mel_spec) {
       for (float& value : mel_band) {
-      value = std::log(std::max(value, 1e-10f)); // Avoid log(0)
+      value = std::log10(std::max(value, 1e-10f)); // Use log10 to match Python's np.log10
       }
   }
 
@@ -184,21 +185,22 @@ std::vector<std::vector<float>> AudioProcessor::compute_stft(const std::vector<f
 
   for (int frame = 0; frame < num_frames; ++frame) {
       int start_idx = frame * hop_size;
-      stft_magnitude[frame].resize(window_size / 2 + 1);
 
-      // Simple magnitude computation (not full FFT)
-      // This is a simplified version - for production use a proper FFT library
-      for (int freq = 0; freq < window_size / 2 + 1; ++freq) {
-      float real = 0.0f, imag = 0.0f;
-
+      // Extract and window the frame
+      std::vector<float> frame_data(window_size, 0.0f);
       for (int n = 0; n < window_size && start_idx + n < audio.size(); ++n) {
-          float windowed_sample = audio[start_idx + n] * window[n];
-          float angle = -2.0f * M_PI * freq * n / window_size;
-          real += windowed_sample * std::cos(angle);
-          imag += windowed_sample * std::sin(angle);
+          frame_data[n] = audio[start_idx + n] * window[n];
       }
 
-      stft_magnitude[frame][freq] = std::sqrt(real * real + imag * imag);
+      // Compute FFT using proper FFT implementation
+      auto fft_result = FFT::rfft(frame_data);
+
+      // Compute magnitude squared (power spectrum), matching Python's ** 2
+      // Also drop the last bin like Python does with [..., :-1]
+      stft_magnitude[frame].resize(fft_result.size() - 1);
+      for (size_t i = 0; i < fft_result.size() - 1; ++i) {
+          float mag = std::abs(fft_result[i]);
+          stft_magnitude[frame][i] = mag * mag;  // Square the magnitude
       }
   }
 
@@ -206,10 +208,15 @@ std::vector<std::vector<float>> AudioProcessor::compute_stft(const std::vector<f
 }
 
 std::vector<float> AudioProcessor::apply_hann_window(int window_size) {
-  std::vector<float> window(window_size);
-  for (int i = 0; i < window_size; ++i) {
-      window[i] = 0.5f * (1.0f - std::cos(2.0f * M_PI * i / (window_size - 1)));
+  // Match Python's np.hanning(n_fft + 1)[:-1]
+  // Create window_size + 1 elements, then drop the last one
+  std::vector<float> window_temp(window_size + 1);
+  for (int i = 0; i < window_size + 1; ++i) {
+      window_temp[i] = 0.5f * (1.0f - std::cos(2.0f * M_PI * i / window_size));
   }
+
+  // Drop the last element
+  std::vector<float> window(window_temp.begin(), window_temp.begin() + window_size);
   return window;
 }
 

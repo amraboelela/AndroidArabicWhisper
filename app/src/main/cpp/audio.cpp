@@ -27,7 +27,7 @@ std::vector<float> AudioDecoder::decode_audio(
   audio = whisper::AudioProcessor::resample_audio(audio, WHISPER_SAMPLE_RATE);
   }
 
-  std::cout << "Successfully loaded audio with " << audio.size() << " samples" << std::endl;
+  // std::cout << "Successfully loaded audio with " << audio.size() << " samples" << std::endl;
   return audio;
 }
 

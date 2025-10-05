@@ -179,34 +179,34 @@ static const std::unordered_map<wchar_t, uint8_t> unicode_to_bytes_map = create_
   WhisperTokenizer::WhisperTokenizer(const std::string &vocab_file, bool multilingual)
       : multilingual_(multilingual) {
 
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "🔧 WhisperTokenizer constructor called");
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "   vocab_file: '%s'",
-                        vocab_file.c_str());
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "   multilingual: %d", multilingual);
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "🔧 WhisperTokenizer constructor called");
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "   vocab_file: '%s'",
+    //                     vocab_file.c_str());
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "   multilingual: %d", multilingual);
 
     // Verify bytes_to_unicode mapping
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
-                        "Verifying unicode_to_bytes_map for key bytes:");
-    std::vector<uint8_t> test_bytes = {0xD8, 0xD9, 0xA5, 0xA8, 0x88, 0x8E};
-    for (uint8_t b : test_bytes) {
-      // Find the wchar_t that maps to this byte
-      wchar_t found_char = 0;
-      for (const auto& pair : unicode_to_bytes_map) {
-        if (pair.second == b) {
-          found_char = pair.first;
-          break;
-        }
-      }
-      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
-                          "  byte 0x%02X <- U+%04X", b, (unsigned int)found_char);
-    }
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
+    //                     "Verifying unicode_to_bytes_map for key bytes:");
+    // std::vector<uint8_t> test_bytes = {0xD8, 0xD9, 0xA5, 0xA8, 0x88, 0x8E};
+    // for (uint8_t b : test_bytes) {
+    //   // Find the wchar_t that maps to this byte
+    //   wchar_t found_char = 0;
+    //   for (const auto& pair : unicode_to_bytes_map) {
+    //     if (pair.second == b) {
+    //       found_char = pair.first;
+    //       break;
+    //     }
+    //   }
+    //   __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
+    //                       "  byte 0x%02X <- U+%04X", b, (unsigned int)found_char);
+    // }
 
     if (!vocab_file.empty()) {
-      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
-                          "📂 Attempting to load vocabulary from file...");
+      // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
+      //                     "📂 Attempting to load vocabulary from file...");
       bool load_success = load_vocab_from_file(vocab_file);
-      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "📂 Vocabulary loading result: %s",
-                          load_success ? "SUCCESS" : "FAILED");
+      // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "📂 Vocabulary loading result: %s",
+      //                     load_success ? "SUCCESS" : "FAILED");
 
       if (!load_success) {
         __android_log_print(ANDROID_LOG_ERROR, "#transcribe",
@@ -214,19 +214,19 @@ static const std::unordered_map<wchar_t, uint8_t> unicode_to_bytes_map = create_
         initialize_builtin_vocab();
       }
     } else {
-      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
-                          "📂 No vocab_file provided, using built-in vocabulary");
+      // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
+      //                     "📂 No vocab_file provided, using built-in vocabulary");
       initialize_builtin_vocab();
     }
 
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
-                        "📊 Final vocabulary size after constructor: %zu", vocab_to_id_.size());
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
+    //                     "📊 Final vocabulary size after constructor: %zu", vocab_to_id_.size());
 
     initialize_special_tokens();
     initialize_language_tokens();
 
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
-                        "✅ WhisperTokenizer constructor completed");
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
+    //                     "✅ WhisperTokenizer constructor completed");
   }
 
 #ifndef NO_CTRANSLATE2
@@ -240,16 +240,16 @@ static const std::unordered_map<wchar_t, uint8_t> unicode_to_bytes_map = create_
   }
 
   void WhisperTokenizer::load_vocab_from_ctranslate2(const ctranslate2::Vocabulary &vocabulary) {
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
-                        "Loading vocabulary from CTranslate2 model...");
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
+    //                     "Loading vocabulary from CTranslate2 model...");
 
     vocab_to_id_.clear();
     id_to_vocab_.clear();
 
     // Load all tokens from the CTranslate2 vocabulary
     size_t vocab_size = vocabulary.size();
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "CTranslate2 vocabulary size: %zu",
-                        vocab_size);
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "CTranslate2 vocabulary size: %zu",
+    //                     vocab_size);
 
     for (size_t i = 0; i < vocab_size; ++i) {
       const std::string &token = vocabulary.to_token(i);
@@ -257,8 +257,8 @@ static const std::unordered_map<wchar_t, uint8_t> unicode_to_bytes_map = create_
       id_to_vocab_[static_cast<int>(i)] = token;
     }
 
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
-                        "✅ Loaded %zu tokens from CTranslate2 vocabulary", vocab_size);
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
+    //                     "✅ Loaded %zu tokens from CTranslate2 vocabulary", vocab_size);
   }
 
 #endif // NO_CTRANSLATE2
@@ -591,86 +591,83 @@ static const std::unordered_map<wchar_t, uint8_t> unicode_to_bytes_map = create_
 
   std::string
   WhisperTokenizer::decode(const std::vector<int> &tokens, bool skip_special_tokens) const {
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
-                        "🔍 WhisperTokenizer::decode() called with %zu tokens, skip_special=%d",
-                        tokens.size(), skip_special_tokens);
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
+    //                     "🔍 WhisperTokenizer::decode() called with %zu tokens, skip_special=%d",
+    //                     tokens.size(), skip_special_tokens);
 
     // First pass: collect all raw BPE tokens
     std::string raw_bpe;
 
     for (size_t i = 0; i < tokens.size(); ++i) {
       int token_id = tokens[i];
-      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Processing token %zu/%zu: ID=%d",
-                          i + 1, tokens.size(), token_id);
+      // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Processing token %zu/%zu: ID=%d",
+      //                     i + 1, tokens.size(), token_id);
 
       auto it = id_to_vocab_.find(token_id);
       if (it != id_to_vocab_.end()) {
         const std::string &token = it->second;
 
         // Log hex bytes of the first 10 non-special tokens
-        if (i < 10 && token_id < 50000) {
-          std::string hex_dump;
-          for (unsigned char c : token) {
-            char buf[8];
-            snprintf(buf, sizeof(buf), "0x%02X ", c);
-            hex_dump += buf;
-          }
-          __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
-                              "🔍 Token %d hex bytes: %s", token_id, hex_dump.c_str());
-        }
+        // if (i < 10 && token_id < 50000) {
+        //   std::string hex_dump;
+        //   for (unsigned char c : token) {
+        //     char buf[8];
+        //     snprintf(buf, sizeof(buf), "0x%02X ", c);
+        //     hex_dump += buf;
+        //   }
+        //   __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
+        //                       "🔍 Token %d hex bytes: %s", token_id, hex_dump.c_str());
+        // }
 
-        __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Token %d -> '%s' (length: %zu)",
-                            token_id, token.c_str(), token.length());
+        // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Token %d -> '%s' (length: %zu)",
+        //                     token_id, token.c_str(), token.length());
 
         // Skip special tokens if requested
         if (skip_special_tokens) {
-          __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
-                              "Checking if token '%s' is special...", token.c_str());
+          // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
+          //                     "Checking if token '%s' is special...", token.c_str());
 
           // SAFER special token detection - avoid substr on very long strings
           if (token.length() >= 4 && token[0] == '<' && token[1] == '|' &&
               token[token.length() - 2] == '|' && token[token.length() - 1] == '>') {
-            __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Skipping special token: '%s'",
-                                token.c_str());
+            // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Skipping special token: '%s'",
+            //                     token.c_str());
             continue;
           }
         }
 
         raw_bpe += token;
-        __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
-                            "✅ Token %zu added to raw BPE, length now: %zu", i + 1,
-                            raw_bpe.length());
       } else {
-        __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
-                            "⚠️ Token ID %d not found in vocabulary!", token_id);
+        // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
+        //                     "⚠️ Token ID %d not found in vocabulary!", token_id);
       }
     }
 
     // Second pass: decode BPE to proper text
     std::string result = decode_bpe(raw_bpe);
 
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
-                        "🎯 WhisperTokenizer::decode() COMPLETED! Final result: '%s'",
-                        result.c_str());
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
+    //                     "🎯 WhisperTokenizer::decode() COMPLETED! Final result: '%s'",
+    //                     result.c_str());
     return result;
   }
 
   std::string WhisperTokenizer::decode_bpe(const std::string &raw_bpe) const {
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "🔧 decode_bpe() called with length: %zu",
-                        raw_bpe.length());
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "🔧 decode_bpe() called with length: %zu",
+    //                     raw_bpe.length());
 
     // Log first 40 bytes of raw_bpe as hex
-    if (raw_bpe.length() > 0) {
-      std::string hex_dump;
-      size_t max_bytes = std::min<size_t>(40, raw_bpe.length());
-      for (size_t i = 0; i < max_bytes; ++i) {
-        char buf[8];
-        snprintf(buf, sizeof(buf), "%02X ", (unsigned char)raw_bpe[i]);
-        hex_dump += buf;
-      }
-      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
-                          "📝 First %zu bytes of raw_bpe: %s", max_bytes, hex_dump.c_str());
-    }
+    // if (raw_bpe.length() > 0) {
+    //   std::string hex_dump;
+    //   size_t max_bytes = std::min<size_t>(40, raw_bpe.length());
+    //   for (size_t i = 0; i < max_bytes; ++i) {
+    //     char buf[8];
+    //     snprintf(buf, sizeof(buf), "%02X ", (unsigned char)raw_bpe[i]);
+    //     hex_dump += buf;
+    //   }
+    //   __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
+    //                       "📝 First %zu bytes of raw_bpe: %s", max_bytes, hex_dump.c_str());
+    // }
 
     // Convert unicode characters back to bytes using the mapping
     std::vector<uint8_t> byte_list;
@@ -719,11 +716,6 @@ static const std::unordered_map<wchar_t, uint8_t> unicode_to_bytes_map = create_
       auto it = unicode_to_bytes_map.find(static_cast<wchar_t>(codepoint));
       if (it != unicode_to_bytes_map.end()) {
         byte_list.push_back(it->second);
-        // Log first few mappings
-        if (byte_list.size() <= 10) {
-          __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
-                              "✅ Mapped codepoint U+%04X -> byte 0x%02X", codepoint, it->second);
-        }
       } else {
         // Python version: else: byte_list.append(ord(char))
         // If not in mapping, use the codepoint directly if it fits in a byte
@@ -744,22 +736,22 @@ static const std::unordered_map<wchar_t, uint8_t> unicode_to_bytes_map = create_
       i += char_len;
     }
 
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
-                        "🔧 Converted %zu UTF-8 characters to %zu bytes", raw_bpe.length(),
-                        byte_list.size());
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
+    //                     "🔧 Converted %zu UTF-8 characters to %zu bytes", raw_bpe.length(),
+    //                     byte_list.size());
 
     // Log first 40 decoded bytes
-    if (byte_list.size() > 0) {
-      std::string hex_dump;
-      size_t max_bytes = std::min<size_t>(40, byte_list.size());
-      for (size_t i = 0; i < max_bytes; ++i) {
-        char buf[8];
-        snprintf(buf, sizeof(buf), "%02X ", byte_list[i]);
-        hex_dump += buf;
-      }
-      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
-                          "📝 First %zu decoded bytes: %s", max_bytes, hex_dump.c_str());
-    }
+    // if (byte_list.size() > 0) {
+    //   std::string hex_dump;
+    //   size_t max_bytes = std::min<size_t>(40, byte_list.size());
+    //   for (size_t i = 0; i < max_bytes; ++i) {
+    //     char buf[8];
+    //     snprintf(buf, sizeof(buf), "%02X ", byte_list[i]);
+    //     hex_dump += buf;
+    //   }
+    //   __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
+    //                       "📝 First %zu decoded bytes: %s", max_bytes, hex_dump.c_str());
+    // }
 
     // Convert bytes to UTF-8 string
     // Python: text = bytearray(byte_list).decode('utf-8', errors='replace')
@@ -767,8 +759,8 @@ static const std::unordered_map<wchar_t, uint8_t> unicode_to_bytes_map = create_
     try {
       result = std::string(reinterpret_cast<const char*>(byte_list.data()), byte_list.size());
     } catch (...) {
-      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
-                          "❌ Failed to convert bytes to string, using raw_bpe");
+      // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
+      //                     "❌ Failed to convert bytes to string, using raw_bpe");
       result = raw_bpe;
     }
 
@@ -782,9 +774,9 @@ static const std::unordered_map<wchar_t, uint8_t> unicode_to_bytes_map = create_
       pos += 1;
     }
 
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
-                        "🔧 decode_bpe() result: '%s' (length: %zu)", result.c_str(),
-                        result.length());
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
+    //                     "🔧 decode_bpe() result: '%s' (length: %zu)", result.c_str(),
+    //                     result.length());
 
     return result;
   }
@@ -806,48 +798,48 @@ static const std::unordered_map<wchar_t, uint8_t> unicode_to_bytes_map = create_
 
   std::vector<int> WhisperTokenizer::get_sot_sequence(const std::string &language_code,
                                                       const std::string &task) const {
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
-                        "WhisperTokenizer::get_sot_sequence called");
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
-                        "WhisperTokenizer params - language_code='%s', task='%s', multilingual_=%d",
-                        language_code.c_str(), task.c_str(), multilingual_);
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
+    //                     "WhisperTokenizer::get_sot_sequence called");
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
+    //                     "WhisperTokenizer params - language_code='%s', task='%s', multilingual_=%d",
+    //                     language_code.c_str(), task.c_str(), multilingual_);
 
     std::vector<int> sequence = {SOT_TOKEN};
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "WhisperTokenizer - Added SOT_TOKEN: %d",
-                        SOT_TOKEN);
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "WhisperTokenizer - Added SOT_TOKEN: %d",
+    //                     SOT_TOKEN);
 
     if (multilingual_ && !language_code.empty()) {
       int lang_token = get_language_token(language_code);
-      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
-                          "WhisperTokenizer - Language token for '%s': %d",
-                          language_code.c_str(), lang_token);
+      // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
+      //                     "WhisperTokenizer - Language token for '%s': %d",
+      //                     language_code.c_str(), lang_token);
       if (lang_token != -1) {
         sequence.push_back(lang_token);
-        __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
-                            "WhisperTokenizer - Added language token: %d", lang_token);
+        // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
+        //                     "WhisperTokenizer - Added language token: %d", lang_token);
       }
     }
 
     if (task == "transcribe") {
       sequence.push_back(TRANSCRIBE_TOKEN);
-      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
-                          "WhisperTokenizer - Added TRANSCRIBE_TOKEN: %d", TRANSCRIBE_TOKEN);
+      // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
+      //                     "WhisperTokenizer - Added TRANSCRIBE_TOKEN: %d", TRANSCRIBE_TOKEN);
     } else if (task == "translate") {
       sequence.push_back(TRANSLATE_TOKEN);
-      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
-                          "WhisperTokenizer - Added TRANSLATE_TOKEN: %d", TRANSLATE_TOKEN);
+      // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
+      //                     "WhisperTokenizer - Added TRANSLATE_TOKEN: %d", TRANSLATE_TOKEN);
     }
 
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
-                        "WhisperTokenizer::get_sot_sequence final sequence length: %zu",
-                        sequence.size());
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
+    //                     "WhisperTokenizer::get_sot_sequence final sequence length: %zu",
+    //                     sequence.size());
 
-    std::string seq_str = "WhisperTokenizer::get_sot_sequence final sequence: ";
-    for (size_t i = 0; i < sequence.size(); ++i) {
-      seq_str += std::to_string(sequence[i]);
-      if (i < sequence.size() - 1) seq_str += ", ";
-    }
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "%s", seq_str.c_str());
+    // std::string seq_str = "WhisperTokenizer::get_sot_sequence final sequence: ";
+    // for (size_t i = 0; i < sequence.size(); ++i) {
+    //   seq_str += std::to_string(sequence[i]);
+    //   if (i < sequence.size() - 1) seq_str += ", ";
+    // }
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "%s", seq_str.c_str());
 
     return sequence;
   }
@@ -987,22 +979,22 @@ static const std::unordered_map<wchar_t, uint8_t> unicode_to_bytes_map = create_
       : tokenizer_(std::make_unique<WhisperTokenizer>(vocab_path, multilingual)),
         language_(language), task_(task) {
 
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
-                        "❌ FILE-BASED TokenizerWrapper constructor called - THIS IS THE WRONG ONE!");
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
-                        "TokenizerWrapper params - multilingual: %d, language: %s, task: %s, vocab_path: %s",
-                        multilingual, language.c_str(), task.c_str(), vocab_path.c_str());
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
-                        "WhisperTokenizer created in TokenizerWrapper");
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
+    //                     "❌ FILE-BASED TokenizerWrapper constructor called - THIS IS THE WRONG ONE!");
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
+    //                     "TokenizerWrapper params - multilingual: %d, language: %s, task: %s, vocab_path: %s",
+    //                     multilingual, language.c_str(), task.c_str(), vocab_path.c_str());
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
+    //                     "WhisperTokenizer created in TokenizerWrapper");
 
     // Test basic token retrieval
     try {
       int sot = tokenizer_->get_sot_token();
-      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
-                          "TokenizerWrapper - SOT token from WhisperTokenizer: %d", sot);
+      // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
+      //                     "TokenizerWrapper - SOT token from WhisperTokenizer: %d", sot);
     } catch (const std::exception &e) {
-      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
-                          "TokenizerWrapper - Error getting SOT token: %s", e.what());
+      // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
+      //                     "TokenizerWrapper - Error getting SOT token: %s", e.what());
     }
   }
 
@@ -1013,26 +1005,26 @@ static const std::unordered_map<wchar_t, uint8_t> unicode_to_bytes_map = create_
       : tokenizer_(std::make_unique<WhisperTokenizer>(vocabulary, multilingual)),
         language_(language), task_(task) {
 
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
-                        "🔥 CTRANSLATE2 TokenizerWrapper constructor called - THIS IS THE CORRECT ONE!");
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
-                        "TokenizerWrapper params - multilingual: %d, language: %s, task: %s",
-                        multilingual, language.c_str(), task.c_str());
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
-                        "WhisperTokenizer created with CTranslate2 vocabulary");
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
+    //                     "🔥 CTRANSLATE2 TokenizerWrapper constructor called - THIS IS THE CORRECT ONE!");
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
+    //                     "TokenizerWrapper params - multilingual: %d, language: %s, task: %s",
+    //                     multilingual, language.c_str(), task.c_str());
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
+    //                     "WhisperTokenizer created with CTranslate2 vocabulary");
 
     // Test basic token retrieval
     try {
       int sot = tokenizer_->get_sot_token();
-      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
-                          "TokenizerWrapper - SOT token from WhisperTokenizer: %d", sot);
+      // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
+      //                     "TokenizerWrapper - SOT token from WhisperTokenizer: %d", sot);
     } catch (const std::exception &e) {
-      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
-                          "TokenizerWrapper - Error getting SOT token: %s", e.what());
+      // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
+      //                     "TokenizerWrapper - Error getting SOT token: %s", e.what());
     }
 
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
-                        "TokenizerWrapper (CTranslate2) created successfully");
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
+    //                     "TokenizerWrapper (CTranslate2) created successfully");
   }
 
 #endif // NO_CTRANSLATE2
@@ -1070,23 +1062,23 @@ static const std::unordered_map<wchar_t, uint8_t> unicode_to_bytes_map = create_
   }
 
   std::vector<int> TokenizerWrapper::get_sot_sequence() const {
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
-                        "TokenizerWrapper::get_sot_sequence called");
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
-                        "Calling tokenizer_->get_sot_sequence with language='%s', task='%s'",
-                        language_.c_str(), task_.c_str());
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
+    //                     "TokenizerWrapper::get_sot_sequence called");
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
+    //                     "Calling tokenizer_->get_sot_sequence with language='%s', task='%s'",
+    //                     language_.c_str(), task_.c_str());
 
     auto result = tokenizer_->get_sot_sequence(language_, task_);
 
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
-                        "TokenizerWrapper::get_sot_sequence result length: %zu", result.size());
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe",
+    //                     "TokenizerWrapper::get_sot_sequence result length: %zu", result.size());
 
-    std::string result_str = "TokenizerWrapper::get_sot_sequence result: ";
-    for (size_t i = 0; i < result.size(); ++i) {
-      result_str += std::to_string(result[i]);
-      if (i < result.size() - 1) result_str += ", ";
-    }
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "%s", result_str.c_str());
+    // std::string result_str = "TokenizerWrapper::get_sot_sequence result: ";
+    // for (size_t i = 0; i < result.size(); ++i) {
+    //   result_str += std::to_string(result[i]);
+    //   if (i < result.size() - 1) result_str += ", ";
+    // }
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "%s", result_str.c_str());
 
     return result;
   }

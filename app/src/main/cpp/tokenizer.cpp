@@ -66,21 +66,21 @@ Tokenizer::Tokenizer(
   std::optional<std::string> vocab_path
 ) : _tokenizer(tokenizer), _multilingual(multilingual) {
 
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Tokenizer constructor called");
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Parameters - multilingual: %d, task: %s, language: %s, vocab_path: %s",
-                      multilingual, task ? task.value().c_str() : "none",
-                      language ? language.value().c_str() : "none",
-                      vocab_path ? vocab_path.value().c_str() : "none");
+  // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Tokenizer constructor called");
+  // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Parameters - multilingual: %d, task: %s, language: %s, vocab_path: %s",
+  //                     multilingual, task ? task.value().c_str() : "none",
+  //                     language ? language.value().c_str() : "none",
+  //                     vocab_path ? vocab_path.value().c_str() : "none");
 
   // Create whisper tokenizer wrapper for enhanced functionality
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Creating TokenizerWrapper...");
+  // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Creating TokenizerWrapper...");
   whisper_wrapper_ = std::make_unique<whisper::TokenizerWrapper>(
     multilingual,
     language.value_or("en"),
     task.value_or("transcribe"),
     vocab_path.value_or("")  // Pass vocabulary path
   );
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "TokenizerWrapper created successfully");
+  // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "TokenizerWrapper created successfully");
 
   if (multilingual) {
   if (task && _TASKS.find(task.value()) == _TASKS.end()) {
@@ -113,13 +113,13 @@ Tokenizer::Tokenizer(
   std::optional<std::string> language
 ) : _tokenizer(nullptr), _multilingual(multilingual) {
 
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Tokenizer constructor (CTranslate2) called");
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Parameters - multilingual: %d, task: %s, language: %s",
-                      multilingual, task ? task.value().c_str() : "none",
-                      language ? language.value().c_str() : "none");
+  // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Tokenizer constructor (CTranslate2) called");
+  // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Parameters - multilingual: %d, task: %s, language: %s",
+  //                     multilingual, task ? task.value().c_str() : "none",
+  //                     language ? language.value().c_str() : "none");
 
   // Create whisper tokenizer wrapper with CTranslate2 vocabulary
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Creating TokenizerWrapper with CTranslate2 vocabulary...");
+  // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Creating TokenizerWrapper with CTranslate2 vocabulary...");
 
 #ifndef NO_CTRANSLATE2
   // Explicitly use the CTranslate2 constructor
@@ -133,7 +133,7 @@ Tokenizer::Tokenizer(
   #error "CTranslate2 support is required for this tokenizer"
 #endif
 
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "TokenizerWrapper with CTranslate2 vocab created successfully");
+  // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "TokenizerWrapper with CTranslate2 vocab created successfully");
 
   if (multilingual) {
   if (task && _TASKS.find(task.value()) == _TASKS.end()) {
@@ -157,7 +157,7 @@ Tokenizer::Tokenizer(
   _language_code = "en";
   }
 
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Tokenizer (CTranslate2) created successfully");
+  // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Tokenizer (CTranslate2) created successfully");
 }
 #endif // NO_CTRANSLATE2
 

@@ -90,6 +90,28 @@ public:
 
     std::string transcribe(const std::string& audioFile) {
         try {
+            std::cout << "\nLoading WhisperModel..." << std::endl;
+
+            // Initialize WhisperModel with the same parameters as Python version
+            WhisperModel model(
+                modelPath,           // model_size_or_path
+                "cpu",              // device
+                {0},                // device_index
+                "int8",             // compute_type
+                0,                  // cpu_threads (0 = auto)
+                1,                  // num_workers
+                "",                 // download_root
+                true,               // local_files_only
+                {},                 // files
+                "",                 // revision
+                ""                  // use_auth_token
+            );
+
+            std::cout << "Model loaded successfully!\n" << std::endl;
+
+            std::cout << "=== Testing with " << audioFile << " ===" << std::endl;
+            std::cout << "Loading audio file: " << audioFile << std::endl;
+
             // Decode audio file to float samples
             std::vector<float> audio = AudioDecoder::decode_audio(audioFile, 16000);
 
@@ -106,31 +128,16 @@ public:
             float std = std::sqrt(sq_sum / audio.size() - mean * mean);
 
             std::cout << "Audio loaded: " << audio.size() << " samples ("
-                      << (audio.size() / 16000.0) << " seconds)" << std::endl;
-            std::cout << "Audio stats: min=" << min_val << ", max=" << max_val
+                      << std::fixed << std::setprecision(2) << (audio.size() / 16000.0) << " seconds)" << std::endl;
+            std::cout << "Audio stats: min=" << std::setprecision(6) << min_val << ", max=" << max_val
                       << ", mean=" << mean << ", std=" << std << std::endl;
 
-            std::cout << "First 20 samples: ";
+            std::cout << "First 20 samples: [";
             for (size_t i = 0; i < std::min(size_t(20), audio.size()); ++i) {
                 std::cout << audio[i];
-                if (i < 19) std::cout << ", ";
+                if (i < 19 && i < audio.size() - 1) std::cout << " ";
             }
-            std::cout << std::endl;
-
-            // Initialize WhisperModel with the same parameters as Python version
-            WhisperModel model(
-                modelPath,           // model_size_or_path
-                "cpu",              // device
-                {0},                // device_index
-                "int8",             // compute_type
-                0,                  // cpu_threads (0 = auto)
-                1,                  // num_workers
-                "",                 // download_root
-                true,               // local_files_only
-                {},                 // files
-                "",                 // revision
-                ""                  // use_auth_token
-            );
+            std::cout << "]" << std::endl;
 
             // Transcribe with Arabic language specified and word timestamps enabled
             auto [segments, info] = model.transcribe(

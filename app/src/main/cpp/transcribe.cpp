@@ -91,8 +91,8 @@ WhisperModel::WhisperModel(
 
   for (auto compute_type : compute_types) {
     try {
-      std::cout << "Trying to initialize Whisper model with compute type: "
-                << (int)compute_type << std::endl;
+      // std::cout << "Trying to initialize Whisper model with compute type: "
+      //           << (int)compute_type << std::endl;
 
       created_model = std::make_shared<ctranslate2::models::Whisper>(
         model_path,
@@ -103,14 +103,14 @@ WhisperModel::WhisperModel(
         config
       );
 
-      std::cout << "Successfully initialized Whisper model with compute type: "
-                << (int)compute_type << std::endl;
+      // std::cout << "Successfully initialized Whisper model with compute type: "
+      //           << (int)compute_type << std::endl;
       break;
 
     } catch (const std::exception& e) {
       last_error = e.what();
-      std::cerr << "Failed to initialize with compute type " << (int)compute_type
-                << ": " << e.what() << std::endl;
+      // std::cerr << "Failed to initialize with compute type " << (int)compute_type
+      //           << ": " << e.what() << std::endl;
     }
   }
 
@@ -130,10 +130,17 @@ WhisperModel::WhisperModel(
   // In C++: you must implement or use a tokenizer wrapper
   std::string tokenizer_file = model_path + "/tokenizer.json";
   if (std::filesystem::exists(tokenizer_file)) {
-  std::cout << "Load tokenizer from: " << tokenizer_file << std::endl;
-  // TODO: integrate Hugging Face tokenizers (Rust) or your own
+    // Check vocabulary file and log token count
+    std::string vocab_file = model_path + "/vocabulary.json";
+    std::ifstream vocab_stream(vocab_file);
+    if (vocab_stream.is_open()) {
+      ctranslate2::Vocabulary temp_vocabulary = ctranslate2::Vocabulary::from_json_file(vocab_stream);
+      vocab_stream.close();
+      std::cout << "Loading HuggingFace tokenizer format with " << temp_vocabulary.size() << " tokens" << std::endl;
+      std::cout << "Loaded " << temp_vocabulary.size() << " tokens from vocabulary file" << std::endl;
+    }
   } else {
-  std::cerr << "Tokenizer not found, defaulting to fallback.\n";
+    std::cerr << "Tokenizer not found, defaulting to fallback.\n";
   }
 
   // Placeholder for feature_kwargs logic.
@@ -270,14 +277,14 @@ std::tuple<std::vector<Segment>, TranscriptionInfo> WhisperModel::transcribe(
   }
 
   // Step 5: Initialize tokenizer with vocabulary from assets (Python line 949-954)
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "🔧 TOKENIZER INITIALIZATION DEBUG");
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Creating tokenizer with multilingual=%d, task=transcribe, language=%s",
-                      model->is_multilingual(), detected_language.c_str());
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Model path received: '%s'", model_path_.c_str());
+  // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "🔧 TOKENIZER INITIALIZATION DEBUG");
+  // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Creating tokenizer with multilingual=%d, task=transcribe, language=%s",
+  //                     model->is_multilingual(), detected_language.c_str());
+  // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Model path received: '%s'", model_path_.c_str());
 
   // Load vocabulary from copied assets in internal storage
   std::string vocab_path = model_path_ + "/vocabulary.json";
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "📁 Constructed vocabulary path: '%s'", vocab_path.c_str());
+  // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "📁 Constructed vocabulary path: '%s'", vocab_path.c_str());
 
   // Check if vocabulary file exists before trying to load it
   std::ifstream vocab_check(vocab_path);
@@ -285,28 +292,25 @@ std::tuple<std::vector<Segment>, TranscriptionInfo> WhisperModel::transcribe(
     vocab_check.seekg(0, std::ios::end);
     size_t file_size = vocab_check.tellg();
     vocab_check.close();
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "✅ Vocabulary file found! Size: %zu bytes", file_size);
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "✅ Vocabulary file found! Size: %zu bytes", file_size);
   } else {
     __android_log_print(ANDROID_LOG_ERROR, "#transcribe", "❌ Vocabulary file NOT FOUND at: %s", vocab_path.c_str());
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "📂 Trying to debug what files exist in model directory: %s", model_path_.c_str());
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "📂 Trying to debug what files exist in model directory: %s", model_path_.c_str());
 
     // Try to check if model directory exists
     std::ifstream model_dir_test(model_path_ + "/config.json");
     if (model_dir_test.good()) {
-      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "✅ Model directory exists (found config.json)");
+      // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "✅ Model directory exists (found config.json)");
       model_dir_test.close();
     } else {
       __android_log_print(ANDROID_LOG_ERROR, "#transcribe", "❌ Model directory might not exist or be accessible");
     }
 
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "🔍 Model directory existence check completed");
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "🔍 Model directory existence check completed");
   }
-
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "🚀 About to create Tokenizer object with CTranslate2 vocabulary...");
 
   // Load vocabulary from the model directory
   std::string vocab_file = model_path_ + "/vocabulary.json";
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "📁 Loading vocabulary from: %s", vocab_file.c_str());
 
   std::ifstream vocab_stream(vocab_file);
   if (!vocab_stream.is_open()) {
@@ -316,15 +320,11 @@ std::tuple<std::vector<Segment>, TranscriptionInfo> WhisperModel::transcribe(
   ctranslate2::Vocabulary vocabulary = ctranslate2::Vocabulary::from_json_file(vocab_stream);
   vocab_stream.close();
 
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "✅ Vocabulary loaded successfully with %zu tokens", vocabulary.size());
-
   // Use the CTranslate2 vocabulary to create the tokenizer
   Tokenizer tokenizer(vocabulary, model->is_multilingual(), std::string("transcribe"), detected_language);
 
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "✅ Tokenizer object created successfully with CTranslate2 vocabulary!");
-
   // Debug tokenizer initialization
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "🧪 Testing tokenizer methods...");
+  // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "🧪 Testing tokenizer methods...");
 
   try {
     int sot = tokenizer.get_sot();
@@ -333,20 +333,20 @@ std::tuple<std::vector<Segment>, TranscriptionInfo> WhisperModel::transcribe(
     int transcribe_token = tokenizer.get_transcribe();
     auto sot_seq = tokenizer.get_sot_sequence();
 
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "SOT token: %d", sot);
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "SOT_PREV token: %d", sot_prev);
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "EOT token: %d", eot);
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "TRANSCRIBE token: %d", transcribe_token);
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "SOT sequence length: %zu", sot_seq.size());
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "SOT token: %d", sot);
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "SOT_PREV token: %d", sot_prev);
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "EOT token: %d", eot);
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "TRANSCRIBE token: %d", transcribe_token);
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "SOT sequence length: %zu", sot_seq.size());
 
-    std::string sot_seq_str = "SOT sequence: ";
-    for (size_t i = 0; i < sot_seq.size(); ++i) {
-      sot_seq_str += std::to_string(sot_seq[i]);
-      if (i < sot_seq.size() - 1) sot_seq_str += ", ";
-    }
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "%s", sot_seq_str.c_str());
+    // std::string sot_seq_str = "SOT sequence: ";
+    // for (size_t i = 0; i < sot_seq.size(); ++i) {
+    //   sot_seq_str += std::to_string(sot_seq[i]);
+    //   if (i < sot_seq.size() - 1) sot_seq_str += ", ";
+    // }
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "%s", sot_seq_str.c_str());
   } catch (const std::exception& e) {
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Error testing tokenizer methods: %s", e.what());
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Error testing tokenizer methods: %s", e.what());
   }
 
   // Step 6: Set up transcription options (Python line 956-989)
@@ -381,10 +381,10 @@ std::tuple<std::vector<Segment>, TranscriptionInfo> WhisperModel::transcribe(
   // Step 7: Generate segments using the same logic as Python (line 991-993)
   std::vector<Segment> segments = generate_segments(features, tokenizer, options);
 
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "transcribe() received %zu segments from generate_segments", segments.size());
-  for (size_t i = 0; i < segments.size(); ++i) {
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Transcribe segment %zu: '%s'", i, segments[i].text.c_str());
-  }
+  // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "transcribe() received %zu segments from generate_segments", segments.size());
+  // for (size_t i = 0; i < segments.size(); ++i) {
+  //   __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Transcribe segment %zu: '%s'", i, segments[i].text.c_str());
+  // }
 
   // Step 8: Create transcription info (Python line 998-1006)
   TranscriptionInfo info;
@@ -394,8 +394,8 @@ std::tuple<std::vector<Segment>, TranscriptionInfo> WhisperModel::transcribe(
   info.transcription_options = options;
   info.all_language_probs = all_language_probs;
 
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "🎯 TRANSCRIBE FUNCTION ABOUT TO RETURN!");
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Returning %zu segments, language: %s", segments.size(), info.language.c_str());
+  // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "🎯 TRANSCRIBE FUNCTION ABOUT TO RETURN!");
+  // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Returning %zu segments, language: %s", segments.size(), info.language.c_str());
 
   return {segments, info};
 }
@@ -509,71 +509,71 @@ std::tuple<std::vector<Segment>, int, bool> WhisperModel::split_segments_by_time
   float segment_duration,
   int seek
 ) {
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "🔍 === ENTERING split_segments_by_timestamps ===");
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Input tokens count: %zu", tokens.size());
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "time_offset: %.2f, segment_size: %d, segment_duration: %.2f, seek: %d",
-                     time_offset, segment_size, segment_duration, seek);
+  // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "🔍 === ENTERING split_segments_by_timestamps ===");
+  // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Input tokens count: %zu", tokens.size());
+  // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "time_offset: %.2f, segment_size: %d, segment_duration: %.2f, seek: %d",
+  //                    time_offset, segment_size, segment_duration, seek);
 
-  // Log first 20 tokens for debugging
-  std::string tokens_debug = "First 20 tokens: ";
-  for (size_t i = 0; i < std::min(tokens.size(), size_t(20)); ++i) {
-    tokens_debug += std::to_string(tokens[i]) + " ";
-  }
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "%s", tokens_debug.c_str());
+  // // Log first 20 tokens for debugging
+  // std::string tokens_debug = "First 20 tokens: ";
+  // for (size_t i = 0; i < std::min(tokens.size(), size_t(20)); ++i) {
+  //   tokens_debug += std::to_string(tokens[i]) + " ";
+  // }
+  // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "%s", tokens_debug.c_str());
 
-  // Log tokenizer constants for reference
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Tokenizer constants - timestamp_begin: %d, eot: %d, sot: %d",
-                     tokenizer.get_timestamp_begin(), tokenizer.get_eot(), tokenizer.get_sot());
+  // // Log tokenizer constants for reference
+  // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Tokenizer constants - timestamp_begin: %d, eot: %d, sot: %d",
+  //                    tokenizer.get_timestamp_begin(), tokenizer.get_eot(), tokenizer.get_sot());
 
   std::vector<Segment> current_segments;
   bool single_timestamp_ending = (tokens.size() >= 2 &&
               tokens[tokens.size() - 2] < tokenizer.get_timestamp_begin() &&
               tokens.back() >= tokenizer.get_timestamp_begin());
 
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "single_timestamp_ending: %s", single_timestamp_ending ? "true" : "false");
-  if (tokens.size() >= 2) {
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Last two tokens: [%d, %d]",
-                       tokens[tokens.size() - 2], tokens[tokens.size() - 1]);
-  }
+  // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "single_timestamp_ending: %s", single_timestamp_ending ? "true" : "false");
+  // if (tokens.size() >= 2) {
+  //   __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Last two tokens: [%d, %d]",
+  //                      tokens[tokens.size() - 2], tokens[tokens.size() - 1]);
+  // }
 
   std::vector<int> consecutive_timestamps;
   for (size_t i = 1; i < tokens.size(); ++i) {
   if (tokens[i] >= tokenizer.get_timestamp_begin() && tokens[i - 1] >= tokenizer.get_timestamp_begin()) {
     consecutive_timestamps.push_back(static_cast<int>(i));
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Found consecutive timestamp at position %zu: [%d, %d]",
-                       i, tokens[i-1], tokens[i]);
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Found consecutive timestamp at position %zu: [%d, %d]",
+    //                    i, tokens[i-1], tokens[i]);
   }
   }
 
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "consecutive_timestamps count: %zu", consecutive_timestamps.size());
+  // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "consecutive_timestamps count: %zu", consecutive_timestamps.size());
 
   if (!consecutive_timestamps.empty()) {
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Processing consecutive timestamps path...");
+  // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Processing consecutive timestamps path...");
   std::vector<int> slices = consecutive_timestamps;
   if (single_timestamp_ending) slices.push_back(tokens.size());
 
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Slices count: %zu", slices.size());
+  // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Slices count: %zu", slices.size());
 
   int last_slice = 0;
   for (int current_slice: slices) {
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Processing slice from %d to %d", last_slice, current_slice);
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Processing slice from %d to %d", last_slice, current_slice);
     std::vector<int> sliced_tokens(tokens.begin() + last_slice, tokens.begin() + static_cast<std::vector<int>::difference_type>(current_slice));
 
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Sliced tokens count: %zu", sliced_tokens.size());
-    if (!sliced_tokens.empty()) {
-      std::string sliced_debug = "Sliced tokens: ";
-      for (size_t i = 0; i < std::min(sliced_tokens.size(), size_t(10)); ++i) {
-        sliced_debug += std::to_string(sliced_tokens[i]) + " ";
-      }
-      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "%s", sliced_debug.c_str());
-    }
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Sliced tokens count: %zu", sliced_tokens.size());
+    // if (!sliced_tokens.empty()) {
+    //   std::string sliced_debug = "Sliced tokens: ";
+    //   for (size_t i = 0; i < std::min(sliced_tokens.size(), size_t(10)); ++i) {
+    //     sliced_debug += std::to_string(sliced_tokens[i]) + " ";
+    //   }
+    //   __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "%s", sliced_debug.c_str());
+    // }
 
     float start_time =
     time_offset + (sliced_tokens.front() - tokenizer.get_timestamp_begin()) * static_cast<float>(time_precision);
     float end_time =
     time_offset + (sliced_tokens.back() - tokenizer.get_timestamp_begin()) * static_cast<float>(time_precision);
 
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Calculated times - start: %.2f, end: %.2f", start_time, end_time);
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Calculated times - start: %.2f, end: %.2f", start_time, end_time);
 
     Segment seg;
     seg.seek = seek;
@@ -581,38 +581,38 @@ std::tuple<std::vector<Segment>, int, bool> WhisperModel::split_segments_by_time
     seg.end = end_time;
     seg.tokens = sliced_tokens;
     current_segments.push_back(seg);
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Added segment with %zu tokens", sliced_tokens.size());
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Added segment with %zu tokens", sliced_tokens.size());
     last_slice = current_slice;
   }
 
   if (single_timestamp_ending) {
     seek += segment_size;
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Updated seek (single_timestamp_ending): %d", seek);
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Updated seek (single_timestamp_ending): %d", seek);
   } else {
     int last_timestamp_position = tokens[last_slice - 1] - tokenizer.get_timestamp_begin();
     seek += static_cast<int>(last_timestamp_position) * input_stride;
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Updated seek (normal): %d", seek);
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Updated seek (normal): %d", seek);
   }
   } else {
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Processing no consecutive timestamps path...");
+  // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Processing no consecutive timestamps path...");
   float duration = segment_duration;
   std::vector<int> timestamps;
   for (int token: tokens) if (token >= tokenizer.get_timestamp_begin()) timestamps.push_back(token);
 
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Found %zu timestamp tokens", timestamps.size());
-  if (!timestamps.empty()) {
-    std::string timestamp_debug = "Timestamp tokens: ";
-    for (size_t i = 0; i < std::min(timestamps.size(), size_t(10)); ++i) {
-      timestamp_debug += std::to_string(timestamps[i]) + " ";
-    }
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "%s", timestamp_debug.c_str());
-  }
+  // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Found %zu timestamp tokens", timestamps.size());
+  // if (!timestamps.empty()) {
+  //   std::string timestamp_debug = "Timestamp tokens: ";
+  //   for (size_t i = 0; i < std::min(timestamps.size(), size_t(10)); ++i) {
+  //     timestamp_debug += std::to_string(timestamps[i]) + " ";
+  //   }
+  //   __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "%s", timestamp_debug.c_str());
+  // }
 
   if (!timestamps.empty() && timestamps.back() != tokenizer.get_timestamp_begin()) {
     duration = (timestamps.back() - tokenizer.get_timestamp_begin()) * static_cast<float>(time_precision);
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Calculated duration from timestamps: %.2f", duration);
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Calculated duration from timestamps: %.2f", duration);
   } else {
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Using segment_duration: %.2f", duration);
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Using segment_duration: %.2f", duration);
   }
 
   Segment seg;
@@ -621,15 +621,15 @@ std::tuple<std::vector<Segment>, int, bool> WhisperModel::split_segments_by_time
   seg.end = time_offset + duration;
   seg.tokens = tokens;
   current_segments.push_back(seg);
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Added single segment with %zu tokens, start: %.2f, end: %.2f",
-                     tokens.size(), seg.start, seg.end);
+  // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Added single segment with %zu tokens, start: %.2f, end: %.2f",
+  //                    tokens.size(), seg.start, seg.end);
   seek += segment_size;
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Updated seek: %d", seek);
+  // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Updated seek: %d", seek);
   }
 
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "🎯 === EXITING split_segments_by_timestamps ===");
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Returning %zu segments, seek: %d, single_timestamp_ending: %s",
-                     current_segments.size(), seek, single_timestamp_ending ? "true" : "false");
+  // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "🎯 === EXITING split_segments_by_timestamps ===");
+  // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Returning %zu segments, seek: %d, single_timestamp_ending: %s",
+  //                    current_segments.size(), seek, single_timestamp_ending ? "true" : "false");
 
   return {current_segments, seek, single_timestamp_ending};
 }
@@ -723,17 +723,17 @@ std::vector<Segment> WhisperModel::generate_segments(
 
     // Get previous tokens for prompt (Python line 1173)
     std::vector<int> previous_tokens(all_tokens.begin() + prompt_reset_since, all_tokens.end());
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "previous_tokens.size(): %zu", previous_tokens.size());
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "previous_tokens.size(): %zu", previous_tokens.size());
 
     // Encode segment if needed (Python line 1175-1176)
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Checking if encoding needed: seek=%d, encoder_output.empty()=%d",
-                        seek, encoder_output.empty());
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Checking if encoding needed: seek=%d, encoder_output.empty()=%d",
+    //                     seek, encoder_output.empty());
     if (seek > 0 || encoder_output.empty()) {
-      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Encoding segment features...");
+      // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Encoding segment features...");
       encoder_output = encode(segment_features);
-      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Segment encoding completed");
+      // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Segment encoding completed");
     } else {
-      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Reusing existing encoder_output");
+      // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Reusing existing encoder_output");
     }
 
     // Language detection per segment if multilingual (Python line 1178-1184)
@@ -760,45 +760,45 @@ std::vector<Segment> WhisperModel::generate_segments(
       options.hotwords
     );
 
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "get_prompt returned prompt.size(): %zu", prompt.size());
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "get_prompt returned prompt.size(): %zu", prompt.size());
 
     // Generate with fallback (Python line 1194-1199)
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "About to call generate_with_fallback");
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Prompt length: %zu", prompt.size());
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "About to call generate_with_fallback");
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Prompt length: %zu", prompt.size());
 
-    std::string prompt_str = "Full prompt tokens: ";
-    for (size_t i = 0; i < prompt.size(); ++i) {
-      prompt_str += std::to_string(prompt[i]);
-      if (i < prompt.size() - 1) prompt_str += ", ";
-    }
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "%s", prompt_str.c_str());
+    // std::string prompt_str = "Full prompt tokens: ";
+    // for (size_t i = 0; i < prompt.size(); ++i) {
+    //   prompt_str += std::to_string(prompt[i]);
+    //   if (i < prompt.size() - 1) prompt_str += ", ";
+    // }
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "%s", prompt_str.c_str());
 
     // Debug: Try to decode the prompt using our tokenizer to see what it looks like
-    std::string decoded_prompt = tokenizer.decode(prompt);
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Decoded prompt: '%s'", decoded_prompt.c_str());
+    // std::string decoded_prompt = tokenizer.decode(prompt);
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Decoded prompt: '%s'", decoded_prompt.c_str());
 
     // Debug: Check specific token decoding
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Token 50257 decodes to: '%s'", tokenizer.decode({50257}).c_str());
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Token 50257 decodes to: '%s'", tokenizer.decode({50257}).c_str());
 
     auto [result, avg_logprob, temperature, compression_ratio] = generate_with_fallback(
       encoder_output, prompt, tokenizer, options
     );
 
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "generate_with_fallback completed successfully");
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Generated %zu tokens", result.size());
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "generate_with_fallback completed successfully");
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Generated %zu tokens", result.size());
 
     // Debug: Show first few generated tokens
-    if (!result.empty()) {
-      std::string tokens_str = "Generated tokens: ";
-      for (size_t i = 0; i < std::min(result.size(), size_t(10)); ++i) {
-        tokens_str += std::to_string(result[i]) + " ";
-      }
-      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "%s", tokens_str.c_str());
+    // if (!result.empty()) {
+    //   std::string tokens_str = "Generated tokens: ";
+    //   for (size_t i = 0; i < std::min(result.size(), size_t(10)); ++i) {
+    //     tokens_str += std::to_string(result[i]) + " ";
+    //   }
+    //   __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "%s", tokens_str.c_str());
 
-      // Try to decode the result
-      std::string decoded_result = tokenizer.decode(result);
-      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Decoded result: '%s'", decoded_result.c_str());
-    }
+    //   // Try to decode the result
+    //   std::string decoded_result = tokenizer.decode(result);
+    //   __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Decoded result: '%s'", decoded_result.c_str());
+    // }
 
     // No speech detection (Python line 1201-1221)
     if (options.no_speech_threshold.has_value()) {
@@ -816,11 +816,19 @@ std::vector<Segment> WhisperModel::generate_segments(
     seek = new_seek;
 
     // Process current segments (Python line 1330-1356)
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Processing %zu segments", current_segments.size());
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Processing %zu segments", current_segments.size());
     for (auto& segment : current_segments) {
-      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "About to decode segment with %zu tokens...", segment.tokens.size());
+      // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "About to decode segment with %zu tokens...", segment.tokens.size());
+
+      // Log the tokens before decoding
+      // std::string tokens_debug = "Segment tokens: ";
+      // for (size_t i = 0; i < std::min(segment.tokens.size(), size_t(20)); ++i) {
+      //   tokens_debug += std::to_string(segment.tokens[i]) + " ";
+      // }
+      // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "%s", tokens_debug.c_str());
+
       std::string text = tokenizer.decode(segment.tokens);
-      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "✅ Segment decode completed! Text: '%s' (tokens: %zu)", text.c_str(), segment.tokens.size());
+      // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "✅ Segment decode completed! Text: '%s' (tokens: %zu)", text.c_str(), segment.tokens.size());
 
       // Print Arabic text to console for visibility
       if (!text.empty()) {
@@ -830,7 +838,7 @@ std::vector<Segment> WhisperModel::generate_segments(
       }
 
       if (segment.start == segment.end || text.empty()) {
-        __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Skipping empty segment");
+        // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Skipping empty segment");
         continue;
       }
 
@@ -860,10 +868,10 @@ std::vector<Segment> WhisperModel::generate_segments(
     }
   }
 
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "generate_segments completed with %zu segments", all_segments.size());
-  for (size_t i = 0; i < all_segments.size(); ++i) {
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Final segment %zu: '%s'", i, all_segments[i].text.c_str());
-  }
+  // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "generate_segments completed with %zu segments", all_segments.size());
+  // for (size_t i = 0; i < all_segments.size(); ++i) {
+  //   __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Final segment %zu: '%s'", i, all_segments[i].text.c_str());
+  // }
 
   return all_segments;
 }
@@ -872,9 +880,9 @@ std::vector<Segment> WhisperModel::generate_segments(
 // Encode features using the Whisper model
 // --------------------------
 ctranslate2::StorageView WhisperModel::encode(const std::vector<std::vector<float>> &features) {
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "=== ENTERING encode() ===");
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Features dimensions: %zu x %zu", features.size(),
-                      features.empty() ? 0 : features[0].size());
+  // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "=== ENTERING encode() ===");
+  // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Features dimensions: %zu x %zu", features.size(),
+  //                     features.empty() ? 0 : features[0].size());
 
   bool to_cpu = false; // Simplified for CPU-only build
 
@@ -886,20 +894,20 @@ ctranslate2::StorageView WhisperModel::encode(const std::vector<std::vector<floa
     throw std::runtime_error("Cannot encode empty features");
   }
 
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Creating 3D storage tensor...");
+  // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Creating 3D storage tensor...");
   // Create 3D tensor by adding batch dimension
   auto storage = get_ctranslate2_storage_3d(features);
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Storage created with shape: [%lld, %lld, %lld]",
-                      (long long)storage.shape()[0], (long long)storage.shape()[1], (long long)storage.shape()[2]);
+  // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Storage created with shape: [%lld, %lld, %lld]",
+  //                     (long long)storage.shape()[0], (long long)storage.shape()[1], (long long)storage.shape()[2]);
 
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Calling model->encode()...");
+  // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Calling model->encode()...");
   try {
     auto future = model->encode(storage, to_cpu);
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "model->encode() returned future, getting result...");
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "model->encode() returned future, getting result...");
 
     auto result = future.get();
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "encode() completed successfully!");
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "=== EXITING encode() ===");
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "encode() completed successfully!");
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "=== EXITING encode() ===");
     return result;
 
   } catch (const std::exception& e) {
@@ -918,44 +926,44 @@ WhisperModel::generate_with_fallback(
   Tokenizer &tokenizer,
   const TranscriptionOptions &options
 ) {
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "=== ENTERING generate_with_fallback ===");
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Encoder output shape: [%lld, %lld, %lld]",
-                      (long long)encoder_output.shape()[0], (long long)encoder_output.shape()[1], (long long)encoder_output.shape()[2]);
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Prompt size: %zu", prompt.size());
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Temperature options count: %zu", options.temperatures.size());
+  // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "=== ENTERING generate_with_fallback ===");
+  // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Encoder output shape: [%lld, %lld, %lld]",
+  //                     (long long)encoder_output.shape()[0], (long long)encoder_output.shape()[1], (long long)encoder_output.shape()[2]);
+  // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Prompt size: %zu", prompt.size());
+  // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Temperature options count: %zu", options.temperatures.size());
 
   // Follow Python implementation from line 1388-1516
   std::tuple<std::vector<int>, float, float, float> decode_result;
   std::vector<std::tuple<std::vector<int>, float, float, float>> all_results;
   std::vector<std::tuple<std::vector<int>, float, float, float>> below_cr_threshold_results;
 
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Calculating max_initial_timestamp_index...");
+  // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Calculating max_initial_timestamp_index...");
   int max_initial_timestamp_index = static_cast<int>(
     std::round(options.max_initial_timestamp / time_precision)
   );
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "max_initial_timestamp_index: %d", max_initial_timestamp_index);
+  // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "max_initial_timestamp_index: %d", max_initial_timestamp_index);
 
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Calculating max_length...");
+  // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Calculating max_length...");
   // OPTIMIZATION: Reduce max_length for faster generation
   int max_length = options.max_new_tokens.has_value() ?
                    prompt.size() + options.max_new_tokens.value() :
                    256; // Reduced from 448 to 256 for Arabic speech
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "max_length: %d (OPTIMIZED), this->max_length: %d", max_length, this->max_length);
+  // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "max_length: %d (OPTIMIZED), this->max_length: %d", max_length, this->max_length);
 
   if (max_length > this->max_length) {
     throw std::runtime_error("Prompt + max_new_tokens exceeds Whisper max_length");
   }
 
   // Iterate through temperatures (Python line 1418)
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Starting temperature loop...");
+  // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Starting temperature loop...");
 
   for (size_t temp_idx = 0; temp_idx < options.temperatures.size(); ++temp_idx) {
     float temperature = options.temperatures[temp_idx];
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "=== Temperature iteration %zu/%zu: %.2f ===",
-                        temp_idx + 1, options.temperatures.size(), temperature);
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "=== Temperature iteration %zu/%zu: %.2f ===",
+    //                     temp_idx + 1, options.temperatures.size(), temperature);
 
     // Configure generation options based on temperature (Python line 1419-1430)
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Configuring whisper_options...");
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Configuring whisper_options...");
     ctranslate2::models::WhisperOptions whisper_options;
 
     // Use proper beam search like Python faster-whisper
@@ -979,104 +987,104 @@ WhisperModel::generate_with_fallback(
     whisper_options.max_initial_timestamp_index = max_initial_timestamp_index;
 
     if (options.suppress_tokens.has_value()) {
-      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Setting suppress_tokens...");
+      // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Setting suppress_tokens...");
       std::vector<int> suppress_tokens_int;
       for (int token : options.suppress_tokens.value()) {
         suppress_tokens_int.push_back(token);
       }
       whisper_options.suppress_tokens = suppress_tokens_int;
-      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "suppress_tokens set with %zu tokens", suppress_tokens_int.size());
+      // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "suppress_tokens set with %zu tokens", suppress_tokens_int.size());
     }
 
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Converting prompt to size_t...");
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Converting prompt to size_t...");
     // Convert prompt to size_t for CTranslate2 (Python line 1432-1445)
     std::vector<size_t> prompt_size_t(prompt.begin(), prompt.end());
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Prompt converted: %zu tokens", prompt_size_t.size());
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Prompt converted: %zu tokens", prompt_size_t.size());
 
     // CRITICAL DEBUG: Log the actual prompt being sent to the model
-    std::string full_prompt_debug = "🚨 FULL PROMPT being sent to model: ";
-    for (size_t i = 0; i < prompt_size_t.size(); ++i) {
-      full_prompt_debug += std::to_string(prompt_size_t[i]) + " ";
-    }
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "%s", full_prompt_debug.c_str());
+    // std::string full_prompt_debug = "🚨 FULL PROMPT being sent to model: ";
+    // for (size_t i = 0; i < prompt_size_t.size(); ++i) {
+    //   full_prompt_debug += std::to_string(prompt_size_t[i]) + " ";
+    // }
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "%s", full_prompt_debug.c_str());
 
     // Verify Arabic SOT sequence
-    if (prompt_size_t.size() >= 3) {
-      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "🔍 Checking Arabic SOT sequence:");
-      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "   Token 0 (should be SOT 50258): %zu", prompt_size_t[0]);
-      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "   Token 1 (should be Arabic lang 50272): %zu", prompt_size_t[1]);
-      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "   Token 2 (should be transcribe 50359): %zu", prompt_size_t[2]);
-    }
+    // if (prompt_size_t.size() >= 3) {
+    //   __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "🔍 Checking Arabic SOT sequence:");
+    //   __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "   Token 0 (should be SOT 50258): %zu", prompt_size_t[0]);
+    //   __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "   Token 1 (should be Arabic lang 50272): %zu", prompt_size_t[1]);
+    //   __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "   Token 2 (should be transcribe 50359): %zu", prompt_size_t[2]);
+    // }
 
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "About to call model->generate() - THIS IS THE CRITICAL CALL");
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "WhisperOptions configured: beam_size=%zu, max_length=%zu, temperature=%.2f",
-                        (size_t)whisper_options.beam_size, (size_t)whisper_options.max_length, temperature);
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "About to call model->generate() - THIS IS THE CRITICAL CALL");
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "WhisperOptions configured: beam_size=%zu, max_length=%zu, temperature=%.2f",
+    //                     (size_t)whisper_options.beam_size, (size_t)whisper_options.max_length, temperature);
 
     try {
-      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Calling model->generate()...");
+      // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Calling model->generate()...");
       auto result_futures = model->generate(encoder_output, {prompt_size_t}, whisper_options);
-      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "model->generate() returned futures, getting result...");
+      // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "model->generate() returned futures, getting result...");
 
       // Add timeout logging to track how long result.get() takes
-      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "About to call result_futures[0].get() - monitoring for hang...");
+      // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "About to call result_futures[0].get() - monitoring for hang...");
 
       auto start_time = std::chrono::steady_clock::now();
       auto result = result_futures[0].get();
       auto end_time = std::chrono::steady_clock::now();
 
       auto duration = std::chrono::duration_cast<std::chrono::seconds>(end_time - start_time);
-      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "result.get() completed in %lld seconds!", (long long)duration.count());
+      // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "result.get() completed in %lld seconds!", (long long)duration.count());
 
-      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Result sequences count: %zu", result.sequences_ids.size());
-      if (!result.sequences_ids.empty()) {
-        __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "First sequence length: %zu", result.sequences_ids[0].size());
-      }
-      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Result scores count: %zu", result.scores.size());
+      // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Result sequences count: %zu", result.sequences_ids.size());
+      // if (!result.sequences_ids.empty()) {
+      //   __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "First sequence length: %zu", result.sequences_ids[0].size());
+      // }
+      // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Result scores count: %zu", result.scores.size());
 
       // Extract tokens and calculate metrics (Python line 1447-1455)
-      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Extracting tokens from result...");
+      // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Extracting tokens from result...");
       std::vector<int> tokens;
       if (!result.sequences_ids.empty() && !result.sequences_ids[0].empty()) {
         const auto &tokens_size_t = result.sequences_ids[0];
         tokens.assign(tokens_size_t.begin(), tokens_size_t.end());
-        __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Extracted %zu tokens", tokens.size());
+        // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Extracted %zu tokens", tokens.size());
       } else {
-        __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "No tokens in result sequences!");
+        // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "No tokens in result sequences!");
       }
-      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Before seq_len = tokens.size()");
+      // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Before seq_len = tokens.size()");
       int seq_len = tokens.size();
-      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "After seq_len = tokens.size()");
+      // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "After seq_len = tokens.size()");
 
       // Check if scores array is available
       float cum_logprob = 0.0f;
       float avg_logprob = 0.0f;
 
       if (!result.scores.empty()) {
-        __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Calculating scores - result.scores[0]: %.4f", result.scores[0]);
+        // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Calculating scores - result.scores[0]: %.4f", result.scores[0]);
         cum_logprob = result.scores[0] * std::pow(seq_len, options.length_penalty);
-        __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "After options.length_penalty calculation");
+        // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "After options.length_penalty calculation");
         avg_logprob = cum_logprob / (seq_len + 1);
-        __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Calculated avg_logprob: %.4f", avg_logprob);
+        // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Calculated avg_logprob: %.4f", avg_logprob);
       } else {
-        __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "⚠️ result.scores is EMPTY! Using default values: cum_logprob=0.0, avg_logprob=0.0");
+        // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "⚠️ result.scores is EMPTY! Using default values: cum_logprob=0.0, avg_logprob=0.0");
         // Use default values when scores are not available
         cum_logprob = 0.0f;
         avg_logprob = 0.0f;
       }
 
-      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "About to call tokenizer.decode() - THIS IS THE LIKELY BOTTLENECK");
-      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Decoding %zu tokens...", tokens.size());
+      // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "About to call tokenizer.decode() - THIS IS THE LIKELY BOTTLENECK");
+      // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Decoding %zu tokens...", tokens.size());
 
       // Calculate compression ratio (Python line 1454-1455)
       // CRITICAL: This decode() call is likely where we're getting stuck
       std::string text = tokenizer.decode(tokens);
 
-      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "✅ tokenizer.decode() COMPLETED!");
-      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Generated text: '%s'", text.c_str());
+      // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "✅ tokenizer.decode() COMPLETED!");
+      // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Generated text: '%s'", text.c_str());
 
-      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Calculating compression ratio...");
+      // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Calculating compression ratio...");
       float compression_ratio = get_compression_ratio(text);
-      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "✅ Compression ratio calculated: %.2f, avg_logprob: %.4f", compression_ratio, avg_logprob);
+      // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "✅ Compression ratio calculated: %.2f, avg_logprob: %.4f", compression_ratio, avg_logprob);
 
       decode_result = std::make_tuple(tokens, avg_logprob, temperature, compression_ratio);
       all_results.push_back(decode_result);
@@ -1086,8 +1094,8 @@ WhisperModel::generate_with_fallback(
       // Check compression ratio threshold (Python line 1467-1478)
       if (options.compression_ratio_threshold.has_value() &&
           compression_ratio > options.compression_ratio_threshold.value()) {
-        __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Compression ratio %.2f > threshold %.2f, needs fallback",
-                            compression_ratio, options.compression_ratio_threshold.value());
+        // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Compression ratio %.2f > threshold %.2f, needs fallback",
+        //                     compression_ratio, options.compression_ratio_threshold.value());
         needs_fallback = true;
       } else {
         below_cr_threshold_results.push_back(decode_result);
@@ -1096,8 +1104,8 @@ WhisperModel::generate_with_fallback(
       // Check log probability threshold (Python line 1480-1491)
       if (options.log_prob_threshold.has_value() &&
           avg_logprob < options.log_prob_threshold.value()) {
-        __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "avg_logprob %.4f < threshold %.4f, needs fallback",
-                            avg_logprob, options.log_prob_threshold.value());
+        // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "avg_logprob %.4f < threshold %.4f, needs fallback",
+        //                     avg_logprob, options.log_prob_threshold.value());
         needs_fallback = true;
       }
 
@@ -1106,15 +1114,15 @@ WhisperModel::generate_with_fallback(
           result.no_speech_prob > options.no_speech_threshold.value() &&
           options.log_prob_threshold.has_value() &&
           avg_logprob < options.log_prob_threshold.value()) {
-        __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "No speech detected, silence");
+        // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "No speech detected, silence");
         needs_fallback = false; // silence
       }
 
       if (!needs_fallback) {
-        __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Temperature %.2f successful, breaking loop", temperature);
+        // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Temperature %.2f successful, breaking loop", temperature);
         break; // Success, return this result
       } else {
-        __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Temperature %.2f failed, trying next", temperature);
+        // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Temperature %.2f failed, trying next", temperature);
       }
 
     } catch (const std::exception& e) {
@@ -1123,31 +1131,31 @@ WhisperModel::generate_with_fallback(
     }
   }
 
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Temperature loop completed");
+  // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Temperature loop completed");
 
   // All temperatures failed, select best result (Python line 1504-1515)
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Selecting best result from %zu below_cr_threshold and %zu all_results",
-                      below_cr_threshold_results.size(), all_results.size());
+  // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Selecting best result from %zu below_cr_threshold and %zu all_results",
+  //                     below_cr_threshold_results.size(), all_results.size());
 
   if (!below_cr_threshold_results.empty()) {
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Using best from below_cr_threshold_results");
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Using best from below_cr_threshold_results");
     auto best_it = std::max_element(
       below_cr_threshold_results.begin(), below_cr_threshold_results.end(),
       [](const auto &a, const auto &b) { return std::get<1>(a) < std::get<1>(b); }
     );
     decode_result = *best_it;
   } else if (!all_results.empty()) {
-    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Using best from all_results");
+    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Using best from all_results");
     auto best_it = std::max_element(
       all_results.begin(), all_results.end(),
       [](const auto &a, const auto &b) { return std::get<1>(a) < std::get<1>(b); }
     );
     decode_result = *best_it;
   } else {
-    __android_log_print(ANDROID_LOG_ERROR, "#transcribe", "No results available! This should not happen");
+    // __android_log_print(ANDROID_LOG_ERROR, "#transcribe", "No results available! This should not happen");
   }
 
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "=== EXITING generate_with_fallback successfully ===");
+  // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "=== EXITING generate_with_fallback successfully ===");
   return decode_result;
 }
 
@@ -1158,13 +1166,13 @@ std::vector<int> WhisperModel::get_prompt(
   std::optional<std::string> prefix,
   std::optional<std::string> hotwords
 ) {
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "get_prompt called with previous_tokens.size()=%zu, without_timestamps=%d",
-                      previous_tokens.size(), without_timestamps);
+  // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "get_prompt called with previous_tokens.size()=%zu, without_timestamps=%d",
+  //                     previous_tokens.size(), without_timestamps);
 
   std::vector<int> prompt;
 
   if (!previous_tokens.empty() || (hotwords.has_value() && !prefix.has_value())) {
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Adding SOT_PREV token");
+  // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Adding SOT_PREV token");
   prompt.push_back(tokenizer.get_sot_prev());
 
   if (hotwords.has_value() && !prefix.has_value()) {
@@ -1182,28 +1190,28 @@ std::vector<int> WhisperModel::get_prompt(
   }
 }
 
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Before adding SOT sequence, prompt.size()=%zu", prompt.size());
+  // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Before adding SOT sequence, prompt.size()=%zu", prompt.size());
 
   auto sot_sequence = tokenizer.get_sot_sequence();
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "SOT sequence size: %zu", sot_sequence.size());
+  // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "SOT sequence size: %zu", sot_sequence.size());
 
   prompt.insert(prompt.end(), sot_sequence.begin(), sot_sequence.end());
 
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "After adding SOT sequence, prompt.size()=%zu", prompt.size());
+  // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "After adding SOT sequence, prompt.size()=%zu", prompt.size());
 
   // Debug: Log the prompt tokens to help diagnose the issue
-  std::string prompt_debug = "Generated prompt tokens: ";
-  for (size_t i = 0; i < std::min(prompt.size(), size_t(10)); ++i) {
-    prompt_debug += std::to_string(prompt[i]) + " ";
-  }
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "%s", prompt_debug.c_str());
+  // std::string prompt_debug = "Generated prompt tokens: ";
+  // for (size_t i = 0; i < std::min(prompt.size(), size_t(10)); ++i) {
+  //   prompt_debug += std::to_string(prompt[i]) + " ";
+  // }
+  // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "%s", prompt_debug.c_str());
 
   // Debug: Check if SOT token is in the prompt (reuse existing sot_sequence)
-  std::string sot_debug = "SOT sequence: ";
-  for (int token : sot_sequence) {
-    sot_debug += std::to_string(token) + " ";
-  }
-  __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "%s", sot_debug.c_str());
+  // std::string sot_debug = "SOT sequence: ";
+  // for (int token : sot_sequence) {
+  //   sot_debug += std::to_string(token) + " ";
+  // }
+  // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "%s", sot_debug.c_str());
 
   if (without_timestamps) {
     prompt.push_back(tokenizer.get_no_timestamps());

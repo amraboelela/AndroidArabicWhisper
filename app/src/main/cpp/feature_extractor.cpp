@@ -226,7 +226,7 @@ Matrix FeatureExtractor::compute_mel_spectrogram(
     }
   }
 
-  std::cout << "Before normalization - max: " << max_val << ", min: " << min_val << std::endl;
+  // std::cout << "Before normalization - max: " << max_val << ", min: " << min_val << std::endl;
 
   // Apply normalization
   for (auto& row : log_mel_spec) {
@@ -245,11 +245,11 @@ Matrix FeatureExtractor::compute_mel_spectrogram(
       min_after = std::min(min_after, val);
     }
   }
-  std::cout << "After normalization - max: " << max_after << ", min: " << min_after << std::endl;
+  // std::cout << "After normalization - max: " << max_after << ", min: " << min_after << std::endl;
 
-  std::cout << "Successfully extracted mel spectrogram with dimensions: "
-            << log_mel_spec.size() << " x "
-            << (log_mel_spec.empty() ? 0 : log_mel_spec[0].size()) << std::endl;
+  // std::cout << "Successfully extracted mel spectrogram with dimensions: "
+  //           << log_mel_spec.size() << " x "
+  //           << (log_mel_spec.empty() ? 0 : log_mel_spec[0].size()) << std::endl;
 
   return log_mel_spec;
 }
