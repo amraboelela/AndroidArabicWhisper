@@ -80,10 +80,16 @@ public:
    */
   static std::vector<std::vector<float>> apply_log_transform(const std::vector<std::vector<float>>& mel_spectrogram);
 
+  /**
+   * Apply Hann window function
+   * @param window_size Size of the window
+   * @return Hann window coefficients
+   */
+  static std::vector<float> apply_hann_window(int window_size);
+
 private:
   // FFT and STFT utilities
   static std::vector<std::vector<float>> compute_stft(const std::vector<float>& audio);
-  static std::vector<float> apply_hann_window(int window_size);
   static std::vector<std::vector<float>> get_mel_filter_bank();
 
   // Helper functions

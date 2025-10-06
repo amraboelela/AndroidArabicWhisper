@@ -1,6 +1,7 @@
 #include "feature_extractor.h"
 #include "whisper_audio.h"
 #include <iostream>
+#include <iomanip>
 #include <stdexcept>
 #include <cmath>
 #include <numeric>
@@ -221,9 +222,35 @@ Matrix FeatureExtractor::compute_mel_spectrogram(
   // Print first 10 audio samples
   std::cout << "  First 10 audio samples: [";
   for (size_t i = 0; i < std::min(size_t(10), audio_to_process.size()); ++i) {
-    std::cout << (i > 0 ? " " : "") << audio_to_process[i];
+    if (i > 0) std::cout << " ";
+    // Use Python-like compact float format
+    float val = audio_to_process[i];
+    if (val == 0.0f) {
+      std::cout << "0.";
+    } else {
+      std::cout << val;
+    }
   }
   std::cout << "]" << std::endl;
+
+  // Log window statistics before STFT (to match Python's order)
+  auto window = whisper::AudioProcessor::apply_hann_window(WHISPER_N_FFT);
+  float win_min = *std::min_element(window.begin(), window.end());
+  float win_max = *std::max_element(window.begin(), window.end());
+  double win_sum = std::accumulate(window.begin(), window.end(), 0.0);
+  float win_mean = win_sum / window.size();
+  std::cout << "  Window stats: min=" << std::fixed << std::setprecision(6) << win_min << ", max=" << win_max << ", mean=" << win_mean << std::endl;
+
+  // Print first 10 window values
+  std::cout << "  First 10 window values: [";
+  for (size_t i = 0; i < std::min(size_t(10), window.size()); ++i) {
+    if (i > 0) std::cout << " ";
+    // Add line break after 5th value to match Python's display
+    if (i == 5) std::cout << "\n ";
+    std::cout << std::scientific << std::setprecision(7) << window[i];
+  }
+  std::cout << "]" << std::endl;
+  std::cout << std::fixed; // Reset to fixed notation
 
   // Use whisper-compatible mel spectrogram extraction
   auto whisper_mel_spec = whisper::AudioProcessor::extract_mel_spectrogram(audio_to_process);
@@ -233,8 +260,6 @@ Matrix FeatureExtractor::compute_mel_spectrogram(
     // Fall back to original implementation
     return compute_mel_spectrogram_original(waveform, padding, chunk_length);
   }
-
-  std::cout << "  Raw mel spec shape: (" << whisper_mel_spec.size() << ", " << whisper_mel_spec[0].size() << ")" << std::endl;
 
   // Apply log transform for whisper compatibility
   auto log_mel_spec = whisper::AudioProcessor::apply_log_transform(whisper_mel_spec);
@@ -255,28 +280,19 @@ Matrix FeatureExtractor::compute_mel_spectrogram(
 
   // std::cout << "Before normalization - max: " << max_val << ", min: " << min_val << std::endl;
 
-  // Apply normalization
+  // Apply clamping first (before scaling)
   for (auto& row : log_mel_spec) {
     for (float& val : row) {
       val = std::max(val, max_val - 8.0f);  // Clamp to max - 8
-      val = (val + 4.0f) / 4.0f;            // Scale to [-1, ~1.5] range
     }
   }
 
-  // Log statistics after clamping and before final scaling
+  // Log statistics after clamping (before scaling)
   float clamp_min = std::numeric_limits<float>::infinity();
   float clamp_max = -std::numeric_limits<float>::infinity();
   double clamp_sum = 0.0;
   size_t clamp_count = 0;
-
-  // Recalculate with clamping only (before division)
-  auto temp_spec = whisper::AudioProcessor::apply_log_transform(whisper_mel_spec);
-  for (auto& row : temp_spec) {
-    for (float& val : row) {
-      val = std::max(val, max_val - 8.0f);
-    }
-  }
-  for (const auto& row : temp_spec) {
+  for (const auto& row : log_mel_spec) {
     for (float val : row) {
       clamp_min = std::min(clamp_min, val);
       clamp_max = std::max(clamp_max, val);
@@ -285,7 +301,14 @@ Matrix FeatureExtractor::compute_mel_spectrogram(
     }
   }
   float clamp_mean = clamp_sum / clamp_count;
-  std::cout << "  After clamping stats: min=" << clamp_min << ", max=" << clamp_max << ", mean=" << clamp_mean << std::endl;
+  std::cout << "  After clamping stats: min=" << std::fixed << std::setprecision(6) << clamp_min << ", max=" << clamp_max << ", mean=" << clamp_mean << std::endl;
+
+  // Apply final scaling
+  for (auto& row : log_mel_spec) {
+    for (float& val : row) {
+      val = (val + 4.0f) / 4.0f;            // Scale to [-1, ~1.5] range
+    }
+  }
 
   // Log final shape after normalization
   std::cout << "  Final log_spec shape: (" << log_mel_spec.size() << ", "

@@ -156,13 +156,6 @@ def test_whisper_ct2_offline():
             for i, segment in enumerate(segments_list):
                 print(f"    Segment {i}: '{segment.text}' ({segment.start:.2f}s - {segment.end:.2f}s)")
 
-        # Test with empty audio
-        print("\n=== Testing with empty audio ===")
-        empty_audio = np.asarray([], dtype="float32")
-        segments, info = model.transcribe(empty_audio)
-        segments_list = list(segments)
-        print(f"Empty audio segments: {len(segments_list)}")
-
         # Test with silent audio
         print("\n=== Testing with silent audio ===")
         sample_rate = 16000

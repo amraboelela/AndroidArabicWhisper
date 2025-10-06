@@ -199,7 +199,23 @@ class FeatureExtractor:
 
         # Debug: print frame 100 FFT output (if it exists)
         if return_complex and output.ndim >= 2 and output.shape[1] > 100:
-            print(f"  DEBUG FFT frame 100: First 5 complex values: {output[:5, 100]}")
+            # Format complex values to match C++ output
+            formatted_values = []
+            for i in range(min(5, output.shape[0])):
+                val = output[i, 100]
+                real_part = val.real
+                imag_part = val.imag
+
+                # Format like C++: proper spacing and alignment
+                if abs(imag_part) < 1e-9:
+                    formatted_values.append(f"{real_part:12.8f}+0.j")
+                else:
+                    sign = "+" if imag_part >= 0 else ""
+                    formatted_values.append(f"{real_part:12.8f}{sign}{imag_part:.8f}j")
+
+            # Print with line break after 3rd value
+            print(f"  DEBUG FFT frame 100: First 5 complex values: [{formatted_values[0]} {formatted_values[1]} {formatted_values[2]} ")
+            print(f" {formatted_values[3]} {formatted_values[4]}]")
 
         return output if return_complex else np.real(output)
 
