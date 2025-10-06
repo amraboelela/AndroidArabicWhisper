@@ -100,15 +100,6 @@ def test_whisper_ct2_offline():
             print(f"Audio stats: min={audio.min():.6f}, max={audio.max():.6f}, mean={audio.mean():.6f}, std={audio.std():.6f}")
             print(f"First 20 samples: {audio[:20]}")
 
-            # Extract features to check the encoder input
-            print("\n=== Extracting features ===")
-            from faster_whisper.feature_extractor import FeatureExtractor
-            feature_extractor = FeatureExtractor()
-            features = feature_extractor(audio)
-            print(f"Features shape: {features.shape}")
-            print(f"Features stats: min={features.min():.6f}, max={features.max():.6f}, mean={features.mean():.6f}, std={features.std():.6f}")
-            print(f"First 5x5 of features:\n{features[:5, :5]}")
-
             # Transcribe the audio (disable VAD to match C++ behavior)
             segments, info = model.transcribe(audio, word_timestamps=True, vad_filter=False)
             segments_list = list(segments)
@@ -134,40 +125,6 @@ def test_whisper_ct2_offline():
                     if len(segment.words) > 10:
                         print(f"        ... and {len(segment.words) - 10} more words")
                 print()
-
-        else:
-            print(f"Audio file {audio_file} not found, falling back to synthetic audio")
-
-            # Fallback: Test with synthetic audio
-            sample_rate = 16000
-            duration = 2.0
-            t = np.linspace(0, duration, int(sample_rate * duration))
-            synthetic_audio = (0.1 * np.sin(2 * np.pi * 440 * t)).astype(np.float32)
-
-            segments, info = model.transcribe(synthetic_audio)
-            segments_list = list(segments)
-
-            print(f"Synthetic audio results:")
-            print(f"  Language: {info.language}")
-            print(f"  Language probability: {info.language_probability:.3f}")
-            print(f"  Duration: {info.duration:.2f}s")
-            print(f"  Segments: {len(segments_list)}")
-
-            for i, segment in enumerate(segments_list):
-                print(f"    Segment {i}: '{segment.text}' ({segment.start:.2f}s - {segment.end:.2f}s)")
-
-        # Test with silent audio
-        print("\n=== Testing with silent audio ===")
-        sample_rate = 16000
-        silent_audio = np.zeros(int(sample_rate * 1.0), dtype=np.float32)
-        segments, info = model.transcribe(silent_audio)
-        segments_list = list(segments)
-
-        print(f"Silent audio results:")
-        print(f"  Language: {info.language}")
-        print(f"  Language probability: {info.language_probability:.3f}")
-        print(f"  Duration: {info.duration:.2f}s")
-        print(f"  Segments: {len(segments_list)}")
 
         # Test supported languages
         print(f"\n=== Model Information ===")

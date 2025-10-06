@@ -201,8 +201,6 @@ std::tuple<std::vector<Segment>, TranscriptionInfo> WhisperModel::transcribe(
 
   // std::cout << "Processing audio with duration " << duration << "s" << std::endl;
 
-  std::cout << "\n=== Extracting features ===" << std::endl;
-
   // Step 3: Extract features from the full audio
   auto features = feature_extractor.extract(audio);
   if (features.empty() || features[0].empty()) {
