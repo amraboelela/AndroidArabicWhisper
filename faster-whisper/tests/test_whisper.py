@@ -98,31 +98,12 @@ def test_whisper_ct2_offline():
             print(f"Audio stats: min={audio.min():.6f}, max={audio.max():.6f}, mean={audio.mean():.6f}, std={audio.std():.6f}")
             print(f"First 20 samples: {audio[:20]}")
 
-            # Transcribe the audio (disable VAD to match C++ behavior)
-            segments, info = model.transcribe(audio, word_timestamps=True, vad_filter=False)
-            segments_list = list(segments)
+            # Transcribe the audio
+            segments, info = model.transcribe(audio)
 
-            print(f"Real audio transcription results:")
-            print(f"  Language: {info.language}")
-            print(f"  Language probability: {info.language_probability:.3f}")
-            print(f"  Duration: {info.duration:.2f}s")
-            print(f"  Segments: {len(segments_list)}")
-
-            for i, segment in enumerate(segments_list):
-                print(f"    Segment {i}: '{segment.text}'")
-                print(f"      Time: {segment.start:.2f}s - {segment.end:.2f}s")
-                print(f"      Confidence: avg_logprob={segment.avg_logprob:.3f}")
-                print(f"      Token count: {len(segment.tokens)}")
-                print(f"      Tokens: {segment.tokens[:20]}")  # Show first 20 tokens
-
-                # Show word-level timestamps if available
-                if segment.words and len(segment.words) > 0:
-                    print(f"      Words ({len(segment.words)}):")
-                    for word in segment.words[:10]:  # Show first 10 words
-                        print(f"        '{word.word}' ({word.start:.2f}s-{word.end:.2f}s, prob={word.probability:.3f})")
-                    if len(segment.words) > 10:
-                        print(f"        ... and {len(segment.words) - 10} more words")
-                print()
+            print(f"Detected language: {info.language}")
+            for segment in segments:
+                print(f"[{segment.start:.2f}s -> {segment.end:.2f}s] {segment.text}")
 
         # Test supported languages
         print(f"\n=== Model Information ===")
