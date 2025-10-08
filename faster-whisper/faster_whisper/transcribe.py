@@ -900,6 +900,11 @@ class WhisperModel:
 
         features = self.feature_extractor(audio, chunk_length=chunk_length)
 
+        # Log feature stats (matching C++ output)
+        print(f"Features shape: {features.shape}")
+        print(f"Features stats: min={features.min():.6f}, max={features.max():.6f}, mean={features.mean():.6f}, std={features.std():.6f}")
+        print(f"First 5x5 of features:\n{features[:5, :5]}")
+
         encoder_output = None
         all_language_probs = None
 
@@ -1442,6 +1447,9 @@ class WhisperModel:
             )[0]
 
             tokens = result.sequences_ids[0]
+
+            # Log generated tokens for debugging
+            print(f"  Generated tokens ({len(tokens)}): {list(tokens[:20])}{f', ..., {list(tokens[-3:])}' if len(tokens) > 20 else ''}")
 
             # Recover the average log prob from the returned score.
             seq_len = len(tokens)

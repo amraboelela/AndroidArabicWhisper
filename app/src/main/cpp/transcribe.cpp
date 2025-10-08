@@ -153,7 +153,7 @@ WhisperModel::WhisperModel(
   frames_per_second = feature_extractor.sampling_rate() / feature_extractor.hop_length;
   tokens_per_second = feature_extractor.sampling_rate() / num_samples_per_token;
   time_precision = 0.02;
-  max_length = 448;
+  max_length = 512;  // Match Python's whisper max_length (increased from 448)
 }
 
 std::vector<std::string> WhisperModel::supported_languages() const {
@@ -360,8 +360,8 @@ std::tuple<std::vector<Segment>, TranscriptionInfo> WhisperModel::transcribe(
   options.best_of = 5;
   options.patience = 1.0f;
   options.length_penalty = 1.0f;
-  options.repetition_penalty = 1.1f;
-  options.no_repeat_ngram_size = 3;
+  options.repetition_penalty = 1.0f;  // Match Python default (was 1.1f)
+  options.no_repeat_ngram_size = 0;   // Match Python default (was 3)
   options.log_prob_threshold = -1.0f;
   options.no_speech_threshold = 0.6f;
   options.compression_ratio_threshold = 2.4f;
@@ -1052,6 +1052,24 @@ WhisperModel::generate_with_fallback(
       if (!result.sequences_ids.empty() && !result.sequences_ids[0].empty()) {
         const auto &tokens_size_t = result.sequences_ids[0];
         tokens.assign(tokens_size_t.begin(), tokens_size_t.end());
+
+        // Log generated tokens for debugging
+        std::cout << "  Generated tokens (" << tokens.size() << "): [";
+        for (size_t i = 0; i < std::min(size_t(20), tokens.size()); ++i) {
+          if (i > 0) std::cout << ", ";
+          std::cout << tokens[i];
+        }
+        if (tokens.size() > 20) {
+          std::cout << ", ...";
+          // Show last 3 tokens to see if EOS was generated
+          std::cout << ", ";
+          for (size_t i = std::max(size_t(0), tokens.size() - 3); i < tokens.size(); ++i) {
+            if (i > std::max(size_t(0), tokens.size() - 3)) std::cout << ", ";
+            std::cout << tokens[i];
+          }
+        }
+        std::cout << "]" << std::endl;
+
         // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Extracted %zu tokens", tokens.size());
       } else {
         // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "No tokens in result sequences!");
@@ -1099,8 +1117,7 @@ WhisperModel::generate_with_fallback(
       // Check compression ratio threshold (Python line 1467-1478)
       if (options.compression_ratio_threshold.has_value() &&
           compression_ratio > options.compression_ratio_threshold.value()) {
-        // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Compression ratio %.2f > threshold %.2f, needs fallback",
-        //                     compression_ratio, options.compression_ratio_threshold.value());
+        std::cout << "  DEBUG: Compression ratio " << compression_ratio << " > threshold " << options.compression_ratio_threshold.value() << ", needs fallback" << std::endl;
         needs_fallback = true;
       } else {
         below_cr_threshold_results.push_back(decode_result);
@@ -1109,8 +1126,7 @@ WhisperModel::generate_with_fallback(
       // Check log probability threshold (Python line 1480-1491)
       if (options.log_prob_threshold.has_value() &&
           avg_logprob < options.log_prob_threshold.value()) {
-        // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "avg_logprob %.4f < threshold %.4f, needs fallback",
-        //                     avg_logprob, options.log_prob_threshold.value());
+        std::cout << "  DEBUG: avg_logprob " << avg_logprob << " < threshold " << options.log_prob_threshold.value() << ", needs fallback" << std::endl;
         needs_fallback = true;
       }
 
@@ -1124,10 +1140,10 @@ WhisperModel::generate_with_fallback(
       }
 
       if (!needs_fallback) {
-        // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Temperature %.2f successful, breaking loop", temperature);
+        std::cout << "  DEBUG: Temperature " << temperature << " successful (needs_fallback=false), breaking loop" << std::endl;
         break; // Success, return this result
       } else {
-        // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Temperature %.2f failed, trying next", temperature);
+        std::cout << "  DEBUG: Temperature " << temperature << " failed (needs_fallback=true), trying next" << std::endl;
       }
 
     } catch (const std::exception& e) {
