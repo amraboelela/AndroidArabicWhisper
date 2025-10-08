@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import sys
+import tokenizers
 import zlib
 
 from dataclasses import asdict, dataclass
@@ -16,7 +17,7 @@ import numpy as np
 
 from tqdm import tqdm
 
-from faster_whisper.audio import pad_or_trim
+from faster_whisper.audio import decode_audio, pad_or_trim
 from faster_whisper.feature_extractor import FeatureExtractor
 from faster_whisper.tokenizer import _LANGUAGE_CODES, Tokenizer
 from faster_whisper.utils import download_model, format_timestamp, get_end, get_logger
@@ -27,9 +28,9 @@ from faster_whisper.vad import (
     get_speech_timestamps,
 )
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../app/src/main/cpp'))
-from whisper.whisper_audio import AudioProcessor
-from whisper.whisper_tokenizer import WhisperTokenizer
+# sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../app/src/main/cpp'))
+# from whisper.whisper_audio import AudioProcessor
+# from whisper.whisper_tokenizer import WhisperTokenizer
 
 @dataclass
 class Word:
@@ -387,8 +388,8 @@ class BatchedInferencePipeline:
             multilingual = False
 
         if not isinstance(audio, np.ndarray):
-            # Use AudioProcessor to decode and preprocess audio
-            audio = AudioProcessor.decode_audio(audio, sampling_rate)
+            # Use decode_audio to decode and preprocess audio
+            audio = decode_audio(audio, sampling_rate)
         duration = audio.shape[0] / sampling_rate
 
         self.model.logger.info(
@@ -676,19 +677,13 @@ class WhisperModel:
         )
 
         tokenizer_file = os.path.join(model_path, "tokenizer.json")
-        # Use WhisperTokenizer instead of HuggingFace tokenizer
-        if tokenizer_bytes or os.path.isfile(tokenizer_file):
-            # Load vocabulary from tokenizer file
-            vocab_file = tokenizer_file if os.path.isfile(tokenizer_file) else None
-            self.hf_tokenizer = WhisperTokenizer(
-                vocab_file=vocab_file,
-                multilingual=self.model.is_multilingual
-            )
+        if tokenizer_bytes:
+            self.hf_tokenizer = tokenizers.Tokenizer.from_buffer(tokenizer_bytes)
+        elif os.path.isfile(tokenizer_file):
+            self.hf_tokenizer = tokenizers.Tokenizer.from_file(tokenizer_file)
         else:
-            # Use built-in vocabulary
-            self.hf_tokenizer = WhisperTokenizer(
-                vocab_file=None,
-                multilingual=self.model.is_multilingual
+            self.hf_tokenizer = tokenizers.Tokenizer.from_pretrained(
+                "openai/whisper-tiny" + ("" if self.model.is_multilingual else ".en")
             )
         self.feat_kwargs = self._get_feature_kwargs(model_path, preprocessor_bytes)
         self.feature_extractor = FeatureExtractor(**self.feat_kwargs)
@@ -857,8 +852,8 @@ class WhisperModel:
             multilingual = False
 
         if not isinstance(audio, np.ndarray):
-            # Use AudioProcessor to decode and preprocess audio
-            audio = AudioProcessor.decode_audio(audio, sampling_rate)
+            # Use decode_audio to decode and preprocess audio
+            audio = decode_audio(audio, sampling_rate)
 
         duration = audio.shape[0] / sampling_rate
         duration_after_vad = duration
@@ -950,10 +945,12 @@ class WhisperModel:
 
             language_probability = 1
 
-        # Update tokenizer with task and language
-        self.hf_tokenizer.task = task
-        self.hf_tokenizer.language = language
-        tokenizer = self.hf_tokenizer
+        tokenizer = Tokenizer(
+            self.hf_tokenizer,
+            self.model.is_multilingual,
+            task=task,
+            language=language,
+        )
 
         options = TranscriptionOptions(
             beam_size=beam_size,
