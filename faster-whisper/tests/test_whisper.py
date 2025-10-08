@@ -13,11 +13,7 @@ from faster_whisper import WhisperModel
 
 def find_whisper_ct2_path():
     """Find the whisper_ct2 directory"""
-    if os.path.exists("../whisper_ct2/model.bin"):
-        return os.path.abspath("../whisper_ct2")
-    elif os.path.exists("./whisper_ct2/model.bin"):
-        return os.path.abspath("./whisper_ct2")
-    elif os.path.exists("../../app/src/main/assets/whisper_ct2/model.bin"):
+    if os.path.exists("../../app/src/main/assets/whisper_ct2/model.bin"):
         return os.path.abspath("../../app/src/main/assets/whisper_ct2")
     else:
         raise FileNotFoundError("Could not find whisper_ct2 directory")
