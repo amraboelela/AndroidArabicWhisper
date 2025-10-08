@@ -18,7 +18,7 @@ public:
         return n > 0 && (n & (n - 1)) == 0;
     }
 
-    // Compute FFT using Cooley-Tukey algorithm (power of 2) or DFT (arbitrary size)
+    // Compute FFT using Cooley-Tukey algorithm (power of 2) or Bluestein's algorithm (arbitrary size)
     static std::vector<std::complex<float>> compute(const std::vector<float>& input) {
         size_t n = input.size();
 
@@ -28,11 +28,11 @@ public:
             x[i] = std::complex<double>(input[i], 0.0);
         }
 
-        // Use FFT if power of 2, otherwise use DFT
+        // Use FFT if power of 2, otherwise use Bluestein's algorithm
         if (is_power_of_2(n)) {
             fft_recursive_double(x);
         } else {
-            x = dft_double(x);
+            x = fft_bluestein(x);
         }
 
         // Convert back to float
@@ -59,6 +59,67 @@ public:
     }
 
 private:
+    // Bluestein's algorithm for arbitrary-size FFT (O(N log N))
+    // This converts an arbitrary DFT into circular convolution, which can be computed using power-of-2 FFT
+    static std::vector<std::complex<double>> fft_bluestein(const std::vector<std::complex<double>>& x) {
+        size_t n = x.size();
+
+        // Find next power of 2 that's >= 2*n - 1
+        size_t m = 1;
+        while (m < 2 * n - 1) {
+            m *= 2;
+        }
+
+        // Compute the chirp sequence: exp(-i * pi * k^2 / n)
+        std::vector<std::complex<double>> chirp(n);
+        for (size_t k = 0; k < n; ++k) {
+            double angle = -M_PI * k * k / n;
+            chirp[k] = std::complex<double>(std::cos(angle), std::sin(angle));
+        }
+
+        // Compute a = x * chirp (element-wise multiplication)
+        std::vector<std::complex<double>> a(m, 0.0);
+        for (size_t k = 0; k < n; ++k) {
+            a[k] = x[k] * chirp[k];
+        }
+
+        // Compute b = conj(chirp) padded and wrapped
+        std::vector<std::complex<double>> b(m, 0.0);
+        b[0] = std::conj(chirp[0]);
+        for (size_t k = 1; k < n; ++k) {
+            b[k] = std::conj(chirp[k]);
+            b[m - k] = std::conj(chirp[k]);
+        }
+
+        // Compute FFT of a and b
+        fft_recursive_double(a);
+        fft_recursive_double(b);
+
+        // Pointwise multiply: c = a * b
+        std::vector<std::complex<double>> c(m);
+        for (size_t i = 0; i < m; ++i) {
+            c[i] = a[i] * b[i];
+        }
+
+        // Compute inverse FFT of c
+        // For inverse FFT: conjugate, FFT, conjugate, divide by m
+        for (size_t i = 0; i < m; ++i) {
+            c[i] = std::conj(c[i]);
+        }
+        fft_recursive_double(c);
+        for (size_t i = 0; i < m; ++i) {
+            c[i] = std::conj(c[i]) / static_cast<double>(m);
+        }
+
+        // Extract result and multiply by chirp
+        std::vector<std::complex<double>> result(n);
+        for (size_t k = 0; k < n; ++k) {
+            result[k] = c[k] * chirp[k];
+        }
+
+        return result;
+    }
+
     // Direct DFT computation for arbitrary sizes (double precision)
     static std::vector<std::complex<double>> dft_double(const std::vector<std::complex<double>>& x) {
         size_t n = x.size();

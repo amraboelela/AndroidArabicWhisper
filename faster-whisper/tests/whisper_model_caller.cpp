@@ -8,10 +8,34 @@
 #include <algorithm>
 #include <numeric>
 #include <cmath>
+#include <chrono>
+#include <ctime>
 
 // Include the faster_whisper_cpp headers
 #include "transcribe.h"
 #include "audio.h"
+
+// Helper function to log with timestamp
+std::string getCurrentTimestamp() {
+    auto now = std::chrono::system_clock::now();
+    auto now_ms = std::chrono::time_point_cast<std::chrono::milliseconds>(now);
+    auto value = now_ms.time_since_epoch();
+    auto duration = value.count();
+
+    std::time_t now_time = std::chrono::system_clock::to_time_t(now);
+    std::tm* local_time = std::localtime(&now_time);
+
+    std::ostringstream oss;
+    oss << std::setfill('0') << std::setw(2) << local_time->tm_hour << ":"
+        << std::setfill('0') << std::setw(2) << local_time->tm_min << ":"
+        << std::setfill('0') << std::setw(2) << local_time->tm_sec << "."
+        << std::setfill('0') << std::setw(3) << (duration % 1000);
+    return oss.str();
+}
+
+void logWithTimestamp(const std::string& message) {
+    std::cout << "[" << getCurrentTimestamp() << "] " << message << std::endl;
+}
 
 class WhisperModelCaller {
 private:
@@ -90,7 +114,7 @@ public:
 
     std::string transcribe(const std::string& audioFile) {
         try {
-            std::cout << "\nLoading WhisperModel in offline mode..." << std::endl;
+            logWithTimestamp("Loading WhisperModel in offline mode...");
 
             // Initialize WhisperModel with the same parameters as Python version
             WhisperModel model(
@@ -98,7 +122,7 @@ public:
                 "cpu",              // device
                 {0},                // device_index
                 "int8",             // compute_type
-                0,                  // cpu_threads (0 = auto)
+                4,                  // cpu_threads (explicitly set to 4 for best performance)
                 1,                  // num_workers
                 "",                 // download_root
                 true,               // local_files_only
@@ -107,10 +131,10 @@ public:
                 ""                  // use_auth_token
             );
 
-            std::cout << "Model loaded successfully!\n" << std::endl;
+            logWithTimestamp("Model loaded successfully!");
 
-            std::cout << "=== Testing with " << audioFile << " ===" << std::endl;
-            std::cout << "Loading audio file: " << audioFile << std::endl;
+            logWithTimestamp("=== Testing with " + audioFile + " ===");
+            logWithTimestamp("Loading audio file: " + audioFile);
 
             // Decode audio file to float samples
             std::vector<float> audio = AudioDecoder::decode_audio(audioFile, 16000);
@@ -127,8 +151,11 @@ public:
             float sq_sum = std::inner_product(audio.begin(), audio.end(), audio.begin(), 0.0f);
             float std = std::sqrt(sq_sum / audio.size() - mean * mean);
 
-            std::cout << "Audio loaded: " << audio.size() << " samples ("
-                      << std::fixed << std::setprecision(2) << (audio.size() / 16000.0) << " seconds)" << std::endl;
+            std::ostringstream audio_loaded_msg;
+            audio_loaded_msg << "Audio loaded: " << audio.size() << " samples ("
+                      << std::fixed << std::setprecision(2) << (audio.size() / 16000.0) << " seconds)";
+            logWithTimestamp(audio_loaded_msg.str());
+
             std::cout << "Audio stats: min=" << std::setprecision(6) << min_val << ", max=" << max_val
                       << ", mean=" << mean << ", std=" << std << std::endl;
 
@@ -145,12 +172,25 @@ public:
             }
             std::cout << "]" << std::endl;
 
+            // Start timing
+            logWithTimestamp("Starting transcription...");
+            auto start_time = std::chrono::high_resolution_clock::now();
+
+            logWithTimestamp("Transcription completed, processing segments...");
+
             // Transcribe with Arabic language specified and word timestamps enabled
             auto [segments, info] = model.transcribe(
                 audio,              // audio data
                 "ar",               // language (force Arabic)
                 false               // multilingual
             );
+
+            // End timing
+            auto end_time = std::chrono::high_resolution_clock::now();
+            auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+            double seconds = duration.count() / 1000.0;
+            std::cout << "\n⏱️  Transcription took: " << std::fixed << std::setprecision(2)
+                      << seconds << " seconds" << std::endl;
 
             return createJsonOutput(segments, info);
 

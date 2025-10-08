@@ -5,6 +5,7 @@ import os
 import sys
 import tokenizers
 import zlib
+from datetime import datetime
 
 from dataclasses import asdict, dataclass
 from inspect import signature
@@ -31,6 +32,11 @@ from faster_whisper.vad import (
 # sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../app/src/main/cpp'))
 # from whisper.whisper_audio import AudioProcessor
 # from whisper.whisper_tokenizer import WhisperTokenizer
+
+def log_with_timestamp(message):
+    """Print message with timestamp"""
+    timestamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+    print(f"[{timestamp}] {message}")
 
 @dataclass
 class Word:
@@ -1172,7 +1178,9 @@ class WhisperModel:
             previous_tokens = all_tokens[prompt_reset_since:]
 
             if seek > 0 or encoder_output is None:
+                log_with_timestamp("Starting encoder")
                 encoder_output = self.encode(segment)
+                log_with_timestamp("Encoder completed")
 
             if options.multilingual:
                 results = self.model.detect_language(encoder_output)
@@ -1190,6 +1198,7 @@ class WhisperModel:
                 hotwords=options.hotwords,
             )
 
+            log_with_timestamp("Starting generate_with_fallback")
             (
                 result,
                 avg_logprob,
@@ -1428,6 +1437,7 @@ class WhisperModel:
                     "patience": options.patience,
                 }
 
+            log_with_timestamp("Calling model.generate()")
             result = self.model.generate(
                 encoder_output,
                 [prompt],
@@ -1442,10 +1452,12 @@ class WhisperModel:
                 max_initial_timestamp_index=max_initial_timestamp_index,
                 **kwargs,
             )[0]
+            log_with_timestamp("model.generate() completed")
 
             tokens = result.sequences_ids[0]
 
             # Log generated tokens for debugging
+            log_with_timestamp(f"Generated tokens ({len(tokens)})")
             print(f"  Generated tokens ({len(tokens)}): {list(tokens[:20])}{f', ..., {list(tokens[-3:])}' if len(tokens) > 20 else ''}")
 
             # Recover the average log prob from the returned score.

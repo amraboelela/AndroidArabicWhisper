@@ -8,6 +8,31 @@
 #include <complex>
 #include <algorithm>
 #include <optional>
+#include <chrono>
+#include <ctime>
+#include <sstream>
+
+// Helper function to log with timestamp
+std::string getTimestamp() {
+    auto now = std::chrono::system_clock::now();
+    auto now_ms = std::chrono::time_point_cast<std::chrono::milliseconds>(now);
+    auto value = now_ms.time_since_epoch();
+    auto duration = value.count();
+
+    std::time_t now_time = std::chrono::system_clock::to_time_t(now);
+    std::tm* local_time = std::localtime(&now_time);
+
+    std::ostringstream oss;
+    oss << std::setfill('0') << std::setw(2) << local_time->tm_hour << ":"
+        << std::setfill('0') << std::setw(2) << local_time->tm_min << ":"
+        << std::setfill('0') << std::setw(2) << local_time->tm_sec << "."
+        << std::setfill('0') << std::setw(3) << (duration % 1000);
+    return oss.str();
+}
+
+void logFeatureTimestamp(const std::string& message) {
+    std::cout << "[" << getTimestamp() << "] " << message << std::endl;
+}
 
 // Function to simulate numpy's rfftfreq
 std::vector<float> rfftfreq(int n, float d) {
@@ -190,7 +215,8 @@ Matrix FeatureExtractor::compute_mel_spectrogram(
     int padding,
     std::optional<int> chunk_length
 ) {
-  std::cout << "DEBUG: feature_extractor.__call__ called" << std::endl;
+  logFeatureTimestamp("Starting feature extraction");
+  logFeatureTimestamp("DEBUG: feature_extractor.__call__ called");
   std::cout << "  Input waveform shape: (" << waveform.size() << ",)" << std::endl;
   std::cout << "  Padding: " << padding << std::endl;
   std::cout << "  Chunk length: " << (chunk_length.has_value() ? std::to_string(chunk_length.value()) : "None") << std::endl;
@@ -217,7 +243,8 @@ Matrix FeatureExtractor::compute_mel_spectrogram(
   float audio_max = *std::max_element(audio_to_process.begin(), audio_to_process.end());
   double audio_sum = std::accumulate(audio_to_process.begin(), audio_to_process.end(), 0.0);
   float audio_mean = audio_sum / audio_to_process.size();
-  std::cout << "  Audio stats before STFT: min=" << audio_min << ", max=" << audio_max << ", mean=" << audio_mean << std::endl;
+  std::cout << "  Audio stats before STFT: min=" << std::fixed << std::setprecision(6)
+            << audio_min << ", max=" << audio_max << ", mean=" << audio_mean << std::endl;
 
   // Print first 10 audio samples
   std::cout << "  First 10 audio samples: [";
@@ -330,6 +357,7 @@ Matrix FeatureExtractor::compute_mel_spectrogram(
   float final_mean = final_sum / final_count;
   std::cout << "  Final log_spec stats: min=" << final_min << ", max=" << final_max << ", mean=" << final_mean << std::endl;
 
+  logFeatureTimestamp("Feature extraction completed");
   return log_mel_spec;
 }
 
@@ -354,6 +382,7 @@ Matrix FeatureExtractor::compute_mel_spectrogram_original(
     window[i] = 0.5f * (1.0f - cos(2.0f * M_PI * i / (n_fft - 1)));
   }
 
+  logFeatureTimestamp("Starting STFT computation");
   auto stft_output = stft(
       processed_waveform,
       n_fft,
@@ -375,6 +404,7 @@ Matrix FeatureExtractor::compute_mel_spectrogram_original(
     }
   }
 
+  logFeatureTimestamp("STFT completed, starting mel filtering");
   // Perform matrix multiplication: mel_filters @ magnitudes
   Matrix mel_spec(mel_filters.size(), std::vector<float>(magnitudes.size()));
   for (size_t i = 0; i < mel_filters.size(); ++i) {

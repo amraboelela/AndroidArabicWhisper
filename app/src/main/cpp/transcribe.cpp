@@ -8,6 +8,7 @@
 #include <memory>
 #include <filesystem>
 #include <iostream>
+#include <iomanip>
 #include <fstream>  // Add missing fstream header
 #include <optional>
 #include <vector>
@@ -17,6 +18,31 @@
 #include <cmath>
 #include <algorithm>
 #include <variant>
+#include <chrono>
+#include <ctime>
+#include <sstream>
+
+// Helper function to log with timestamp
+std::string getTranscribeTimestamp() {
+    auto now = std::chrono::system_clock::now();
+    auto now_ms = std::chrono::time_point_cast<std::chrono::milliseconds>(now);
+    auto value = now_ms.time_since_epoch();
+    auto duration = value.count();
+
+    std::time_t now_time = std::chrono::system_clock::to_time_t(now);
+    std::tm* local_time = std::localtime(&now_time);
+
+    std::ostringstream oss;
+    oss << std::setfill('0') << std::setw(2) << local_time->tm_hour << ":"
+        << std::setfill('0') << std::setw(2) << local_time->tm_min << ":"
+        << std::setfill('0') << std::setw(2) << local_time->tm_sec << "."
+        << std::setfill('0') << std::setw(3) << (duration % 1000);
+    return oss.str();
+}
+
+void logTranscribeTimestamp(const std::string& message) {
+    std::cout << "[" << getTranscribeTimestamp() << "] " << message << std::endl;
+}
 
 // Forward declarations of utility functions
 std::vector<std::vector<float>> slice_features(const std::vector<std::vector<float>>& features, int start, int length);
@@ -76,14 +102,19 @@ WhisperModel::WhisperModel(
   std::string model_path = model_size_or_path;
   model_path_ = model_path;  // Store in member variable for later use
 
+  // Configure threading to match Python's CTranslate2 usage
+  // Python uses: intra_threads=cpu_threads, inter_threads=num_workers
+  // In C++ API, we use ReplicaPoolConfig with num_threads_per_replica
+  // When cpu_threads=0, CTranslate2 uses its internal default (typically 4)
   ctranslate2::ReplicaPoolConfig config;
-  config.num_threads_per_replica = cpu_threads;   // map your params here
+  config.num_threads_per_replica = cpu_threads;  // 0 means use CTranslate2's default
 
-  // Initialize the CTranslate2 model with fallback compute types for Android
+  // IMPORTANT: INT8 requires CPU with efficient int8 support (e.g., AVX512 VNNI)
+  // On systems without it, CTranslate2 rejects INT8 and we must use FLOAT32
+  // Python bindings may handle this differently, allowing INT8 even when "inefficient"
+  // For now, use FLOAT32 which works on all systems (but ~2x slower than INT8)
   std::vector<ctranslate2::ComputeType> compute_types = {
-    ctranslate2::ComputeType::INT8,     // Try INT8 first (lowest memory, no SGEMM)
-    ctranslate2::ComputeType::INT16,    // Try INT16 next
-    ctranslate2::ComputeType::FLOAT32   // Fallback to FLOAT32
+    ctranslate2::ComputeType::FLOAT32  // Works on all systems
   };
 
   std::shared_ptr<ctranslate2::models::Whisper> created_model = nullptr;
@@ -91,26 +122,25 @@ WhisperModel::WhisperModel(
 
   for (auto compute_type : compute_types) {
     try {
-      // std::cout << "Trying to initialize Whisper model with compute type: "
-      //           << (int)compute_type << std::endl;
+      std::cout << "Initializing Whisper model with compute type: "
+                << (int)compute_type << " (FLOAT32)" << std::endl;
 
       created_model = std::make_shared<ctranslate2::models::Whisper>(
         model_path,
         ctranslate2::Device::CPU,
         compute_type,
         device_index,
-        false,
+        false,          // tensor_parallel
         config
       );
 
-      // std::cout << "Successfully initialized Whisper model with compute type: "
-      //           << (int)compute_type << std::endl;
+      std::cout << "Successfully initialized Whisper model" << std::endl;
       break;
 
     } catch (const std::exception& e) {
       last_error = e.what();
-      // std::cerr << "Failed to initialize with compute type " << (int)compute_type
-      //           << ": " << e.what() << std::endl;
+      std::cerr << "Failed to initialize with compute type " << (int)compute_type
+                << ": " << e.what() << std::endl;
     }
   }
 
@@ -153,7 +183,7 @@ WhisperModel::WhisperModel(
   frames_per_second = feature_extractor.sampling_rate() / feature_extractor.hop_length;
   tokens_per_second = feature_extractor.sampling_rate() / num_samples_per_token;
   time_precision = 0.02;
-  max_length = 512;  // Match Python's whisper max_length (increased from 448)
+  max_length = 448;  // Match Python's whisper max_length exactly
 }
 
 std::vector<std::string> WhisperModel::supported_languages() const {
@@ -698,6 +728,7 @@ std::vector<Segment> WhisperModel::generate_segments(
   ctranslate2::StorageView encoder_output;
 
   // Main transcription loop (Python line 1143-1375)
+  logTranscribeTimestamp("Transcription completed, processing segments...");
   while (clip_idx < seek_clips.size()) {
     auto [seek_clip_start, seek_clip_end] = seek_clips[clip_idx];
     if (seek_clip_end > content_frames) {
@@ -734,9 +765,9 @@ std::vector<Segment> WhisperModel::generate_segments(
     // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Checking if encoding needed: seek=%d, encoder_output.empty()=%d",
     //                     seek, encoder_output.empty());
     if (seek > 0 || encoder_output.empty()) {
-      // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Encoding segment features...");
+      logTranscribeTimestamp("Starting encoder");
       encoder_output = encode(segment_features);
-      // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Segment encoding completed");
+      logTranscribeTimestamp("Encoder completed");
     } else {
       // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Reusing existing encoder_output");
     }
@@ -768,22 +799,7 @@ std::vector<Segment> WhisperModel::generate_segments(
     // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "get_prompt returned prompt.size(): %zu", prompt.size());
 
     // Generate with fallback (Python line 1194-1199)
-    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "About to call generate_with_fallback");
-    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Prompt length: %zu", prompt.size());
-
-    // std::string prompt_str = "Full prompt tokens: ";
-    // for (size_t i = 0; i < prompt.size(); ++i) {
-    //   prompt_str += std::to_string(prompt[i]);
-    //   if (i < prompt.size() - 1) prompt_str += ", ";
-    // }
-    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "%s", prompt_str.c_str());
-
-    // Debug: Try to decode the prompt using our tokenizer to see what it looks like
-    // std::string decoded_prompt = tokenizer.decode(prompt);
-    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Decoded prompt: '%s'", decoded_prompt.c_str());
-
-    // Debug: Check specific token decoding
-    // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Token 50257 decodes to: '%s'", tokenizer.decode({50257}).c_str());
+    logTranscribeTimestamp("Starting generate_with_fallback");
 
     auto [result, avg_logprob, temperature, compression_ratio] = generate_with_fallback(
       encoder_output, prompt, tokenizer, options
@@ -835,13 +851,6 @@ std::vector<Segment> WhisperModel::generate_segments(
       std::string text = tokenizer.decode(segment.tokens);
       // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "✅ Segment decode completed! Text: '%s' (tokens: %zu)", text.c_str(), segment.tokens.size());
 
-      // Print Arabic text to console for visibility
-      if (!text.empty()) {
-        std::cout << "🎯 GENERATED ARABIC TEXT: \"" << text << "\"" << std::endl;
-        std::cout << "   Segment timing: " << segment.start << "s -> " << segment.end << "s" << std::endl;
-        std::cout << "   Token count: " << segment.tokens.size() << std::endl;
-      }
-
       if (segment.start == segment.end || text.empty()) {
         // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Skipping empty segment");
         continue;
@@ -865,6 +874,26 @@ std::vector<Segment> WhisperModel::generate_segments(
       seg.words = std::nullopt; // Word timestamps handled separately
 
       all_segments.push_back(seg);
+
+      // Print in Python format
+      std::ostringstream token_msg;
+      token_msg << "Generated tokens (" << segment.tokens.size() << ")";
+      logTranscribeTimestamp(token_msg.str());
+      std::cout << "  Generated tokens (" << segment.tokens.size() << "): [";
+      for (size_t i = 0; i < std::min(size_t(20), segment.tokens.size()); ++i) {
+        if (i > 0) std::cout << ", ";
+        std::cout << segment.tokens[i];
+      }
+      if (segment.tokens.size() > 20) {
+        std::cout << "], ..., [";
+        size_t start_idx = std::max(size_t(0), segment.tokens.size() - 3);
+        for (size_t i = start_idx; i < segment.tokens.size(); ++i) {
+          if (i > start_idx) std::cout << ", ";
+          std::cout << segment.tokens[i];
+        }
+      }
+      std::cout << "]" << std::endl;
+      std::cout << "[" << std::fixed << std::setprecision(2) << segment.start << "s -> " << segment.end << "s] " << text << std::endl;
     }
 
     // Prompt reset logic (Python line 1358-1369)
@@ -949,11 +978,10 @@ WhisperModel::generate_with_fallback(
   // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "max_initial_timestamp_index: %d", max_initial_timestamp_index);
 
   // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Calculating max_length...");
-  // OPTIMIZATION: Reduce max_length for faster generation
   int max_length = options.max_new_tokens.has_value() ?
                    prompt.size() + options.max_new_tokens.value() :
-                   256; // Reduced from 448 to 256 for Arabic speech
-  // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "max_length: %d (OPTIMIZED), this->max_length: %d", max_length, this->max_length);
+                   this->max_length; // Use model's max_length (448 or 512) to match Python
+  // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "max_length: %d, this->max_length: %d", max_length, this->max_length);
 
   if (max_length > this->max_length) {
     throw std::runtime_error("Prompt + max_new_tokens exceeds Whisper max_length");
@@ -973,6 +1001,7 @@ WhisperModel::generate_with_fallback(
 
     // Use proper beam search like Python faster-whisper
     whisper_options.beam_size = options.beam_size;  // Use configured beam size (5)
+    whisper_options.patience = options.patience;    // Beam search patience for early stopping
     whisper_options.num_hypotheses = 1;  // Single best hypothesis
     if (temperature == 0.0f) {
       // Greedy search - no sampling
@@ -1026,19 +1055,17 @@ WhisperModel::generate_with_fallback(
     //                     (size_t)whisper_options.beam_size, (size_t)whisper_options.max_length, temperature);
 
     try {
-      // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Calling model->generate()...");
+      logTranscribeTimestamp("Calling model->generate()");
       auto result_futures = model->generate(encoder_output, {prompt_size_t}, whisper_options);
-      // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "model->generate() returned futures, getting result...");
-
-      // Add timeout logging to track how long result.get() takes
-      // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "About to call result_futures[0].get() - monitoring for hang...");
 
       auto start_time = std::chrono::steady_clock::now();
       auto result = result_futures[0].get();
       auto end_time = std::chrono::steady_clock::now();
 
-      auto duration = std::chrono::duration_cast<std::chrono::seconds>(end_time - start_time);
-      // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "result.get() completed in %lld seconds!", (long long)duration.count());
+      auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+      std::ostringstream duration_msg;
+      duration_msg << "result.get() completed in " << duration.count() << "ms";
+      logTranscribeTimestamp(duration_msg.str());
 
       // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Result sequences count: %zu", result.sequences_ids.size());
       // if (!result.sequences_ids.empty()) {
@@ -1052,23 +1079,6 @@ WhisperModel::generate_with_fallback(
       if (!result.sequences_ids.empty() && !result.sequences_ids[0].empty()) {
         const auto &tokens_size_t = result.sequences_ids[0];
         tokens.assign(tokens_size_t.begin(), tokens_size_t.end());
-
-        // Log generated tokens for debugging
-        std::cout << "  Generated tokens (" << tokens.size() << "): [";
-        for (size_t i = 0; i < std::min(size_t(20), tokens.size()); ++i) {
-          if (i > 0) std::cout << ", ";
-          std::cout << tokens[i];
-        }
-        if (tokens.size() > 20) {
-          std::cout << ", ...";
-          // Show last 3 tokens to see if EOS was generated
-          std::cout << ", ";
-          for (size_t i = std::max(size_t(0), tokens.size() - 3); i < tokens.size(); ++i) {
-            if (i > std::max(size_t(0), tokens.size() - 3)) std::cout << ", ";
-            std::cout << tokens[i];
-          }
-        }
-        std::cout << "]" << std::endl;
 
         // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Extracted %zu tokens", tokens.size());
       } else {
@@ -1117,7 +1127,6 @@ WhisperModel::generate_with_fallback(
       // Check compression ratio threshold (Python line 1467-1478)
       if (options.compression_ratio_threshold.has_value() &&
           compression_ratio > options.compression_ratio_threshold.value()) {
-        std::cout << "  DEBUG: Compression ratio " << compression_ratio << " > threshold " << options.compression_ratio_threshold.value() << ", needs fallback" << std::endl;
         needs_fallback = true;
       } else {
         below_cr_threshold_results.push_back(decode_result);
@@ -1126,7 +1135,6 @@ WhisperModel::generate_with_fallback(
       // Check log probability threshold (Python line 1480-1491)
       if (options.log_prob_threshold.has_value() &&
           avg_logprob < options.log_prob_threshold.value()) {
-        std::cout << "  DEBUG: avg_logprob " << avg_logprob << " < threshold " << options.log_prob_threshold.value() << ", needs fallback" << std::endl;
         needs_fallback = true;
       }
 
@@ -1140,10 +1148,7 @@ WhisperModel::generate_with_fallback(
       }
 
       if (!needs_fallback) {
-        std::cout << "  DEBUG: Temperature " << temperature << " successful (needs_fallback=false), breaking loop" << std::endl;
         break; // Success, return this result
-      } else {
-        std::cout << "  DEBUG: Temperature " << temperature << " failed (needs_fallback=true), trying next" << std::endl;
       }
 
     } catch (const std::exception& e) {

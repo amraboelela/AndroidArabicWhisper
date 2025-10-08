@@ -7,10 +7,35 @@
 #include <iomanip>
 #include <cmath>
 #include <numeric>
+#include <chrono>
+#include <ctime>
+#include <sstream>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
+
+// Helper function to log with timestamp
+std::string getAudioTimestamp() {
+    auto now = std::chrono::system_clock::now();
+    auto now_ms = std::chrono::time_point_cast<std::chrono::milliseconds>(now);
+    auto value = now_ms.time_since_epoch();
+    auto duration = value.count();
+
+    std::time_t now_time = std::chrono::system_clock::to_time_t(now);
+    std::tm* local_time = std::localtime(&now_time);
+
+    std::ostringstream oss;
+    oss << std::setfill('0') << std::setw(2) << local_time->tm_hour << ":"
+        << std::setfill('0') << std::setw(2) << local_time->tm_min << ":"
+        << std::setfill('0') << std::setw(2) << local_time->tm_sec << "."
+        << std::setfill('0') << std::setw(3) << (duration % 1000);
+    return oss.str();
+}
+
+void logAudioTimestamp(const std::string& message) {
+    std::cout << "[" << getAudioTimestamp() << "] " << message << std::endl;
+}
 
 namespace whisper {
 
@@ -138,6 +163,7 @@ std::vector<std::vector<float>> AudioProcessor::extract_mel_spectrogram(const st
   // Compute STFT directly (no pre-emphasis to match Python's faster-whisper)
   auto stft = compute_stft(audio);
 
+  logAudioTimestamp("STFT output shape (complex)");
   std::cout << "  STFT output shape (complex): (" << stft.size() << ", " << (stft.empty() ? 0 : stft[0].size()) << ")" << std::endl;
 
   // Note: To match Python's output, we would need to track complex stats here
@@ -296,15 +322,25 @@ std::vector<std::vector<float>> AudioProcessor::compute_stft(const std::vector<f
   int num_frames = (padded_audio.size() - window_size) / hop_size + 1;
   if (num_frames <= 0) num_frames = 1;
 
-  std::vector<std::vector<float>> stft_magnitude(num_frames);
+  // Pre-allocate frame_data outside the loop to avoid repeated allocations
+  std::vector<float> frame_data(window_size);
+
+  // Pre-calculate frequency bins size
+  const int n_freq_bins = window_size / 2 + 1;
+
+  // Allocate result in final transposed format: [freq_bins, time_frames]
+  std::vector<std::vector<float>> stft_magnitude(n_freq_bins, std::vector<float>(num_frames));
 
   for (int frame = 0; frame < num_frames; ++frame) {
       int start_idx = frame * hop_size;
 
-      // Extract and window the frame
-      std::vector<float> frame_data(window_size, 0.0f);
+      // Extract and window the frame (reuse frame_data buffer)
       for (int n = 0; n < window_size && start_idx + n < padded_audio.size(); ++n) {
           frame_data[n] = padded_audio[start_idx + n] * window[n];
+      }
+      // Zero out any remaining space (if start_idx + n >= padded_audio.size())
+      for (int n = std::min(window_size, static_cast<int>(padded_audio.size() - start_idx)); n < window_size; ++n) {
+          frame_data[n] = 0.0f;
       }
 
       // Debug: log first frame data for frame 100
@@ -327,6 +363,7 @@ std::vector<std::vector<float>> AudioProcessor::compute_stft(const std::vector<f
       // Debug: log first FFT result for first non-zero frame
       static bool logged_fft = false;
       if (!logged_fft && frame == 100) {  // Check frame 100 to avoid all-zero frames
+        logAudioTimestamp("DEBUG FFT frame 100: First 5 complex values");
         std::cout << "  DEBUG FFT frame 100: First 5 complex values: [";
         for (size_t i = 0; i < std::min(size_t(5), fft_result.size()); ++i) {
           // Add proper spacing between complex numbers
@@ -357,26 +394,14 @@ std::vector<std::vector<float>> AudioProcessor::compute_stft(const std::vector<f
         logged_fft = true;
       }
 
-      // Compute magnitude squared (power spectrum), matching Python's ** 2
-      stft_magnitude[frame].resize(fft_result.size());
+      // Compute magnitude squared and store directly in transposed format
       for (size_t i = 0; i < fft_result.size(); ++i) {
           float mag = std::abs(fft_result[i]);
-          stft_magnitude[frame][i] = mag * mag;  // Square the magnitude
+          stft_magnitude[i][frame] = mag * mag;  // Square the magnitude, store in [freq][frame]
       }
   }
 
-  // Transpose to match Python's output format: [freq_bins, time_frames]
-  // Python outputs shape (n_freq_bins, n_frames) but C++ produces (n_frames, n_freq_bins)
-  int n_freq_bins = stft_magnitude.empty() ? 0 : stft_magnitude[0].size();
-  std::vector<std::vector<float>> transposed(n_freq_bins, std::vector<float>(num_frames));
-
-  for (int frame = 0; frame < num_frames; ++frame) {
-    for (int freq = 0; freq < n_freq_bins; ++freq) {
-      transposed[freq][frame] = stft_magnitude[frame][freq];
-    }
-  }
-
-  return transposed;
+  return stft_magnitude;
 }
 
 std::vector<float> AudioProcessor::apply_hann_window(int window_size) {

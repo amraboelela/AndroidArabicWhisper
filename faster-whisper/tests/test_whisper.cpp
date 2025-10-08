@@ -181,9 +181,8 @@ public:
 
     std::string findWhisperModelPath() {
         std::vector<std::string> possiblePaths = {
-            "../whisper_ct2",
-            "./whisper_ct2",
-            "../../whisper_ct2"
+            "../../../app/src/main/assets/whisper_ct2",
+            "../../app/src/main/assets/whisper_ct2"
         };
 
         for (const auto& path : possiblePaths) {
@@ -216,44 +215,8 @@ public:
             return;
         }
 
-        std::cout << "\n=== Transcription Results ===" << std::endl;
-        std::cout << "Language: " << result.language << std::endl;
-        std::cout << "Language probability: " << std::fixed << std::setprecision(3)
-                  << result.language_probability << std::endl;
-        std::cout << "Duration: " << std::fixed << std::setprecision(2)
-                  << result.duration << "s" << std::endl;
-        std::cout << "Segments: " << result.segments.size() << std::endl;
-        std::cout << std::endl;
-
-        for (size_t i = 0; i < result.segments.size(); ++i) {
-            const auto& segment = result.segments[i];
-
-            std::cout << "Segment " << i << ":" << std::endl;
-            std::cout << "  Text: '" << segment.text << "'" << std::endl;
-            std::cout << "  Time: " << std::fixed << std::setprecision(2)
-                      << segment.start << "s - " << segment.end << "s" << std::endl;
-            std::cout << "  Confidence: " << std::fixed << std::setprecision(3)
-                      << segment.avg_logprob << std::endl;
-
-            if (!segment.words.empty()) {
-                std::cout << "  Words (" << segment.words.size() << "):" << std::endl;
-                for (size_t j = 0; j < std::min(size_t(10), segment.words.size()); ++j) {
-                    const auto& word = segment.words[j];
-                    std::cout << "    " << (j + 1) << ". '" << word.text
-                              << "' (" << std::fixed << std::setprecision(2)
-                              << word.start << "s-" << word.end << "s, prob="
-                              << std::fixed << std::setprecision(3)
-                              << word.probability << ")" << std::endl;
-                }
-                if (segment.words.size() > 10) {
-                    std::cout << "    ... and " << (segment.words.size() - 10)
-                              << " more words" << std::endl;
-                }
-            }
-            std::cout << std::endl;
-        }
-
-        std::cout << "✅ Transcription completed successfully!" << std::endl;
+        // Print in Python format - just "Detected language"
+        std::cout << "Detected language: " << result.language << std::endl;
     }
 
     bool transcribeAudio(const std::string& audioFile) {

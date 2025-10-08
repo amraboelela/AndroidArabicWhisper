@@ -1,4 +1,11 @@
 import numpy as np
+from datetime import datetime
+
+
+def log_with_timestamp(message):
+    """Print message with timestamp"""
+    timestamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+    print(f"[{timestamp}] {message}")
 
 
 class FeatureExtractor:
@@ -214,6 +221,7 @@ class FeatureExtractor:
                     formatted_values.append(f"{real_part:12.8f}{sign}{imag_part:.8f}j")
 
             # Print with line break after 3rd value
+            log_with_timestamp("DEBUG FFT frame 100: First 5 complex values")
             print(f"  DEBUG FFT frame 100: First 5 complex values: [{formatted_values[0]} {formatted_values[1]} {formatted_values[2]} ")
             print(f" {formatted_values[3]} {formatted_values[4]}]")
 
@@ -223,7 +231,8 @@ class FeatureExtractor:
         """
         Compute the log-Mel spectrogram of the provided audio.
         """
-        print("DEBUG: feature_extractor.__call__ called")
+        log_with_timestamp("Starting feature extraction")
+        log_with_timestamp("DEBUG: feature_extractor.__call__ called")
         print(f"  Input waveform shape: {waveform.shape}")
         print(f"  Padding: {padding}")
         print(f"  Chunk length: {chunk_length}")
@@ -254,6 +263,7 @@ class FeatureExtractor:
             return_complex=True,
         ).astype("complex64")
 
+        log_with_timestamp("STFT output shape (complex)")
         print(f"  STFT output shape (complex): {stft.shape}")
         print(f"  STFT complex stats: min_real={np.real(stft).min():.6f}, max_real={np.real(stft).max():.6f}")
         print(f"  STFT complex stats: min_imag={np.imag(stft).min():.6f}, max_imag={np.imag(stft).max():.6f}")
@@ -286,4 +296,5 @@ class FeatureExtractor:
         print(f"  Final log_spec shape: {log_spec.shape}")
         print(f"  Final log_spec stats: min={log_spec.min():.6f}, max={log_spec.max():.6f}, mean={log_spec.mean():.6f}")
 
+        log_with_timestamp("Feature extraction completed")
         return log_spec
