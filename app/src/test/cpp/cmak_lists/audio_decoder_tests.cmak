@@ -16,7 +16,7 @@ find_package(ZLIB REQUIRED)
 add_executable(
     test_audio_decoder
     ../audio_decoder_tests.cpp
-    ../../../main/cpp/audio_decoder.cpp
+    ../../../main/cpp/audio.cpp
     ../../../main/cpp/whisper/whisper_audio.cpp
 )
 

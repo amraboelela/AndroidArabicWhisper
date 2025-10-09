@@ -250,7 +250,7 @@ public:
             std::cout << "Testing CTranslate2 model at: " << cleanPath << std::endl;
 
             // Step 2: Transcribe the audio file
-            if (!transcribeAudio("data/002-01.wav")) {
+            if (!transcribeAudio("../../../app/src/main/assets/002-01.wav")) {
                 std::cerr << "❌ Failed to transcribe audio file" << std::endl;
                 return false;
             }
@@ -272,7 +272,7 @@ int main(int argc, char* argv[]) {
         std::string command = argv[1];
         if (command == "--help") {
             std::cout << "Usage:" << std::endl;
-            std::cout << "  " << argv[0] << "              # Transcribe data/001.wav" << std::endl;
+            std::cout << "  " << argv[0] << "              # Transcribe 002-01.wav" << std::endl;
             std::cout << "  " << argv[0] << " --help       # Show this help" << std::endl;
             return 0;
         }

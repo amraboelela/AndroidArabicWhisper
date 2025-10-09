@@ -14,7 +14,7 @@ model = WhisperModel(model_dir, device="cpu")
 
 # Get audio file from command-line parameter or use default
 if len(sys.argv) < 2:
-    audio_file = "tests/data/001.wav"
+    audio_file = "../app/src/main/assets/002-01.wav"
 else:
     audio_file = sys.argv[1]
 

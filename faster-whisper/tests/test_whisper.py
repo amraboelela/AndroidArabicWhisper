@@ -90,8 +90,8 @@ def test_whisper_ct2_offline():
         log_with_timestamp("Model loaded successfully!")
 
         # Test with real audio file
-        log_with_timestamp("=== Testing with data/002-01.wav ===")
-        audio_file = "data/002-01.wav"
+        audio_file = "../../app/src/main/assets/002-01.wav"
+        log_with_timestamp(f"=== Testing with {audio_file} ===")
 
         if os.path.exists(audio_file):
             log_with_timestamp(f"Loading audio file: {audio_file}")
