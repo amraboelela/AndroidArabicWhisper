@@ -415,7 +415,7 @@ std::tuple<std::vector<Segment>, TranscriptionInfo> WhisperModel::transcribe(
   // Format: pairs of (start, end) times for each window
   std::vector<float> overlapping_timestamps;
   float window_size = 30.0f;  // 30-second windows (Whisper's optimal size)
-  float stride = 28.0f;  // 2 second overlap
+  float stride = 25.0f;  // 5 second overlap
 
   float current_start = 0.0f;
   while (current_start < duration) {
@@ -743,7 +743,7 @@ std::vector<Segment> WhisperModel::generate_segments(
   ctranslate2::StorageView encoder_output;
 
   // Main transcription loop (Python line 1143-1375)
-  logTranscribeTimestamp("Transcription completed, processing segments...");
+  //logTranscribeTimestamp("Transcription completed, processing segments...");
   while (clip_idx < seek_clips.size()) {
     auto [seek_clip_start, seek_clip_end] = seek_clips[clip_idx];
     if (seek_clip_end > content_frames) {
@@ -780,9 +780,9 @@ std::vector<Segment> WhisperModel::generate_segments(
     // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Checking if encoding needed: seek=%d, encoder_output.empty()=%d",
     //                     seek, encoder_output.empty());
     if (seek > 0 || encoder_output.empty()) {
-      logTranscribeTimestamp("Starting encoder");
+      //logTranscribeTimestamp("Starting encoder");
       encoder_output = encode(segment_features);
-      logTranscribeTimestamp("Encoder completed");
+      //logTranscribeTimestamp("Encoder completed");
     } else {
       // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Reusing existing encoder_output");
     }
@@ -814,7 +814,7 @@ std::vector<Segment> WhisperModel::generate_segments(
     // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "get_prompt returned prompt.size(): %zu", prompt.size());
 
     // Generate with fallback (Python line 1194-1199)
-    logTranscribeTimestamp("Starting generate_with_fallback");
+    //logTranscribeTimestamp("Starting generate_with_fallback");
 
     auto [result, avg_logprob, temperature, compression_ratio] = generate_with_fallback(
       encoder_output, prompt, tokenizer, options
@@ -892,23 +892,24 @@ std::vector<Segment> WhisperModel::generate_segments(
 
       // Print in Python format
       std::ostringstream token_msg;
-      token_msg << "Generated tokens (" << segment.tokens.size() << ")";
-      logTranscribeTimestamp(token_msg.str());
-      std::cout << "  Generated tokens (" << segment.tokens.size() << "): [";
-      for (size_t i = 0; i < std::min(size_t(20), segment.tokens.size()); ++i) {
-        if (i > 0) std::cout << ", ";
-        std::cout << segment.tokens[i];
-      }
-      if (segment.tokens.size() > 20) {
-        std::cout << "], ..., [";
-        size_t start_idx = std::max(size_t(0), segment.tokens.size() - 3);
-        for (size_t i = start_idx; i < segment.tokens.size(); ++i) {
-          if (i > start_idx) std::cout << ", ";
-          std::cout << segment.tokens[i];
-        }
-      }
+      //token_msg << "Generated tokens (" << segment.tokens.size() << ")";
+      //logTranscribeTimestamp(token_msg.str());
+      //std::cout << "  Generated tokens (" << segment.tokens.size() << "): [";
+//      for (size_t i = 0; i < std::min(size_t(20), segment.tokens.size()); ++i) {
+//        if (i > 0) std::cout << ", ";
+//        std::cout << segment.tokens[i];
+//      }
+//      if (segment.tokens.size() > 20) {
+//        std::cout << "], ..., [";
+//        size_t start_idx = std::max(size_t(0), segment.tokens.size() - 3);
+//        for (size_t i = start_idx; i < segment.tokens.size(); ++i) {
+//          if (i > start_idx) std::cout << ", ";
+//          std::cout << segment.tokens[i];
+//        }
+//      }
       std::cout << "]" << std::endl;
-      std::cout << "[" << std::fixed << std::setprecision(2) << segment.start << "s -> " << segment.end << "s] " << text << std::endl;
+      std::cout << "[" << std::fixed << std::setprecision(2) << segment.start << "s -> " << segment.end << "s]" << std::endl;
+      std::cout << text << std::endl;
     }
 
     // Prompt reset logic (Python line 1358-1369)
@@ -1070,7 +1071,7 @@ WhisperModel::generate_with_fallback(
     //                     (size_t)whisper_options.beam_size, (size_t)whisper_options.max_length, temperature);
 
     try {
-      logTranscribeTimestamp("Calling model->generate()");
+      //logTranscribeTimestamp("Calling model->generate()");
       auto result_futures = model->generate(encoder_output, {prompt_size_t}, whisper_options);
 
       auto start_time = std::chrono::steady_clock::now();
@@ -1079,7 +1080,7 @@ WhisperModel::generate_with_fallback(
 
       auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
       std::ostringstream duration_msg;
-      duration_msg << "result.get() completed in " << duration.count() << "ms";
+      //duration_msg << "result.get() completed in " << duration.count() << "ms";
       logTranscribeTimestamp(duration_msg.str());
 
       // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Result sequences count: %zu", result.sequences_ids.size());

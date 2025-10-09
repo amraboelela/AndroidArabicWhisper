@@ -263,10 +263,10 @@ class FeatureExtractor:
             return_complex=True,
         ).astype("complex64")
 
-        log_with_timestamp("STFT output shape (complex)")
-        print(f"  STFT output shape (complex): {stft.shape}")
-        print(f"  STFT complex stats: min_real={np.real(stft).min():.6f}, max_real={np.real(stft).max():.6f}")
-        print(f"  STFT complex stats: min_imag={np.imag(stft).min():.6f}, max_imag={np.imag(stft).max():.6f}")
+#        log_with_timestamp("STFT output shape (complex)")
+#        print(f"  STFT output shape (complex): {stft.shape}")
+#        print(f"  STFT complex stats: min_real={np.real(stft).min():.6f}, max_real={np.real(stft).max():.6f}")
+#        print(f"  STFT complex stats: min_imag={np.imag(stft).min():.6f}, max_imag={np.imag(stft).max():.6f}")
 
         magnitudes = np.abs(stft[..., :-1]) ** 2
 

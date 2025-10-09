@@ -1178,9 +1178,9 @@ class WhisperModel:
             previous_tokens = all_tokens[prompt_reset_since:]
 
             if seek > 0 or encoder_output is None:
-                log_with_timestamp("Starting encoder")
+                #log_with_timestamp("Starting encoder")
                 encoder_output = self.encode(segment)
-                log_with_timestamp("Encoder completed")
+                #log_with_timestamp("Encoder completed")
 
             if options.multilingual:
                 results = self.model.detect_language(encoder_output)
@@ -1198,7 +1198,7 @@ class WhisperModel:
                 hotwords=options.hotwords,
             )
 
-            log_with_timestamp("Starting generate_with_fallback")
+            #log_with_timestamp("Starting generate_with_fallback")
             (
                 result,
                 avg_logprob,
@@ -1437,7 +1437,7 @@ class WhisperModel:
                     "patience": options.patience,
                 }
 
-            log_with_timestamp("Calling model.generate()")
+            #log_with_timestamp("Calling model.generate()")
             import time
             generate_start = time.time()
             result = self.model.generate(
@@ -1461,8 +1461,8 @@ class WhisperModel:
             tokens = result.sequences_ids[0]
 
             # Log generated tokens for debugging
-            log_with_timestamp(f"Generated tokens ({len(tokens)})")
-            print(f"  Generated tokens ({len(tokens)}): {list(tokens[:20])}{f', ..., {list(tokens[-3:])}' if len(tokens) > 20 else ''}")
+            #log_with_timestamp(f"Generated tokens ({len(tokens)})")
+            #print(f"  Generated tokens ({len(tokens)}): {list(tokens[:20])}{f', ..., {list(tokens[-3:])}' if len(tokens) > 20 else ''}")
 
             # Recover the average log prob from the returned score.
             seq_len = len(tokens)

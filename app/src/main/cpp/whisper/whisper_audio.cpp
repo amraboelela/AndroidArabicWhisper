@@ -163,14 +163,14 @@ std::vector<std::vector<float>> AudioProcessor::extract_mel_spectrogram(const st
   // Compute STFT directly (no pre-emphasis to match Python's faster-whisper)
   auto stft = compute_stft(audio);
 
-  logAudioTimestamp("STFT output shape (complex)");
-  std::cout << "  STFT output shape (complex): (" << stft.size() << ", " << (stft.empty() ? 0 : stft[0].size()) << ")" << std::endl;
-
-  // Note: To match Python's output, we would need to track complex stats here
-  // But C++ implementation computes magnitude squared directly for efficiency
-  // For now, we'll note that these stats are not available in the optimized C++ version
-  std::cout << "  STFT complex stats: min_real=-34.068371, max_real=33.004295" << std::endl;
-  std::cout << "  STFT complex stats: min_imag=-30.427790, max_imag=29.789591" << std::endl;
+//  logAudioTimestamp("STFT output shape (complex)");
+//  std::cout << "  STFT output shape (complex): (" << stft.size() << ", " << (stft.empty() ? 0 : stft[0].size()) << ")" << std::endl;
+//
+//  // Note: To match Python's output, we would need to track complex stats here
+//  // But C++ implementation computes magnitude squared directly for efficiency
+//  // For now, we'll note that these stats are not available in the optimized C++ version
+//  std::cout << "  STFT complex stats: min_real=-34.068371, max_real=33.004295" << std::endl;
+//  std::cout << "  STFT complex stats: min_imag=-30.427790, max_imag=29.789591" << std::endl;
 
   // Drop the last frame to match Python's behavior (stft[..., :-1])
   // Python intentionally drops the last time frame

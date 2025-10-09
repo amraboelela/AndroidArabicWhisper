@@ -90,8 +90,8 @@ def test_whisper_ct2_offline():
         log_with_timestamp("Model loaded successfully!")
 
         # Test with real audio file
-        log_with_timestamp("=== Testing with data/001.wav ===")
-        audio_file = "data/001.wav"
+        log_with_timestamp("=== Testing with data/002-01.wav ===")
+        audio_file = "data/002-01.wav"
 
         if os.path.exists(audio_file):
             log_with_timestamp(f"Loading audio file: {audio_file}")
@@ -109,10 +109,10 @@ def test_whisper_ct2_offline():
             log_with_timestamp("Starting transcription...")
             start_time = time.time()
 
-            # Transcribe the audio
-            segments, info = model.transcribe(audio, language="ar")
+            # Transcribe the audio with VAD enabled for better segment boundaries
+            segments, info = model.transcribe(audio, language="ar", vad_filter=True)
 
-            log_with_timestamp("Transcription completed, processing segments...")
+            #log_with_timestamp("Transcription completed, processing segments...")
 
             # Collect segments into a list for JSON output
             segments_list = []
