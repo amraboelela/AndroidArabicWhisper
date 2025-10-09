@@ -1438,6 +1438,8 @@ class WhisperModel:
                 }
 
             log_with_timestamp("Calling model.generate()")
+            import time
+            generate_start = time.time()
             result = self.model.generate(
                 encoder_output,
                 [prompt],
@@ -1452,7 +1454,9 @@ class WhisperModel:
                 max_initial_timestamp_index=max_initial_timestamp_index,
                 **kwargs,
             )[0]
-            log_with_timestamp("model.generate() completed")
+            generate_end = time.time()
+            generate_duration = (generate_end - generate_start) * 1000  # Convert to ms
+            log_with_timestamp(f"model.generate() completed in {generate_duration:.0f}ms")
 
             tokens = result.sequences_ids[0]
 

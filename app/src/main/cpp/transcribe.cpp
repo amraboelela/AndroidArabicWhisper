@@ -409,7 +409,22 @@ std::tuple<std::vector<Segment>, TranscriptionInfo> WhisperModel::transcribe(
   options.append_punctuations = "\"\'.。，！？：\")}]、";
   options.multilingual = multilingual;
   options.max_new_tokens = std::nullopt;
-  options.clip_timestamps = std::vector<float>{0}; // Default to "0"
+
+  // Create overlapping segments with 1 second overlap (29 second stride for 30 second windows)
+  // This improves quality at segment boundaries by giving context
+  // Format: pairs of (start, end) times for each window
+  std::vector<float> overlapping_timestamps;
+  float window_size = 30.0f;  // 30-second windows (Whisper's optimal size)
+  float stride = 28.0f;  // 2 second overlap
+
+  float current_start = 0.0f;
+  while (current_start < duration) {
+    overlapping_timestamps.push_back(current_start);  // Start of window
+    overlapping_timestamps.push_back(std::min(current_start + window_size, duration));  // End of window
+    current_start += stride;
+  }
+
+  options.clip_timestamps = overlapping_timestamps;
   options.hallucination_silence_threshold = std::nullopt;
   options.hotwords = std::nullopt;
 
