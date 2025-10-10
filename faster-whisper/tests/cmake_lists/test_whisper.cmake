@@ -7,7 +7,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Copy source files to build directory
 configure_file(${CMAKE_SOURCE_DIR}/../test_whisper.cpp ${CMAKE_SOURCE_DIR}/test_whisper.cpp COPYONLY)
-configure_file(${CMAKE_SOURCE_DIR}/../whisper_transcriber.hpp ${CMAKE_SOURCE_DIR}/whisper_transcriber.hpp COPYONLY)
 configure_file(${CMAKE_SOURCE_DIR}/../whisper_model_caller.cpp ${CMAKE_SOURCE_DIR}/whisper_model_caller.cpp COPYONLY)
 configure_file(${CMAKE_SOURCE_DIR}/../whisper_model_caller.py ${CMAKE_SOURCE_DIR}/whisper_model_caller.py COPYONLY)
 
@@ -47,8 +46,8 @@ target_include_directories(whisper_model_caller PRIVATE
     ${CTRANSLATE2_ROOT}/include
 )
 
-# Find and link CTranslate2 static library
-set(CTRANSLATE2_LIB "${CTRANSLATE2_ROOT}/libctranslate2.a")
+# Find and link CTranslate2 library
+set(CTRANSLATE2_LIB "${CTRANSLATE2_ROOT}/lib/libctranslate2.dylib")
 find_library(ZLIB_LIB z)
 
 # On macOS, find Accelerate framework for BLAS support

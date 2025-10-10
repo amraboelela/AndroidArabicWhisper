@@ -7,7 +7,6 @@
 #include <memory>
 #include <fstream>
 #include <sstream>
-#include "whisper_transcriber.hpp"
 
 // Include the tokenizer creator functionality directly
 class TokenizerCreator {
@@ -169,14 +168,12 @@ class WhisperTester {
 private:
     std::string pythonPath;
     std::string modelPath;
-    std::unique_ptr<WhisperTranscriber> transcriber;
     TokenizerCreator tokenizerCreator;
 
 public:
     WhisperTester() {
         pythonPath = "python3";
         modelPath = findWhisperModelPath();
-        transcriber = std::make_unique<WhisperTranscriber>(modelPath, pythonPath);
     }
 
     std::string findWhisperModelPath() {
@@ -186,13 +183,13 @@ public:
         };
 
         for (const auto& path : possiblePaths) {
-            std::string modelFile = path + "/model.bin";
-            if (std::filesystem::exists(modelFile)) {
+            std::string configFile = path + "/config.json";
+            if (std::filesystem::exists(configFile)) {
                 return std::filesystem::absolute(path);
             }
         }
 
-        throw std::runtime_error("Could not find whisper_ct2 directory with model.bin");
+        throw std::runtime_error("Could not find whisper_ct2 directory with config.json");
     }
 
     bool fileExists(const std::string& filename) {
@@ -209,16 +206,6 @@ public:
         return tokenizerCreator.createTokenizerJson(modelPath);
     }
 
-    void printTranscriptionResults(const TranscriptionResult& result) {
-        if (!result.success) {
-            std::cerr << "❌ Transcription failed: " << result.error << std::endl;
-            return;
-        }
-
-        // Print in Python format - just "Detected language"
-        std::cout << "Detected language: " << result.language << std::endl;
-    }
-
     bool transcribeAudio(const std::string& audioFile) {
         if (!fileExists(audioFile)) {
             std::cerr << "❌ Audio file not found: " << audioFile << std::endl;
@@ -230,11 +217,7 @@ public:
 
         int result = std::system(command.c_str());
 
-        // Also call the transcriber for compatibility
-        TranscriptionResult transcription_result = transcriber->transcribe(audioFile);
-        printTranscriptionResults(transcription_result);
-
-        return transcription_result.success || (result == 0);
+        return (result == 0);
     }
 
     bool runTest() {
