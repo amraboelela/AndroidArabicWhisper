@@ -25,58 +25,9 @@ def find_whisper_ct2_path():
     else:
         raise FileNotFoundError("Could not find whisper_ct2 directory")
 
-def create_simple_tokenizer_json():
-    """Create a minimal tokenizer.json file from vocabulary.json"""
-    model_path = find_whisper_ct2_path()
-    vocab_path = os.path.join(model_path, "vocabulary.json")
-    tokenizer_path = os.path.join(model_path, "tokenizer.json")
-
-    if os.path.exists(tokenizer_path):
-        print("tokenizer.json already exists")
-        return
-
-    if not os.path.exists(vocab_path):
-        print("vocabulary.json not found")
-        return
-
-    # Load vocabulary
-    with open(vocab_path, 'r', encoding='utf-8') as f:
-        vocab = json.load(f)
-
-    # Create a minimal tokenizer config
-    # This is a simplified structure - may need adjustment
-    tokenizer_config = {
-        "version": "1.0",
-        "truncation": None,
-        "padding": None,
-        "added_tokens": [],
-        "normalizer": None,
-        "pre_tokenizer": None,
-        "post_processor": None,
-        "decoder": None,
-        "model": {
-            "type": "BPE",
-            "dropout": None,
-            "unk_token": None,
-            "continuing_subword_prefix": None,
-            "end_of_word_suffix": None,
-            "fuse_unk": False,
-            "vocab": {token: i for i, token in enumerate(vocab)},
-            "merges": []
-        }
-    }
-
-    with open(tokenizer_path, 'w', encoding='utf-8') as f:
-        json.dump(tokenizer_config, f, ensure_ascii=False, indent=2)
-
-    print(f"Created basic tokenizer.json with {len(vocab)} tokens")
-
 def test_whisper_ct2_offline():
     """Test the local CTranslate2 Whisper model in offline mode"""
     try:
-        # Create tokenizer.json if it doesn't exist
-        create_simple_tokenizer_json()
-
         model_path = find_whisper_ct2_path()
         log_with_timestamp(f"Testing CTranslate2 model at: {model_path}")
 
@@ -90,7 +41,7 @@ def test_whisper_ct2_offline():
         log_with_timestamp("Model loaded successfully!")
 
         # Test with real audio file
-        audio_file = "../../app/src/main/assets/002-01.wav"
+        audio_file = "../../app/src/main/assets/001.wav"
         log_with_timestamp(f"=== Testing with {audio_file} ===")
 
         if os.path.exists(audio_file):
@@ -109,10 +60,10 @@ def test_whisper_ct2_offline():
             log_with_timestamp("Starting transcription...")
             start_time = time.time()
 
-            # Transcribe the audio with VAD enabled for better segment boundaries
-            segments, info = model.transcribe(audio, language="ar", vad_filter=True)
+            # Transcribe the audio
+            segments, info = model.transcribe(audio, language="ar")
 
-            #log_with_timestamp("Transcription completed, processing segments...")
+            log_with_timestamp("Transcription completed, processing segments...")
 
             # Collect segments into a list for JSON output
             segments_list = []

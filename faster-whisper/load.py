@@ -1,20 +1,26 @@
 import sys
 import os
 from faster_whisper import WhisperModel
+from ctranslate2.converters import TransformersConverter
 
-# Set offline mode
-os.environ['HF_HUB_OFFLINE'] = '1'
-os.environ['TRANSFORMERS_OFFLINE'] = '1'
+output_path = "../app/src/main/assets/"
+# Paths
+output_dir = output_path + "whisper_ct2/"
 
-# Use existing model from assets
-model_dir = "../app/src/main/assets/whisper_ct2/"
+# Remove existing model folder if it exists
+if not os.path.exists(output_dir):
+#    shutil.rmtree(output_dir)
+
+# Convert Hugging Face model to CTranslate2 format
+    converter = TransformersConverter("tarteel-ai/whisper-base-ar-quran")
+    converter.convert(output_dir, quantization="int8")  # or "float16" for GPU
 
 # Load the converted model
-model = WhisperModel(model_dir, device="cpu")
+model = WhisperModel(output_dir, device="cpu")  # or device="cuda"
 
-# Get audio file from command-line parameter or use default
+# Get audio file from command-line parameter
 if len(sys.argv) < 2:
-    audio_file = "../app/src/main/assets/002-01.wav"
+    audio_file = output_path + "001.wav" #"tests/data/001.wav"
 else:
     audio_file = sys.argv[1]
 
