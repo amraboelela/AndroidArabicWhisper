@@ -149,7 +149,7 @@ public:
             std::cout << "Testing CTranslate2 model at: " << cleanPath << std::endl;
 
             // Step 2: Transcribe the audio file
-            if (!transcribeAudio("../../../app/src/main/assets/001.wav")) {
+            if (!transcribeAudio("../../../app/src/main/assets/002-01.wav")) {
                 std::cerr << "❌ Failed to transcribe audio file" << std::endl;
                 return false;
             }

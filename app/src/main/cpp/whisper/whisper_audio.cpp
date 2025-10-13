@@ -185,7 +185,7 @@ std::vector<std::vector<float>> AudioProcessor::extract_mel_spectrogram(const st
   // stft is now [freq_bins][time_frames]
   size_t n_freq_bins = stft.size();
   size_t n_frames = stft.empty() ? 0 : stft[0].size();
-  std::cout << "  STFT magnitudes shape: (" << n_freq_bins << ", " << n_frames << ")" << std::endl;
+  //   std::cout << "  STFT magnitudes shape: (" << n_freq_bins << ", " << n_frames << ")" << std::endl;
 
   // Calculate and log STFT magnitudes statistics
   float stft_min = std::numeric_limits<float>::infinity();
@@ -201,16 +201,16 @@ std::vector<std::vector<float>> AudioProcessor::extract_mel_spectrogram(const st
     }
   }
   float stft_mean = stft_sum / stft_count;
-  std::cout << "  STFT magnitudes stats: min=" << std::fixed << std::setprecision(6) << stft_min << ", max=" << stft_max << ", mean=" << stft_mean << std::endl;
+  //   std::cout << "  STFT magnitudes stats: min=" << std::fixed << std::setprecision(6) << stft_min << ", max=" << stft_max << ", mean=" << stft_mean << std::endl;
 
   // Print first 5 magnitude values from first frequency bin (same as Python)
-  std::cout << "  First 5 magnitude values: [";
-  for (size_t i = 0; i < std::min(size_t(5), stft.empty() ? 0 : stft[0].size()); ++i) {
-    if (i > 0) std::cout << " ";
-    std::cout << std::scientific << std::setprecision(7) << stft[0][i];
-  }
-  std::cout << "]" << std::endl;
-  std::cout << std::fixed; // Reset to fixed notation
+//   //   std::cout << "  First 5 magnitude values: [";
+//   for (size_t i = 0; i < std::min(size_t(5), stft.empty() ? 0 : stft[0].size()); ++i) {
+//     if (i > 0) std::cout << " ";
+//     std::cout << std::scientific << std::setprecision(7) << stft[0][i];
+//   }
+//   std::cout << "]" << std::endl;
+//   std::cout << std::fixed; // Reset to fixed notation
 
   // Apply mel filter bank
   auto mel_filters = get_mel_filter_bank();
@@ -229,7 +229,7 @@ std::vector<std::vector<float>> AudioProcessor::extract_mel_spectrogram(const st
     }
   }
   float mel_filter_mean = mel_filter_sum / mel_filter_count;
-  std::cout << "  Mel filter stats: min=" << std::setprecision(6) << mel_filter_min << ", max=" << mel_filter_max << ", mean=" << mel_filter_mean << std::endl;
+  //   std::cout << "  Mel filter stats: min=" << std::setprecision(6) << mel_filter_min << ", max=" << mel_filter_max << ", mean=" << mel_filter_mean << std::endl;
 
   // Apply mel filters to STFT magnitude
   // STFT is now [freq_bins][time_frames], mel_spec should be [mel_bins][time_frames]
@@ -249,7 +249,7 @@ std::vector<std::vector<float>> AudioProcessor::extract_mel_spectrogram(const st
   }
 
   // Log raw mel spec shape first
-  std::cout << "  Raw mel spec shape: (" << mel_spec.size() << ", " << (mel_spec.empty() ? 0 : mel_spec[0].size()) << ")" << std::endl;
+  //   std::cout << "  Raw mel spec shape: (" << mel_spec.size() << ", " << (mel_spec.empty() ? 0 : mel_spec[0].size()) << ")" << std::endl;
 
   // Log raw mel spec statistics
   float mel_min = std::numeric_limits<float>::infinity();
@@ -265,16 +265,16 @@ std::vector<std::vector<float>> AudioProcessor::extract_mel_spectrogram(const st
     }
   }
   float mel_mean = mel_sum / mel_count;
-  std::cout << "  Raw mel spec stats: min=" << std::setprecision(6) << mel_min << ", max=" << mel_max << ", mean=" << mel_mean << std::endl;
+  //   std::cout << "  Raw mel spec stats: min=" << std::setprecision(6) << mel_min << ", max=" << mel_max << ", mean=" << mel_mean << std::endl;
 
   // Print first 5 mel values from first mel band
-  std::cout << "  First 5 mel values: [";
-  for (size_t i = 0; i < std::min(size_t(5), mel_spec[0].size()); ++i) {
-    if (i > 0) std::cout << " ";
-    std::cout << std::scientific << std::setprecision(7) << mel_spec[0][i];
-  }
-  std::cout << "]" << std::endl;
-  std::cout << std::fixed; // Reset to fixed notation
+//   //   std::cout << "  First 5 mel values: [";
+//   for (size_t i = 0; i < std::min(size_t(5), mel_spec[0].size()); ++i) {
+//     if (i > 0) std::cout << " ";
+//     std::cout << std::scientific << std::setprecision(7) << mel_spec[0][i];
+//   }
+//   std::cout << "]" << std::endl;
+//   std::cout << std::fixed; // Reset to fixed notation
 
   return mel_spec;
 }
@@ -302,7 +302,7 @@ std::vector<std::vector<float>> AudioProcessor::apply_log_transform(const std::v
     }
   }
   float log_mean = log_sum / log_count;
-  std::cout << "  After log10 stats: min=" << std::fixed << std::setprecision(6) << log_min << ", max=" << log_max << ", mean=" << log_mean << std::endl;
+  //   std::cout << "  After log10 stats: min=" << std::fixed << std::setprecision(6) << log_min << ", max=" << log_max << ", mean=" << log_mean << std::endl;
 
   return log_mel_spec;
 }

@@ -176,8 +176,6 @@ public:
             logWithTimestamp("Starting transcription...");
             auto start_time = std::chrono::high_resolution_clock::now();
 
-            //logWithTimestamp("Transcription completed, processing segments...");
-
             // Transcribe with Arabic language specified and word timestamps enabled
             auto [segments, info] = model.transcribe(
                 audio,              // audio data

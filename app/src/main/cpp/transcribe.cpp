@@ -219,20 +219,85 @@ std::tuple<std::vector<Segment>, TranscriptionInfo> WhisperModel::transcribe(
   const std::optional<std::string> &language,
   bool multilingual
 ) {
-  // Step 1: Validate multilingual setting based on model capability
+  // Step 1: Split audio by silence and process only first segment
+  std::vector<float> audio_to_process;
+
+  // Silence detection parameters (adjusted for verse boundaries)
+  float silence_threshold = 0.01f;     // Lower threshold = more sensitive
+  size_t min_silence_samples = 8000;   // 500ms at 16kHz minimum silence (increased from 100ms)
+  size_t min_segment_samples = 16000;  // 1 second minimum segment length
+
+  // Find segments separated by silence
+  std::vector<std::pair<size_t, size_t>> silence_segments;
+  size_t segment_start = 0;
+  size_t silence_start = 0;
+  bool in_silence = true;
+
+  // Skip initial silence
+  for (size_t i = 0; i < audio.size(); ++i) {
+    if (std::abs(audio[i]) >= silence_threshold) {
+      segment_start = i;
+      in_silence = false;
+      break;
+    }
+  }
+
+  // Find silence boundaries
+  for (size_t i = segment_start; i < audio.size(); ++i) {
+    bool is_silent = std::abs(audio[i]) < silence_threshold;
+
+    if (!in_silence && is_silent) {
+      silence_start = i;
+      in_silence = true;
+    } else if (in_silence && !is_silent) {
+      size_t silence_duration = i - silence_start;
+      if (silence_duration >= min_silence_samples) {
+        size_t segment_length = silence_start - segment_start;
+        if (segment_length >= min_segment_samples) {
+          silence_segments.push_back({segment_start, silence_start});
+        }
+        segment_start = i;
+      }
+      in_silence = false;
+    }
+  }
+
+  // Add final segment if long enough
+  if (!in_silence && (audio.size() - segment_start) >= min_segment_samples) {
+    silence_segments.push_back({segment_start, audio.size()});
+  }
+
+  // If no segments found, use entire audio
+  if (silence_segments.empty()) {
+    audio_to_process = audio;
+    std::cout << "No silence segments found, processing full audio" << std::endl;
+  } else if (silence_segments.size() < 2) {
+    std::cout << "Only 1 segment found, need at least 2. Processing full audio" << std::endl;
+    audio_to_process = audio;
+  } else {
+    // We have at least 2 segments - we'll process them separately
+    // For now, just process the first segment (we'll handle the second after)
+    auto [first_start, first_end] = silence_segments[0];
+    audio_to_process = std::vector<float>(audio.begin() + first_start, audio.begin() + first_end);
+
+    std::cout << "Found " << silence_segments.size() << " audio segments" << std::endl;
+    std::cout << "Processing first segment: " << (first_end - first_start) / 16000.0f << "s" << std::endl;
+  }
+
+  // Step 2: Validate multilingual setting based on model capability
   if (multilingual && !model->is_multilingual()) {
     std::cerr << "The current model is English-only but multilingual parameter is set to True; setting to False instead." << std::endl;
     multilingual = false;
   }
 
-  // Step 2: Calculate duration and validate audio
-  float duration = static_cast<float>(audio.size()) / feature_extractor.sampling_rate();
+  // Step 3: Calculate duration and validate audio
+  float duration = static_cast<float>(audio_to_process.size()) / feature_extractor.sampling_rate();
   float duration_after_vad = duration;
 
   // std::cout << "Processing audio with duration " << duration << "s" << std::endl;
 
-  // Step 3: Extract features from the full audio
-  auto features = feature_extractor.extract(audio);
+  // Step 4: Extract features from the audio segment
+  auto features = feature_extractor.extract(audio_to_process);
   if (features.empty() || features[0].empty()) {
     throw std::runtime_error("Failed to extract features from audio");
   }
@@ -410,19 +475,10 @@ std::tuple<std::vector<Segment>, TranscriptionInfo> WhisperModel::transcribe(
   options.multilingual = multilingual;
   options.max_new_tokens = std::nullopt;
 
-  // Create overlapping segments with 1 second overlap (29 second stride for 30 second windows)
-  // This improves quality at segment boundaries by giving context
-  // Format: pairs of (start, end) times for each window
+  // For short segments, don't use overlapping windows - just process the full duration
   std::vector<float> overlapping_timestamps;
-  float window_size = 30.0f;  // 30-second windows (Whisper's optimal size)
-  float stride = 25.0f;  // 5 second overlap
-
-  float current_start = 0.0f;
-  while (current_start < duration) {
-    overlapping_timestamps.push_back(current_start);  // Start of window
-    overlapping_timestamps.push_back(std::min(current_start + window_size, duration));  // End of window
-    current_start += stride;
-  }
+  overlapping_timestamps.push_back(0.0f);
+  overlapping_timestamps.push_back(duration);
 
   options.clip_timestamps = overlapping_timestamps;
   options.hallucination_silence_threshold = std::nullopt;
@@ -430,6 +486,43 @@ std::tuple<std::vector<Segment>, TranscriptionInfo> WhisperModel::transcribe(
 
   // Step 7: Generate segments using the same logic as Python (line 991-993)
   std::vector<Segment> segments = generate_segments(features, tokenizer, options);
+
+  // Output first segment result
+  std::cout << "\n=== First Segment Result ===" << std::endl;
+  for (const auto& seg : segments) {
+    std::cout << "[" << seg.start << "s -> " << seg.end << "s] " << seg.text << std::endl;
+  }
+
+  // Process additional segments (2 onwards) in a loop
+  for (size_t seg_idx = 1; seg_idx < silence_segments.size(); ++seg_idx) {
+    std::cout << "\n=== Processing Segment " << (seg_idx + 1) << " ===" << std::endl;
+    auto [seg_start, seg_end] = silence_segments[seg_idx];
+    std::vector<float> segment_audio(audio.begin() + seg_start, audio.begin() + seg_end);
+
+    std::cout << "Segment " << (seg_idx + 1) << ": " << (seg_end - seg_start) / 16000.0f << "s" << std::endl;
+
+    // Extract features from this segment
+    auto segment_features = feature_extractor.extract(segment_audio);
+
+    if (!segment_features.empty() && !segment_features[0].empty()) {
+      // Update clip_timestamps for this segment's duration
+      float segment_duration = segment_audio.size() / 16000.0f;
+      std::vector<float> segment_timestamps = {0.0f, segment_duration};
+      options.clip_timestamps = segment_timestamps;
+
+      // Generate segments for this audio segment
+      std::vector<Segment> segment_results = generate_segments(segment_features, tokenizer, options);
+
+      // Output segment result
+      std::cout << "\n=== Segment " << (seg_idx + 1) << " Result ===" << std::endl;
+      for (const auto& seg : segment_results) {
+        std::cout << "[" << seg.start << "s -> " << seg.end << "s] " << seg.text << std::endl;
+      }
+
+      // Append segment results to combined list
+      segments.insert(segments.end(), segment_results.begin(), segment_results.end());
+    }
+  }
 
   // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "transcribe() received %zu segments from generate_segments", segments.size());
   // for (size_t i = 0; i < segments.size(); ++i) {
@@ -447,7 +540,7 @@ std::tuple<std::vector<Segment>, TranscriptionInfo> WhisperModel::transcribe(
   // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "🎯 TRANSCRIBE FUNCTION ABOUT TO RETURN!");
   // __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Returning %zu segments, language: %s", segments.size(), info.language.c_str());
 
-  return {segments, info};
+  return std::make_tuple(segments, info);
 }
 
 std::vector<Word> WhisperModel::generate_word_timestamps(
