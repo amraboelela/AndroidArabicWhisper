@@ -103,7 +103,7 @@ void test_whisper_audio(const std::string& audio_filename = "001.wav") {
   std::cout << "✓ Audio normalization completed" << std::endl;
 
   // Test padding/trimming
-  auto padded_audio = whisper::AudioProcessor::pad_or_trim(normalized_audio,
+  auto padded_audio = AudioDecoder::pad_or_trim(normalized_audio,
                                                            WHISPER_CHUNK_SIZE);  // Remove whisper:: namespace
   std::cout << "✓ Audio padding/trimming completed. Size: " << padded_audio.size() << std::endl;
 
@@ -184,7 +184,7 @@ void demonstrate_usage() {
   std::cout << "//" << std::endl;
   std::cout << "// 3. Preprocess audio with whisper-compatible functions:" << std::endl;
   std::cout << "//    auto normalized = whisper::AudioProcessor::normalize_audio(audio);" << std::endl;
-  std::cout << "//    auto padded = whisper::AudioProcessor::pad_or_trim(normalized, WHISPER_CHUNK_SIZE);" << std::endl;
+  std::cout << "//    auto padded = AudioDecoder::pad_or_trim(normalized, WHISPER_CHUNK_SIZE);" << std::endl;
   std::cout << "//    auto filtered = whisper::AudioProcessor::apply_preemphasis(padded);" << std::endl;
   std::cout << "//" << std::endl;
   std::cout << "// 4. Extract features for whisper model:" << std::endl;
@@ -330,7 +330,7 @@ void test_long_audio_integration(const std::string& audio_filename = "002-01.wav
     std::vector<float> chunk(normalized_audio.begin() + start, normalized_audio.begin() + end);
 
     // Pad or trim chunk to standard size
-    auto padded_chunk = whisper::AudioProcessor::pad_or_trim(chunk, WHISPER_CHUNK_SIZE);
+    auto padded_chunk = AudioDecoder::pad_or_trim(chunk, WHISPER_CHUNK_SIZE);
 
     // Apply preemphasis
     auto filtered_chunk = whisper::AudioProcessor::apply_preemphasis(padded_chunk);
@@ -671,7 +671,7 @@ void test_audio_size_performance() {
 
     if (test.test_chunking) {
       // Test chunked processing
-      auto padded = whisper::AudioProcessor::pad_or_trim(normalized, WHISPER_CHUNK_SIZE);
+      auto padded = AudioDecoder::pad_or_trim(normalized, WHISPER_CHUNK_SIZE);
       auto filtered = whisper::AudioProcessor::apply_preemphasis(padded);
 
       auto features_chunked = extractor.compute_mel_spectrogram(filtered, 160, 30);

@@ -54,16 +54,16 @@ endif()
 set(WHISPER_MODEL_SOURCES
     ../whisper_model_tests.cpp
     ../../../main/cpp/feature_extractor.cpp
-    ../../../main/cpp/audio_decoder.cpp
+    ../../../main/cpp/audio.cpp
     ../../../main/cpp/tokenizer.cpp
     ../../../main/cpp/utils.cpp
     ../../../main/cpp/whisper/whisper_audio.cpp
     ../../../main/cpp/whisper/whisper_tokenizer.cpp
 )
 
-# Only include whisper_model.cpp if CTranslate2 is available
+# Only include transcribe.cpp if CTranslate2 is available
 if(CTRANSLATE2_LIB)
-    list(APPEND WHISPER_MODEL_SOURCES ../../../main/cpp/whisper_model.cpp)
+    list(APPEND WHISPER_MODEL_SOURCES ../../../main/cpp/transcribe.cpp)
 endif()
 
 # Create test executable for WhisperModel tests
