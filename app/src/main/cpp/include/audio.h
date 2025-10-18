@@ -1,5 +1,5 @@
-#ifndef AUDIO_DECODER_H
-#define AUDIO_DECODER_H
+#ifndef AUDIO_H
+#define AUDIO_H
 
 #include <string>
 #include <vector>
@@ -7,7 +7,7 @@
 #include <utility>
 #include <optional>
 
-class AudioDecoder {
+class Audio {
 public:
   // Decodes audio from a WAV file and converts to float samples.
   // Supports 16-bit PCM format with automatic resampling to 16kHz and mono conversion.
@@ -35,4 +35,4 @@ private:
   static void _resample_frames();
 };
 
-#endif // AUDIO_DECODER_H
+#endif // AUDIO_H

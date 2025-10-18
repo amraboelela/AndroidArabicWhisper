@@ -23,7 +23,7 @@ The integration provides whisper-compatible audio preprocessing capabilities tha
 
 ### 2. Updated Components
 
-**AudioDecoder (`audio_decoder.cpp`)**:
+**Audio (`audio.cpp`)**:
 - Now uses whisper audio processing instead of placeholder code
 - Provides real audio loading and preprocessing functionality
 - Maintains backward compatibility with existing interface
@@ -69,9 +69,9 @@ auto features = extractor.extract(audio);
 ```cpp
 #include "audio.h"
 
-// Existing AudioDecoder now uses whisper processing
-auto audio = AudioDecoder::decode_audio("audio.wav", 16000);
-auto padded = AudioDecoder::pad_or_trim(audio, 480000);
+// Existing Audio now uses whisper processing
+auto audio = Audio::decode_audio("audio.wav", 16000);
+auto padded = Audio::pad_or_trim(audio, 480000);
 ```
 
 ## Technical Specifications
@@ -98,7 +98,7 @@ app/src/main/cpp/
 │   ├── whisper_audio.h          # Audio processing header
 │   ├── whisper_audio.cpp        # Audio processing implementation
 │   └── test_integration.cpp     # Integration test
-├── audio_decoder.cpp                    # Updated to use whisper processing
+├── audio.cpp                    # Updated to use whisper processing
 ├── feature_extractor.cpp        # Updated with whisper integration
 ├── include/
 │   ├── audio.h                  # Existing audio interface

@@ -8,9 +8,9 @@
 #include <numeric>
 #include <algorithm>
 
-// --- AudioDecoder Class Implementation ---
+// --- Audio Class Implementation ---
 
-std::vector<float> AudioDecoder::decode_audio(
+std::vector<float> Audio::decode_audio(
   const std::string& input_file,
   int sampling_rate
 ) {
@@ -31,7 +31,7 @@ std::vector<float> AudioDecoder::decode_audio(
   return audio;
 }
 
-std::pair<std::vector<float>, std::vector<float>> AudioDecoder::decode_audio_split_stereo(
+std::pair<std::vector<float>, std::vector<float>> Audio::decode_audio_split_stereo(
   const std::string& input_file,
   int sampling_rate
 ) {
@@ -47,7 +47,7 @@ std::pair<std::vector<float>, std::vector<float>> AudioDecoder::decode_audio_spl
   return std::make_pair(mono_audio, mono_audio);
 }
 
-std::vector<float> AudioDecoder::pad_or_trim(
+std::vector<float> Audio::pad_or_trim(
   const std::vector<float>& array,
   size_t length
 ) {
@@ -64,14 +64,14 @@ std::vector<float> AudioDecoder::pad_or_trim(
   }
 }
 
-void AudioDecoder::_ignore_invalid_frames() {
+void Audio::_ignore_invalid_frames() {
   // Implementation for frame validation if needed
 }
 
-void AudioDecoder::_group_frames() {
+void Audio::_group_frames() {
   // Implementation for frame grouping if needed
 }
 
-void AudioDecoder::_resample_frames() {
+void Audio::_resample_frames() {
   // Implementation for frame resampling if needed
 }

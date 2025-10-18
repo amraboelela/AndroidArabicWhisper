@@ -694,10 +694,10 @@ namespace {
   }
 
 /**
- * Test integration with AudioDecoder for real file processing
+ * Test integration with Audio for real file processing
  */
-  bool test_audio_decoder_integration() {
-    std::cout << "\n=== Testing AudioDecoder Integration ===" << std::endl;
+  bool test_audio_integration() {
+    std::cout << "\n=== Testing Audio Integration ===" << std::endl;
 
     FeatureExtractor extractor;
 
@@ -824,7 +824,7 @@ bool run_feature_extractor_tests() {
   all_passed &= test_real_audio_chunking();
   all_passed &= test_chunk_boundary_effects();
   all_passed &= test_large_audio_memory_usage();
-  all_passed &= test_audio_decoder_integration();
+  all_passed &= test_audio_integration();
 
   std::cout << "\n=== FEATURE EXTRACTOR TEST SUMMARY ===" << std::endl;
   if (all_passed) {

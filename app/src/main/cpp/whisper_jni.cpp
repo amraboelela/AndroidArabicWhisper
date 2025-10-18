@@ -77,7 +77,7 @@ Java_org_amr_arabicwhisper_WhisperHelper_transcribe(JNIEnv* env, jobject thiz, j
     file.close();
 
     // Load and decode audio file
-    std::vector<float> audio_data = AudioDecoder::decode_audio(audio_path, 16000);
+    std::vector<float> audio_data = Audio::decode_audio(audio_path, 16000);
 
     if (audio_data.empty()) {
       std::string error_msg = "Failed to decode audio file: " + audio_path;

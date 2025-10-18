@@ -73,7 +73,7 @@ echo ""
 # Array of test scripts in logical execution order
 test_scripts=(
     "utils_tests.sh"
-    "audio_decoder_tests.sh"
+    "audio_tests.sh"
     "feature_extractor_tests.sh"
     "whisper_audio_tests.sh"
     "whisper_tokenizer_tests.sh"

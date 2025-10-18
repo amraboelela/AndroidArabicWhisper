@@ -441,7 +441,7 @@ bool test_whisper_model_core_functions() {
 /**
  * Test audio processing parameter validation
  */
-  bool test_audio_decoder_params() {
+  bool test_audio_params() {
     std::cout << "\n=== Testing Audio Processing Parameters ===" << std::endl;
 
     // Test sample rate validation
@@ -908,10 +908,10 @@ bool test_alfatiha_transcription() {
         // Test 1: Audio loading and preprocessing
         std::cout << "\n1. Testing audio loading..." << std::endl;
 
-        // Load the audio file (this should work with existing AudioDecoder)
+        // Load the audio file (this should work with existing Audio)
         std::vector<float> audio_data;
         try {
-            audio_data = AudioDecoder::decode_audio(audio_file_path, 16000);
+            audio_data = Audio::decode_audio(audio_file_path, 16000);
             ASSERT_TRUE(!audio_data.empty(), "Audio data loaded successfully");
 
             float duration = static_cast<float>(audio_data.size()) / 16000.0f;
@@ -920,7 +920,7 @@ bool test_alfatiha_transcription() {
             ASSERT_TRUE(duration < 300.0f, "Audio duration reasonable for Al-Fatiha (<5min)");
 
         } catch (const std::exception& e) {
-            std::cout << "  ⚠ AudioDecoder error: " << e.what() << std::endl;
+            std::cout << "  ⚠ Audio error: " << e.what() << std::endl;
             std::cout << "  Skipping transcription test - audio loading failed" << std::endl;
             return true; // Skip gracefully
         }
@@ -1225,7 +1225,7 @@ bool test_wav_file_transcription() {
         std::vector<float> audio_data;
         if (found_file) {
             try {
-                audio_data = AudioDecoder::decode_audio(audio_file_path, 16000);
+                audio_data = Audio::decode_audio(audio_file_path, 16000);
                 ASSERT_TRUE(!audio_data.empty(), "Audio data loaded successfully");
 
                 float duration = static_cast<float>(audio_data.size()) / 16000.0f;
@@ -1234,7 +1234,7 @@ bool test_wav_file_transcription() {
                 ASSERT_TRUE(duration < 600.0f, "Audio duration reasonable (<10min)");
 
             } catch (const std::exception& e) {
-                std::cout << "  ⚠ AudioDecoder error: " << e.what() << std::endl;
+                std::cout << "  ⚠ Audio error: " << e.what() << std::endl;
                 found_file = false; // Fall back to synthetic
             }
         }
@@ -1530,7 +1530,7 @@ bool test_large_arabic_transcription() {
 
         if (found_file) {
             try {
-                audio_data = AudioDecoder::decode_audio(audio_file_path, 16000);
+                audio_data = Audio::decode_audio(audio_file_path, 16000);
 
                 if (audio_data.empty()) {
                     std::cout << "⚠ Failed to load file, creating synthetic 15-minute Arabic audio" << std::endl;
@@ -1547,7 +1547,7 @@ bool test_large_arabic_transcription() {
                     ASSERT_TRUE(original_duration < 3600.0f, "Audio duration reasonable (<1 hour)");
                 }
             } catch (const std::exception& e) {
-                std::cout << "⚠ AudioDecoder error: " << e.what() << std::endl;
+                std::cout << "⚠ Audio error: " << e.what() << std::endl;
                 found_file = false;
             }
         }

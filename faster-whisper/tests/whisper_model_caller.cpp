@@ -137,7 +137,7 @@ public:
             logWithTimestamp("Loading audio file: " + audioFile);
 
             // Decode audio file to float samples
-            std::vector<float> audio = AudioDecoder::decode_audio(audioFile, 16000);
+            std::vector<float> audio = Audio::decode_audio(audioFile, 16000);
 
             if (audio.empty()) {
                 return createErrorJson("Failed to decode audio file: " + audioFile);

@@ -77,14 +77,14 @@ bool test_pad_or_trim() {
 
     // Test trimming (audio longer than target)
     std::vector<float> long_audio = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
-    auto trimmed = AudioDecoder::pad_or_trim(long_audio, 5);
+    auto trimmed = Audio::pad_or_trim(long_audio, 5);
     ASSERT_EQ(trimmed.size(), 5, "Trimmed audio length");
     ASSERT_EQ(trimmed[0], 1.0f, "Trimmed audio first element");
     ASSERT_EQ(trimmed[4], 5.0f, "Trimmed audio last element");
 
     // Test padding (audio shorter than target)
     std::vector<float> short_audio = {1, 2, 3};
-    auto padded = AudioDecoder::pad_or_trim(short_audio, 7);
+    auto padded = Audio::pad_or_trim(short_audio, 7);
     ASSERT_EQ(padded.size(), 7, "Padded audio length");
     ASSERT_EQ(padded[0], 1.0f, "Padded audio first element");
     ASSERT_EQ(padded[2], 3.0f, "Padded audio original last element");
@@ -93,7 +93,7 @@ bool test_pad_or_trim() {
 
     // Test exact length (no padding or trimming)
     std::vector<float> exact_audio = {1, 2, 3, 4, 5};
-    auto unchanged = AudioDecoder::pad_or_trim(exact_audio, 5);
+    auto unchanged = Audio::pad_or_trim(exact_audio, 5);
     ASSERT_EQ(unchanged.size(), 5, "Unchanged audio length");
     ASSERT_EQ(unchanged[0], 1.0f, "Unchanged audio first element");
     ASSERT_EQ(unchanged[4], 5.0f, "Unchanged audio last element");
@@ -113,7 +113,7 @@ bool test_pad_or_trim_various_lengths() {
     std::vector<size_t> target_lengths = {160000, 320000, 480000}; // 10s, 20s, 30s at 16kHz
 
     for (size_t target : target_lengths) {
-        auto result = AudioDecoder::pad_or_trim(test_audio, target);
+        auto result = Audio::pad_or_trim(test_audio, target);
         ASSERT_EQ(result.size(), target, "Target length " + std::to_string(target));
 
         if (target > test_audio.size()) {
@@ -138,24 +138,24 @@ bool test_pad_or_trim_edge_cases() {
 
     // Test empty input
     std::vector<float> empty_audio;
-    auto padded_empty = AudioDecoder::pad_or_trim(empty_audio, 5);
+    auto padded_empty = Audio::pad_or_trim(empty_audio, 5);
     ASSERT_EQ(padded_empty.size(), 5, "Padded empty audio length");
     ASSERT_EQ(padded_empty[0], 0.0f, "Padded empty audio all zeros");
     ASSERT_EQ(padded_empty[4], 0.0f, "Padded empty audio all zeros end");
 
     // Test zero target length
     std::vector<float> some_audio = {1, 2, 3, 4, 5};
-    auto zero_length = AudioDecoder::pad_or_trim(some_audio, 0);
+    auto zero_length = Audio::pad_or_trim(some_audio, 0);
     ASSERT_EQ(zero_length.size(), 0, "Zero target length");
 
     // Test single element
     std::vector<float> single_element = {42.0f};
-    auto single_padded = AudioDecoder::pad_or_trim(single_element, 3);
+    auto single_padded = Audio::pad_or_trim(single_element, 3);
     ASSERT_EQ(single_padded.size(), 3, "Single element padded length");
     ASSERT_EQ(single_padded[0], 42.0f, "Single element preserved");
     ASSERT_EQ(single_padded[1], 0.0f, "Single element padding");
 
-    auto single_trimmed = AudioDecoder::pad_or_trim(single_element, 1);
+    auto single_trimmed = Audio::pad_or_trim(single_element, 1);
     ASSERT_EQ(single_trimmed.size(), 1, "Single element trimmed length");
     ASSERT_EQ(single_trimmed[0], 42.0f, "Single element preserved in trim");
 
@@ -165,7 +165,7 @@ bool test_pad_or_trim_edge_cases() {
 /**
  * Test audio processing with realistic parameters
  */
-bool test_realistic_audio_decoder() {
+bool test_realistic_audio() {
     std::cout << "\n=== Testing Realistic Audio Processing ===" << std::endl;
 
     // Generate 5-second audio clip at 16kHz
@@ -177,7 +177,7 @@ bool test_realistic_audio_decoder() {
 
     // Test typical Whisper preprocessing (30-second chunks)
     size_t whisper_chunk_size = 30 * sample_rate; // 30 seconds
-    auto whisper_chunk = AudioDecoder::pad_or_trim(audio, whisper_chunk_size);
+    auto whisper_chunk = Audio::pad_or_trim(audio, whisper_chunk_size);
 
     ASSERT_EQ(whisper_chunk.size(), whisper_chunk_size, "Whisper chunk size");
 
@@ -206,11 +206,11 @@ bool test_different_sample_rates() {
         ASSERT_EQ(audio.size(), sr, "Audio length matches sample rate");
 
         // Test padding to 2 seconds
-        auto padded = AudioDecoder::pad_or_trim(audio, sr * 2);
+        auto padded = Audio::pad_or_trim(audio, sr * 2);
         ASSERT_EQ(padded.size(), sr * 2, "Padded to 2 seconds");
 
         // Test trimming to 0.5 seconds
-        auto trimmed = AudioDecoder::pad_or_trim(audio, sr / 2);
+        auto trimmed = Audio::pad_or_trim(audio, sr / 2);
         ASSERT_EQ(trimmed.size(), sr / 2, "Trimmed to 0.5 seconds");
     }
 
@@ -228,7 +228,7 @@ bool test_signal_preservation() {
     auto noise = generate_white_noise(16000, 0.2f);
 
     // Test that padding preserves original signal
-    auto padded_sine = AudioDecoder::pad_or_trim(sine_wave, 48000); // Pad to 3 seconds
+    auto padded_sine = Audio::pad_or_trim(sine_wave, 48000); // Pad to 3 seconds
 
     // Check that original signal is preserved
     bool signal_preserved = true;
@@ -241,7 +241,7 @@ bool test_signal_preservation() {
     ASSERT_TRUE(signal_preserved, "Sine wave signal preserved in padding");
 
     // Test that trimming preserves beginning of signal
-    auto trimmed_sine = AudioDecoder::pad_or_trim(sine_wave, 8000); // Trim to 0.5 seconds
+    auto trimmed_sine = Audio::pad_or_trim(sine_wave, 8000); // Trim to 0.5 seconds
 
     bool beginning_preserved = true;
     for (size_t i = 0; i < trimmed_sine.size(); i++) {
@@ -266,13 +266,13 @@ bool test_memory_efficiency() {
     std::vector<float> large_audio(large_size, 0.5f);
 
     // Test trimming large array
-    auto trimmed_large = AudioDecoder::pad_or_trim(large_audio, 16000); // Trim to 1 second
+    auto trimmed_large = Audio::pad_or_trim(large_audio, 16000); // Trim to 1 second
     ASSERT_EQ(trimmed_large.size(), 16000, "Large array trimmed correctly");
     ASSERT_EQ(trimmed_large[0], 0.5f, "Large array trimming preserves values");
 
     // Test padding to larger size
     std::vector<float> small_audio(1000, 0.3f);
-    auto padded_large = AudioDecoder::pad_or_trim(small_audio, large_size);
+    auto padded_large = Audio::pad_or_trim(small_audio, large_size);
     ASSERT_EQ(padded_large.size(), large_size, "Small array padded to large size");
     ASSERT_EQ(padded_large[0], 0.3f, "Original values preserved");
     ASSERT_EQ(padded_large[999], 0.3f, "Last original value preserved");
@@ -367,7 +367,7 @@ bool test_audio_quality_metrics() {
 /**
  * Main test runner for audio processing tests
  */
-bool run_audio_decoder_tests() {
+bool run_audio_tests() {
     std::cout << "=== AUDIO PROCESSING UNIT TESTS ===" << std::endl;
 
     bool all_passed = true;
@@ -375,7 +375,7 @@ bool run_audio_decoder_tests() {
     all_passed &= test_pad_or_trim();
     all_passed &= test_pad_or_trim_various_lengths();
     all_passed &= test_pad_or_trim_edge_cases();
-    all_passed &= test_realistic_audio_decoder();
+    all_passed &= test_realistic_audio();
     all_passed &= test_different_sample_rates();
     all_passed &= test_signal_preservation();
     all_passed &= test_memory_efficiency();
@@ -395,19 +395,19 @@ bool run_audio_decoder_tests() {
 /**
  * Demonstrate audio processing usage
  */
-void demonstrate_audio_decoder_usage() {
+void demonstrate_audio_usage() {
     std::cout << "\n=== Audio Processing Usage Examples ===" << std::endl;
 
     std::cout << "// Basic audio processing:" << std::endl;
     std::cout << "// 1. Load and decode audio file:" << std::endl;
-    std::cout << "//    auto audio = AudioDecoder::decode_audio(\"speech.wav\", 16000);" << std::endl;
+    std::cout << "//    auto audio = Audio::decode_audio(\"speech.wav\", 16000);" << std::endl;
     std::cout << "//" << std::endl;
     std::cout << "// 2. Preprocess for Whisper (30-second chunks):" << std::endl;
-    std::cout << "//    auto chunk = AudioDecoder::pad_or_trim(audio, 30 * 16000);" << std::endl;
+    std::cout << "//    auto chunk = Audio::pad_or_trim(audio, 30 * 16000);" << std::endl;
     std::cout << "//" << std::endl;
     std::cout << "// 3. Handle stereo audio:" << std::endl;
-    std::cout << "//    auto [left, right] = AudioDecoder::decode_audio_split_stereo(\"stereo.wav\");" << std::endl;
-    std::cout << "//    auto mono = AudioDecoder::pad_or_trim(left, 30 * 16000); // Use left channel" << std::endl;
+    std::cout << "//    auto [left, right] = Audio::decode_audio_split_stereo(\"stereo.wav\");" << std::endl;
+    std::cout << "//    auto mono = Audio::pad_or_trim(left, 30 * 16000); // Use left channel" << std::endl;
 
     std::cout << "\n// Common preprocessing patterns:" << std::endl;
     std::cout << "// - Whisper input: pad_or_trim(audio, 480000)  // 30s at 16kHz" << std::endl;
@@ -419,15 +419,15 @@ void demonstrate_audio_decoder_usage() {
     std::cout << "// - Padding preserves original signal quality" << std::endl;
     std::cout << "// - Trimming removes end of audio, not beginning" << std::endl;
     std::cout << "// - Memory-efficient for large audio files" << std::endl;
-    std::cout << "// - Supports various input formats through AudioDecoder" << std::endl;
+    std::cout << "// - Supports various input formats through Audio" << std::endl;
 }
 
 #ifndef TESTING_MODE
 int main() {
-    bool tests_passed = run_audio_decoder_tests();
+    bool tests_passed = run_audio_tests();
 
     if (tests_passed) {
-        demonstrate_audio_decoder_usage();
+        demonstrate_audio_usage();
     }
 
     return tests_passed ? 0 : 1;

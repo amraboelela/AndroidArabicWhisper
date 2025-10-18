@@ -46,7 +46,7 @@ void test_whisper_audio(const std::string& audio_filename = "001.wav") {
   std::vector<float> test_audio;
 
   try {
-    test_audio = AudioDecoder::decode_audio(audio_file_path, WHISPER_SAMPLE_RATE);
+    test_audio = Audio::decode_audio(audio_file_path, WHISPER_SAMPLE_RATE);
     if (test_audio.empty()) {
       std::cout << "⚠ Failed to load " << audio_filename << ", falling back to synthetic audio" << std::endl;
 
@@ -103,7 +103,7 @@ void test_whisper_audio(const std::string& audio_filename = "001.wav") {
   std::cout << "✓ Audio normalization completed" << std::endl;
 
   // Test padding/trimming
-  auto padded_audio = AudioDecoder::pad_or_trim(normalized_audio,
+  auto padded_audio = Audio::pad_or_trim(normalized_audio,
                                                            WHISPER_CHUNK_SIZE);  // Remove whisper:: namespace
   std::cout << "✓ Audio padding/trimming completed. Size: " << padded_audio.size() << std::endl;
 
@@ -127,13 +127,13 @@ void test_whisper_audio(const std::string& audio_filename = "001.wav") {
     std::cout << "✗ Failed to extract mel spectrogram" << std::endl;
   }
 
-  // Test 4: Test integration with AudioDecoder using real file
-  std::cout << "Testing AudioDecoder integration..." << std::endl;
+  // Test 4: Test integration with Audio using real file
+  std::cout << "Testing Audio integration..." << std::endl;
 
   // Load the file fresh to show actual properties (not trimmed version)
-  auto full_audio = AudioDecoder::decode_audio(audio_file_path, WHISPER_SAMPLE_RATE);
+  auto full_audio = Audio::decode_audio(audio_file_path, WHISPER_SAMPLE_RATE);
 
-  std::cout << "✓ AudioDecoder successfully loaded: " << audio_file_path << std::endl;
+  std::cout << "✓ Audio successfully loaded: " << audio_file_path << std::endl;
   std::cout << "Audio properties:" << std::endl;
   std::cout << "  - Samples: " << full_audio.size() << std::endl;
   std::cout << "  - Duration: " << (full_audio.size() / float(WHISPER_SAMPLE_RATE)) << " seconds" << std::endl;
@@ -172,9 +172,9 @@ void demonstrate_usage() {
 
   std::cout << "// Example usage in your application with different audio files:" << std::endl;
   std::cout << "// 1. Load any audio file from assets:" << std::endl;
-  std::cout << "//    auto audio = AudioDecoder::decode_audio(\"assets/002-01.wav\", 16000);  // Large file" << std::endl;
-  std::cout << "//    auto audio = AudioDecoder::decode_audio(\"assets/001.wav\", 16000);     // Smaller file" << std::endl;
-  std::cout << "//    auto audio = AudioDecoder::decode_audio(\"assets/test.wav\", 16000);    // Test file" << std::endl;
+  std::cout << "//    auto audio = Audio::decode_audio(\"assets/002-01.wav\", 16000);  // Large file" << std::endl;
+  std::cout << "//    auto audio = Audio::decode_audio(\"assets/001.wav\", 16000);     // Smaller file" << std::endl;
+  std::cout << "//    auto audio = Audio::decode_audio(\"assets/test.wav\", 16000);    // Test file" << std::endl;
   std::cout << "//    // For large files, consider processing in chunks" << std::endl;
   std::cout << "//" << std::endl;
   std::cout << "// 2. Test with different files:" << std::endl;
@@ -184,7 +184,7 @@ void demonstrate_usage() {
   std::cout << "//" << std::endl;
   std::cout << "// 3. Preprocess audio with whisper-compatible functions:" << std::endl;
   std::cout << "//    auto normalized = whisper::AudioProcessor::normalize_audio(audio);" << std::endl;
-  std::cout << "//    auto padded = AudioDecoder::pad_or_trim(normalized, WHISPER_CHUNK_SIZE);" << std::endl;
+  std::cout << "//    auto padded = Audio::pad_or_trim(normalized, WHISPER_CHUNK_SIZE);" << std::endl;
   std::cout << "//    auto filtered = whisper::AudioProcessor::apply_preemphasis(padded);" << std::endl;
   std::cout << "//" << std::endl;
   std::cout << "// 4. Extract features for whisper model:" << std::endl;
@@ -197,7 +197,7 @@ void demonstrate_usage() {
 
   std::cout << "\n// Key benefits:" << std::endl;
   std::cout << "// - Flexible audio file testing with any file in assets/" << std::endl;
-  std::cout << "// - Real audio file support through AudioDecoder" << std::endl;
+  std::cout << "// - Real audio file support through Audio" << std::endl;
   std::cout << "// - Whisper-compatible audio preprocessing" << std::endl;
   std::cout << "// - Proper 16kHz sampling rate handling" << std::endl;
   std::cout << "// - Mel spectrogram extraction matching whisper.cpp" << std::endl;
@@ -253,7 +253,7 @@ void test_long_audio_integration(const std::string& audio_filename = "002-01.wav
   float original_duration = 0.0f;
 
   try {
-    long_audio = AudioDecoder::decode_audio(audio_file_path, WHISPER_SAMPLE_RATE);
+    long_audio = Audio::decode_audio(audio_file_path, WHISPER_SAMPLE_RATE);
 
     if (long_audio.empty()) {
       // Fallback: Create synthetic 15-minute audio (900 seconds)
@@ -330,7 +330,7 @@ void test_long_audio_integration(const std::string& audio_filename = "002-01.wav
     std::vector<float> chunk(normalized_audio.begin() + start, normalized_audio.begin() + end);
 
     // Pad or trim chunk to standard size
-    auto padded_chunk = AudioDecoder::pad_or_trim(chunk, WHISPER_CHUNK_SIZE);
+    auto padded_chunk = Audio::pad_or_trim(chunk, WHISPER_CHUNK_SIZE);
 
     // Apply preemphasis
     auto filtered_chunk = whisper::AudioProcessor::apply_preemphasis(padded_chunk);
@@ -671,7 +671,7 @@ void test_audio_size_performance() {
 
     if (test.test_chunking) {
       // Test chunked processing
-      auto padded = AudioDecoder::pad_or_trim(normalized, WHISPER_CHUNK_SIZE);
+      auto padded = Audio::pad_or_trim(normalized, WHISPER_CHUNK_SIZE);
       auto filtered = whisper::AudioProcessor::apply_preemphasis(padded);
 
       auto features_chunked = extractor.compute_mel_spectrogram(filtered, 160, 30);
