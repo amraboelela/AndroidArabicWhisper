@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Script to build and run WhisperModel unit tests
-# Usage: ./whisper_model_tests.sh
+# Script to build and run transcribe() unit tests
+# Usage: ./transcribe_tests.sh
 
 set -e  # Exit on any error
 
@@ -16,7 +16,7 @@ cleanup() {
 
 # Set trap to run cleanup on script exit
 trap cleanup EXIT
-echo "=== Building and Running WhisperModel Unit Tests ==="
+echo "=== Building and Running transcribe() Unit Tests ==="
 
 # Navigate to cpp directory
 cd "$(dirname "$0")"
@@ -30,15 +30,15 @@ cd test_build
 
 echo "Configuring build with CMake..."
 # Copy the test CMakeLists to be the main one for this build
-cp ../cmak_lists/whisper_model_tests.cmak ./CMakeLists.txt
+cp ../cmak_lists/transcribe_tests.cmak ./CMakeLists.txt
 cmake -DCMAKE_BUILD_TYPE=Release .
 
 echo "Building test executable..."
 make
 
-echo "Running WhisperModel tests..."
+echo "Running transcribe() tests..."
 echo "================================"
-./test_whisper_model
+./test_transcribe
 
 echo "================================"
 echo "Test execution completed!"

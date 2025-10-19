@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(arabicwhisper_model_tests)
+project(arabicwhisper_transcribe_tests)
 
 # Set C++ standard
 set(CMAKE_CXX_STANDARD 17)
@@ -51,8 +51,8 @@ else()
 endif()
 
 # Set up source files - conditional compilation based on CTranslate2 availability
-set(WHISPER_MODEL_SOURCES
-    ../whisper_model_tests.cpp
+set(TRANSCRIBE_SOURCES
+    ../transcribe_tests.cpp
     ../../../main/cpp/feature_extractor.cpp
     ../../../main/cpp/audio.cpp
     ../../../main/cpp/tokenizer.cpp
@@ -63,15 +63,15 @@ set(WHISPER_MODEL_SOURCES
 
 # Only include transcribe.cpp if CTranslate2 is available
 if(CTRANSLATE2_LIB)
-    list(APPEND WHISPER_MODEL_SOURCES ../../../main/cpp/transcribe.cpp)
+    list(APPEND TRANSCRIBE_SOURCES ../../../main/cpp/transcribe.cpp)
 endif()
 
-# Create test executable for WhisperModel tests
-add_executable(test_whisper_model ${WHISPER_MODEL_SOURCES})
+# Create test executable for transcribe() tests
+add_executable(test_transcribe ${TRANSCRIBE_SOURCES})
 
 # Link libraries for test
 target_link_libraries(
-    test_whisper_model
+    test_transcribe
     ${ZLIB_LIBRARIES}
     m  # math library
 )
@@ -79,36 +79,36 @@ target_link_libraries(
 # Configure CTranslate2 linking
 if(CTRANSLATE2_LIB)
     message(STATUS "Found CTranslate2: ${CTRANSLATE2_LIB}")
-    target_link_libraries(test_whisper_model ${CTRANSLATE2_LIB})
-    target_compile_definitions(test_whisper_model PRIVATE HAVE_CTRANSLATE2)
+    target_link_libraries(test_transcribe ${CTRANSLATE2_LIB})
+    target_compile_definitions(test_transcribe PRIVATE HAVE_CTRANSLATE2)
 
     # Add additional libraries that CTranslate2 might need
     find_library(ACCELERATE_FRAMEWORK Accelerate)
     if(ACCELERATE_FRAMEWORK)
-        target_link_libraries(test_whisper_model ${ACCELERATE_FRAMEWORK})
+        target_link_libraries(test_transcribe ${ACCELERATE_FRAMEWORK})
     endif()
 
     # Add pthread if needed
     find_package(Threads REQUIRED)
-    target_link_libraries(test_whisper_model Threads::Threads)
+    target_link_libraries(test_transcribe Threads::Threads)
 
 else()
     message(WARNING "CTranslate2 library not found! Running tests without CTranslate2 support.")
-    message(STATUS "Tests will run with limited functionality (no full model inference tests)")
-    target_compile_definitions(test_whisper_model PRIVATE NO_CTRANSLATE2)
+    message(STATUS "Tests will run with limited functionality (no full transcription tests)")
+    target_compile_definitions(test_transcribe PRIVATE NO_CTRANSLATE2)
 endif()
 
 # Enable testing
 enable_testing()
 
 # Add the test
-add_test(NAME whisper_model_test COMMAND test_whisper_model)
+add_test(NAME transcribe_test COMMAND test_transcribe)
 
 # Print instructions
-message(STATUS "To run WhisperModel tests:")
+message(STATUS "To run transcribe() tests:")
 message(STATUS "  mkdir build && cd build")
-message(STATUS "  cp ../whisper_model_tests.cmak ./CMakeLists.txt")
+message(STATUS "  cp ../transcribe_tests.cmak ./CMakeLists.txt")
 message(STATUS "  cmake .")
 message(STATUS "  make")
-message(STATUS "  ./test_whisper_model")
+message(STATUS "  ./test_transcribe")
 message(STATUS "  OR: make test")

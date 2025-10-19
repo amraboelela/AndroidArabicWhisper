@@ -4,13 +4,16 @@ import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
 import org.amr.arabicwhisper.ui.theme.ArabicWhisperTheme
 import java.io.File
 import android.content.res.AssetManager
@@ -52,13 +55,24 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun MainScreen(whisperHelper: WhisperHelper, audioFilePath: String) {
-  Text(
-    text = "Arabic Whisper App",
-    style = MaterialTheme.typography.headlineMedium
-  )
+  Column(
+    modifier = Modifier
+      .fillMaxSize()
+      .padding(16.dp)
+  ) {
+    Text(
+      text = "Arabic Whisper App",
+      style = MaterialTheme.typography.headlineMedium,
+      modifier = Modifier.padding(bottom = 16.dp)
+    )
 
-  val transcription = whisperHelper.transcribe(audioFilePath)
-  Log.d("#transcribe", "transcription: $transcription")
+    val transcription = whisperHelper.transcribe(audioFilePath)
+    Log.d("#transcribe", "transcription: $transcription")
+    Text(
+      text = "transcription: $transcription",
+      style = MaterialTheme.typography.bodyLarge
+    )
+  }
 }
 
 @Preview(showBackground = true)
