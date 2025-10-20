@@ -55,6 +55,7 @@ dependencies {
   implementation(libs.androidx.ui.graphics)
   implementation(libs.androidx.ui.tooling.preview)
   implementation(libs.androidx.material3)
+  implementation("androidx.compose.material:material-icons-extended")
   implementation("androidx.appcompat:appcompat:1.6.1")
   implementation("com.microsoft.onnxruntime:onnxruntime-android:1.15.1")
   implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
