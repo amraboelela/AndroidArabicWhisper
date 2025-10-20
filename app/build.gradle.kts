@@ -2,6 +2,7 @@ plugins {
   alias(libs.plugins.android.application)
   alias(libs.plugins.kotlin.android)
   alias(libs.plugins.kotlin.compose)
+  id("com.chaquo.python")
 }
 
 android {
@@ -28,20 +29,41 @@ android {
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
     }
   }
+
   compileOptions {
     sourceCompatibility = JavaVersion.VERSION_11
     targetCompatibility = JavaVersion.VERSION_11
   }
+
   kotlinOptions {
     jvmTarget = "11"
   }
+
   buildFeatures {
     compose = true
     viewBinding = true
   }
-  externalNativeBuild {
-    cmake {
-      path = file("src/main/cpp/CMakeLists.txt")
+
+  // Remove C++ build - using Python instead
+  // externalNativeBuild {
+  //   cmake {
+  //     path = file("src/main/cpp/CMakeLists.txt")
+  //   }
+  // }
+}
+
+// Chaquopy configuration
+chaquopy {
+  defaultConfig {
+    pip {
+      // Install Python dependencies for faster-whisper
+      // ctranslate2 is loaded from native .so library
+      install("numpy")
+      install("tokenizers")
+      install("huggingface-hub")
+      install("tqdm")
+      // Note: av (PyAV) and onnxruntime might not work on Android
+      // We'll handle audio with our own code if needed
     }
   }
 }
@@ -56,7 +78,8 @@ dependencies {
   implementation(libs.androidx.ui.tooling.preview)
   implementation(libs.androidx.material3)
   implementation("androidx.appcompat:appcompat:1.6.1")
-  implementation("com.microsoft.onnxruntime:onnxruntime-android:1.15.1")
+  // Remove ONNX Runtime - not needed with Python approach
+  // implementation("com.microsoft.onnxruntime:onnxruntime-android:1.15.1")
   implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
 
   testImplementation(libs.junit)
