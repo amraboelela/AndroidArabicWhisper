@@ -81,7 +81,7 @@ env/
 
 # IDE
 .vscode/
-.idea/
+.idea/vcs.xml
 *.swp
 *.swo
 *~

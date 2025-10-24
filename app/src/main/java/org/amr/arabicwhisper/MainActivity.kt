@@ -86,7 +86,8 @@ class MainActivity : ComponentActivity() {
             whisperHelper = whisperHelper,
             audioFilePath = audioFilePath,
             onStartRecording = { startRecording() },
-            onStopRecording = { stopRecording() }
+            onStopRecording = { stopRecording() },
+            context = this
           )
         }
       }
@@ -137,7 +138,8 @@ fun MainScreen(
   whisperHelper: WhisperHelper,
   audioFilePath: String,
   onStartRecording: () -> Unit,
-  onStopRecording: () -> String?
+  onStopRecording: () -> String?,
+  context: android.content.Context
 ) {
   var isRecording by remember { mutableStateOf(false) }
   var transcription by remember { mutableStateOf("") }
@@ -258,6 +260,36 @@ fun MainScreen(
       modifier = Modifier.fillMaxWidth()
     ) {
       Text("Test with 001.wav")
+    }
+
+    Spacer(modifier = Modifier.height(8.dp))
+
+    // Button to copy recorded audio to Downloads for inspection
+    Button(
+      onClick = {
+        Thread {
+          try {
+            val recordedFile = File(context.filesDir, "recorded_audio.wav")
+            if (recordedFile.exists()) {
+              val downloadsDir = android.os.Environment.getExternalStoragePublicDirectory(
+                android.os.Environment.DIRECTORY_DOWNLOADS
+              )
+              val destFile = File(downloadsDir, "recorded_audio_${System.currentTimeMillis()}.wav")
+              recordedFile.copyTo(destFile, overwrite = true)
+              transcription = "Saved to: ${destFile.absolutePath}"
+              Log.d("#transcribe", "Copied recording to: ${destFile.absolutePath}")
+            } else {
+              transcription = "No recording found"
+            }
+          } catch (e: Exception) {
+            transcription = "Copy error: ${e.message}"
+            Log.e("#transcribe", "Failed to copy recording", e)
+          }
+        }.start()
+      },
+      modifier = Modifier.fillMaxWidth()
+    ) {
+      Text("Save Last Recording to Downloads")
     }
   }
 }
