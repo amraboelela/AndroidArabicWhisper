@@ -16,7 +16,7 @@ add_library(
 )
 
 # Include directories for CTranslate2 headers
-set(CTRANSLATE2_ROOT "/Users/amraboelela/develop/android/CTranslate2")
+set(CTRANSLATE2_ROOT "/Users/amraboelela/develop/ai/CTranslate2")
 include_directories(${CTRANSLATE2_ROOT}/include)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/whisper)  # Include whisper directory
@@ -57,3 +57,7 @@ target_link_libraries(
         log             # Android logging
         ${BLAS_LIBS}    # Add BLAS libraries if available
 )
+
+if(ANDROID_ABI STREQUAL "arm64-v8a")
+    target_link_options(whisper_jni PRIVATE "-Wl,-z,max-page-size=65536")
+endif()

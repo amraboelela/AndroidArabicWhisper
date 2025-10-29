@@ -90,13 +90,11 @@ private:
 
 class WhisperTester {
 private:
-    std::string pythonPath;
     std::string modelPath;
     TokenizerCreator tokenizerCreator;
 
 public:
     WhisperTester() {
-        pythonPath = "python3";
         modelPath = findWhisperModelPath();
     }
 
