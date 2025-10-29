@@ -16,8 +16,7 @@ add_library(
 )
 
 # Include directories for CTranslate2 headers
-set(CTRANSLATE2_ROOT "/Users/amraboelela/develop/ai/CTranslate2")
-include_directories(${CTRANSLATE2_ROOT}/include)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include/ctranslate2)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/whisper)  # Include whisper directory
 
