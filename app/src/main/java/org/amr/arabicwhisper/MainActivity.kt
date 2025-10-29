@@ -151,8 +151,9 @@ fun MainScreen(
       .padding(16.dp),
     horizontalAlignment = Alignment.CenterHorizontally
   ) {
+    Spacer(modifier = Modifier.height(24.dp))
     Text(
-      text = "Arabic Whisper App",
+      text = "Arabic Whisper",
       style = MaterialTheme.typography.headlineMedium,
       modifier = Modifier.padding(bottom = 24.dp)
     )
@@ -262,35 +263,7 @@ fun MainScreen(
       Text("Test with 001.wav")
     }
 
-    Spacer(modifier = Modifier.height(8.dp))
 
-    // Button to copy recorded audio to Downloads for inspection
-    Button(
-      onClick = {
-        Thread {
-          try {
-            val recordedFile = File(context.filesDir, "recorded_audio.wav")
-            if (recordedFile.exists()) {
-              val downloadsDir = android.os.Environment.getExternalStoragePublicDirectory(
-                android.os.Environment.DIRECTORY_DOWNLOADS
-              )
-              val destFile = File(downloadsDir, "recorded_audio_${System.currentTimeMillis()}.wav")
-              recordedFile.copyTo(destFile, overwrite = true)
-              transcription = "Saved to: ${destFile.absolutePath}"
-              Log.d("#transcribe", "Copied recording to: ${destFile.absolutePath}")
-            } else {
-              transcription = "No recording found"
-            }
-          } catch (e: Exception) {
-            transcription = "Copy error: ${e.message}"
-            Log.e("#transcribe", "Failed to copy recording", e)
-          }
-        }.start()
-      },
-      modifier = Modifier.fillMaxWidth()
-    ) {
-      Text("Save Last Recording to Downloads")
-    }
   }
 }
 
