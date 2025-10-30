@@ -43,7 +43,7 @@ import android.content.res.AssetManager
 class MainActivity : ComponentActivity() {
   private lateinit var whisperHelper: WhisperHelper
   private var audioRecorder: AudioRecorder? = null
-  private var recordedAudioFile: File? = null
+  private var accumulatedTranscription = StringBuilder()
 
   private val requestPermissionLauncher = registerForActivityResult(
     ActivityResultContracts.RequestPermission()
@@ -118,18 +118,46 @@ class MainActivity : ComponentActivity() {
       return
     }
 
-    recordedAudioFile = File(this.filesDir, "recorded_audio.wav")
-    audioRecorder = AudioRecorder(recordedAudioFile!!).apply {
+    // Clear state before starting new recording
+    whisperHelper.clearTranscription()
+    accumulatedTranscription.clear()
+    Log.d("#transcribe", "Starting new recording, state cleared")
+
+    audioRecorder = AudioRecorder { audioData ->
+      // Call transcribeStream directly without creating new threads
+      whisperHelper.transcribeStream(audioData) { result ->
+        runOnUiThread {
+          // Only append if we got a non-empty result
+          if (result.isNotEmpty()) {
+            Log.d("#transcribe", "New chunk transcribed: $result")
+            // Append the new chunk to accumulated text
+            if (accumulatedTranscription.isNotEmpty()) {
+              accumulatedTranscription.append(" ")
+            }
+            accumulatedTranscription.append(result)
+            // Update UI with accumulated transcription
+            Log.d("#transcribe", "UI update with full transcription: $accumulatedTranscription")
+            whisperHelper.onTranscriptionUpdate?.invoke(accumulatedTranscription.toString())
+          }
+        }
+      }
+    }.apply {
       startRecording()
     }
     Log.d("#transcribe", "Recording started")
   }
 
-  private fun stopRecording(): String? {
+  private fun stopRecording() {
     audioRecorder?.stopRecording()
     audioRecorder = null
+    whisperHelper.clearTranscription()
     Log.d("#transcribe", "Recording stopped")
-    return recordedAudioFile?.absolutePath
+  }
+
+  override fun onDestroy() {
+    super.onDestroy()
+    audioRecorder?.stopRecording()
+    whisperHelper.shutdown()
   }
 }
 
@@ -138,12 +166,23 @@ fun MainScreen(
   whisperHelper: WhisperHelper,
   audioFilePath: String,
   onStartRecording: () -> Unit,
-  onStopRecording: () -> String?,
+  onStopRecording: () -> Unit,
   context: android.content.Context
 ) {
   var isRecording by remember { mutableStateOf(false) }
   var transcription by remember { mutableStateOf("") }
-  var isTranscribing by remember { mutableStateOf(false) }
+  var isProcessing by remember { mutableStateOf(false) }
+
+  // Update the transcription state when whisperHelper provides new results
+  whisperHelper.onTranscriptionUpdate = {
+    Log.d("#transcribe", "UI update with transcription: $it")
+    transcription = it
+  }
+
+  // Update processing state
+  whisperHelper.onProcessingStateChange = {
+    isProcessing = it
+  }
 
   Column(
     modifier = Modifier
@@ -163,23 +202,7 @@ fun MainScreen(
       onClick = {
         if (isRecording) {
           isRecording = false
-          val recordedPath = onStopRecording()
-          if (recordedPath != null) {
-            isTranscribing = true
-            // Transcribe in background
-            Thread {
-              try {
-                val result = whisperHelper.transcribe(recordedPath)
-                transcription = result
-                Log.d("#transcribe", "Transcription: $result")
-              } catch (e: Exception) {
-                transcription = "Error: ${e.message}"
-                Log.e("#transcribe", "Transcription error", e)
-              } finally {
-                isTranscribing = false
-              }
-            }.start()
-          }
+          onStopRecording()
         } else {
           isRecording = true
           transcription = ""
@@ -210,41 +233,41 @@ fun MainScreen(
       }
     }
 
-    // Status text
-    Text(
-      text = when {
-        isRecording -> "Recording..."
-        isTranscribing -> "Transcribing..."
-        transcription.isNotEmpty() -> "Transcription complete"
-        else -> "Tap microphone to start"
-      },
-      style = MaterialTheme.typography.bodyMedium,
-      color = if (isRecording) Color.Red else MaterialTheme.colorScheme.onBackground,
-      modifier = Modifier.padding(vertical = 16.dp)
-    )
+    // Status text - show transcription with optional processing indicator below
+    Column(
+      modifier = Modifier.padding(vertical = 16.dp),
+      horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+      // Show transcription text if available
+      if (transcription.isNotEmpty()) {
+        Text(
+          text = transcription,
+          style = MaterialTheme.typography.bodyMedium,
+          color = MaterialTheme.colorScheme.onBackground
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+      }
 
-    // Transcription result
-    if (transcription.isNotEmpty()) {
+      // Show status indicator
       Text(
-        text = "Result:",
-        style = MaterialTheme.typography.titleMedium,
-        modifier = Modifier
-          .fillMaxWidth()
-          .padding(bottom = 8.dp)
-      )
-      Text(
-        text = transcription,
-        style = MaterialTheme.typography.bodyLarge,
-        modifier = Modifier.fillMaxWidth()
+        text = when {
+          isProcessing -> "🔄 Processing..."
+          isRecording && transcription.isEmpty() -> "🎤 Recording..."
+          transcription.isEmpty() -> "Tap microphone to start"
+          else -> "" // Hide status when we have transcription and not processing
+        },
+        style = MaterialTheme.typography.bodySmall,
+        color = when {
+          isProcessing -> Color(0xFFFF9800) // Orange
+          isRecording -> Color.Red
+          else -> MaterialTheme.colorScheme.onBackground
+        }
       )
     }
-
-    Spacer(modifier = Modifier.height(24.dp))
 
     // Test with existing audio file
     Button(
       onClick = {
-        isTranscribing = true
         Thread {
           try {
             val result = whisperHelper.transcribe(audioFilePath)
@@ -253,8 +276,6 @@ fun MainScreen(
           } catch (e: Exception) {
             transcription = "Error: ${e.message}"
             Log.e("#transcribe", "Test transcription error", e)
-          } finally {
-            isTranscribing = false
           }
         }.start()
       },

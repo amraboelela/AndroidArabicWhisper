@@ -134,3 +134,61 @@ Java_org_amr_arabicwhisper_WhisperHelper_transcribe(JNIEnv* env, jobject thiz, j
     return createJavaStringFromUTF8(env, error_msg);
   }
 }
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_org_amr_arabicwhisper_WhisperHelper_transcribeStreamNative(JNIEnv* env, jobject thiz, jbyteArray audio_data) {
+    if (!whisper_model) {
+        return createJavaStringFromUTF8(env, "Model not initialized");
+    }
+
+    jbyte* audio_bytes = env->GetByteArrayElements(audio_data, nullptr);
+    jsize audio_size = env->GetArrayLength(audio_data);
+
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Native: Processing %d bytes", audio_size);
+
+    // Convert byte array to float vector
+    std::vector<float> audio_floats;
+    audio_floats.resize(audio_size / 2);
+    for (int i = 0; i < audio_size / 2; i++) {
+        audio_floats[i] = (float)((short*)audio_bytes)[i] / 32768.0f;
+    }
+
+    env->ReleaseByteArrayElements(audio_data, audio_bytes, JNI_ABORT);
+
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Native: Transcribing %.2f seconds of audio",
+                       audio_floats.size() / 16000.0f);
+
+    std::string result = "";
+    try {
+        // Transcribe the audio
+        auto [segments, info] = whisper_model->transcribe(audio_floats, "ar", true);
+
+        __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Native: Received %zu segments", segments.size());
+
+        // Build result string from segments
+        for (const auto& segment : segments) {
+            result += segment.text;
+            if (!segment.text.empty() && segment.text.back() != ' ') {
+                result += " ";
+            }
+        }
+
+        // Remove trailing space
+        if (!result.empty() && result.back() == ' ') {
+            result.pop_back();
+        }
+
+        __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Native: Transcription complete: %s", result.c_str());
+
+    } catch (const std::exception& e) {
+        __android_log_print(ANDROID_LOG_ERROR, "#transcribe", "Native: Transcription error: %s", e.what());
+        return createJavaStringFromUTF8(env, "");
+    }
+
+    return createJavaStringFromUTF8(env, result);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_org_amr_arabicwhisper_WhisperHelper_clearTranscriptionNative(JNIEnv* env, jobject thiz) {
+    __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Native: Cleared");
+}
