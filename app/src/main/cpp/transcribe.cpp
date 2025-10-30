@@ -113,17 +113,23 @@ WhisperModel::WhisperModel(
   // On systems without it, CTranslate2 rejects INT8 and we must use FLOAT32
   // Python bindings may handle this differently, allowing INT8 even when "inefficient"
   // For now, use FLOAT32 which works on all systems (but ~2x slower than INT8)
+  // Let's try INT8 first, and fallback to FLOAT32 if it fails.
   std::vector<ctranslate2::ComputeType> compute_types = {
-    ctranslate2::ComputeType::FLOAT32  // Works on all systems
+    ctranslate2::ComputeType::INT8,
+    ctranslate2::ComputeType::FLOAT32
   };
 
   std::shared_ptr<ctranslate2::models::Whisper> created_model = nullptr;
   std::string last_error;
+  std::string successful_compute_type = "NONE";
 
   for (auto compute_type : compute_types) {
     try {
-      std::cout << "Initializing Whisper model with compute type: "
-                << (int)compute_type << " (FLOAT32)" << std::endl;
+      std::string compute_type_str = "UNKNOWN";
+      if (compute_type == ctranslate2::ComputeType::FLOAT32) compute_type_str = "FLOAT32";
+      else if (compute_type == ctranslate2::ComputeType::INT8) compute_type_str = "INT8";
+
+      __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Attempting to initialize Whisper model with compute type: %s", compute_type_str.c_str());
 
       created_model = std::make_shared<ctranslate2::models::Whisper>(
         model_path,
@@ -134,13 +140,13 @@ WhisperModel::WhisperModel(
         config
       );
 
-      std::cout << "Successfully initialized Whisper model" << std::endl;
+      successful_compute_type = compute_type_str;
+      __android_log_print(ANDROID_LOG_INFO, "#transcribe", "✅ Successfully initialized Whisper model with compute type: %s", compute_type_str.c_str());
       break;
 
     } catch (const std::exception& e) {
       last_error = e.what();
-      std::cerr << "Failed to initialize with compute type " << (int)compute_type
-                << ": " << e.what() << std::endl;
+      __android_log_print(ANDROID_LOG_WARN, "#transcribe", "❌ Failed to initialize with compute type, trying next: %s", e.what());
     }
   }
 
@@ -451,8 +457,8 @@ std::tuple<std::vector<Segment>, TranscriptionInfo> WhisperModel::transcribe(
 
   // Step 6: Set up transcription options (Python line 956-989)
   TranscriptionOptions options;
-  options.beam_size = 5;
-  options.best_of = 5;
+  options.beam_size = 1;  // Reduced from 5 for faster real-time inference (greedy decoding)
+  options.best_of = 1;    // Reduced from 5 for speed
   options.patience = 1.0f;
   options.length_penalty = 1.0f;
   options.repetition_penalty = 1.0f;  // Match Python default (was 1.1f)

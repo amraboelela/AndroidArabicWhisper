@@ -53,7 +53,7 @@ class WhisperHelper(context: Context, modelDirName: String = "whisper_ct2") {
 
         // Calculate RMS (Root Mean Square) energy
         val rms = kotlin.math.sqrt(audioFloats.map { it * it }.average()).toFloat()
-        val silenceThreshold = 0.015f // Threshold adjusted to filter out background noise
+        val silenceThreshold = 0.025f // Increased threshold to filter background noise better
 
         if (rms < silenceThreshold) {
           Log.d("#transcribe", "🔇 Silence detected (RMS: %.4f), skipping transcription".format(rms))
