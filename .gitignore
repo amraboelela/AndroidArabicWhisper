@@ -88,3 +88,5 @@ env/
 
 # OS
 Thumbs.db
+*.pt
+*.onnx
