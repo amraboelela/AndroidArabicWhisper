@@ -38,7 +38,7 @@ def main():
   # Paths
   audio_path = "/Users/amraboelela/develop/android/AndroidArabicWhisper/app/src/main/assets/001.wav"
   vocab_path = "vocabulary.json"
-  model_path = "alfatiha_model_variable.pt"
+  model_path = "quran_model_001.pt"
 
   # Load vocabulary
   with open(vocab_path, "r", encoding="utf-8") as f:
@@ -77,7 +77,7 @@ def main():
     audio_batch = audio_chunk.unsqueeze(0).to(device)
 
     with torch.no_grad():
-      generated = model.generate(audio_batch, max_new_tokens=3, temperature=0.1)
+      generated = model.generate(audio_batch, max_new_tokens=30, temperature=1.0)
       generated_ids = [idx for idx in generated[0].tolist() if idx not in [0, 1, 2]]
       generated_words = [vocab[idx] for idx in generated_ids]
 

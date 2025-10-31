@@ -90,3 +90,4 @@ env/
 Thumbs.db
 *.pt
 *.onnx
+*.wav

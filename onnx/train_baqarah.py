@@ -216,16 +216,15 @@ def train_on_chunks(model, chunks, vocab, num_epochs=50, initial_lr=1e-3, min_lr
     scheduler.step()
 
     # Save best model if this is the lowest loss so far
+    is_best = False
     if avg_loss < best_loss:
       best_loss = avg_loss
       best_model_path = "quran_model.pt"
       torch.save(model.state_dict(), best_model_path)
       is_best = True
-    else:
-      is_best = False
 
-    # Print progress every 5 epochs
-    if (epoch + 1) % 5 == 0 or epoch == 0:
+    # Print progress every 5 epochs OR when there's a new best
+    if (epoch + 1) % 5 == 0 or epoch == 0 or is_best:
       elapsed = time.time() - start_time
       best_marker = " ⭐ NEW BEST!" if is_best else ""
       print(f"Epoch {epoch+1:3d}/{num_epochs}: Avg Loss = {avg_loss:.4f} | LR = {current_lr:.6f} | Time: {elapsed:.1f}s{best_marker}")
