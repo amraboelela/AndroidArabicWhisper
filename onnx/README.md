@@ -6,9 +6,9 @@ This directory contains a decoder-only transformer model optimized for Quranic A
 
 ### Architecture
 - **Type**: Decoder-only Transformer
-- **Dimension (d_model)**: 1600
+- **Dimension (d_model)**: 800
 - **Attention Layers**: 1 layer with 1 head
-- **FFN Layers**: 1 layer (expands to 6400, then projects back to 1600)
+- **FFN Layers**: 1 layer (expands to 3200, then projects back to 800)
 - **Max Sequence Length**: 512 tokens
 - **Total Parameters**: 190,213,564 (~190M parameters)
 
@@ -38,18 +38,18 @@ This directory contains a decoder-only transformer model optimized for Quranic A
 ## Model Details
 
 ### Layer Breakdown
-1. **Token Embedding Layer**: Maps token IDs to 1600-dimensional vectors (50,364 × 1600 = 80,582,400 parameters)
-2. **Positional Encoding**: Learnable position embeddings (512 × 1600 = 819,200 parameters)
+1. **Token Embedding Layer**: Maps token IDs to 800-dimensional vectors (50,364 × 800 = 40,291,200 parameters)
+2. **Positional Encoding**: Learnable position embeddings (512 × 800 = 409,600 parameters)
 3. **Self-Attention Layer**:
-   - Query, Key, Value projections: 3 × (1600 × 1600) = 7,680,000 parameters
+   - Query, Key, Value projections: 3 × (800 × 800) = 1,920,000 parameters
    - Single attention head (no multi-head split)
    - Causal masking for autoregressive generation
 4. **Feed-Forward Network**:
-   - Hidden layer: 1600 → 6400 (10,240,000 parameters)
-   - Output layer: 6400 → 1600 (10,240,000 parameters)
+   - Hidden layer: 800 → 3200 (2,560,000 parameters)
+   - Output layer: 3200 → 800 (2,560,000 parameters)
    - GELU activation
 5. **Layer Normalization**: 2 layers (after attention and FFN)
-6. **Output Projection**: 1600 → 50,364 vocabulary (80,582,400 parameters)
+6. **Output Projection**: 800 → 50,364 vocabulary (40,291,200 parameters)
 
 ### Special Tokens
 - `<|endoftext|>` (ID: 50257) - Used for PAD, BOS, and EOS
@@ -85,7 +85,7 @@ import torch
 from create_transformer_model import SimpleTransformerDecoder
 
 # Create model instance
-model = SimpleTransformerDecoder(vocab_size=50364, d_model=1600, max_seq_length=512)
+model = SimpleTransformerDecoder(vocab_size=50364, d_model=800, max_seq_length=512)
 
 # Load weights
 model.load_state_dict(torch.load("onnx_claude/transformer_decoder.pt"))
@@ -153,7 +153,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
-model = SimpleTransformerDecoder(vocab_size=50364, d_model=1600)
+model = SimpleTransformerDecoder(vocab_size=50364, d_model=800)
 optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=0.01)
 criterion = nn.CrossEntropyLoss()
 

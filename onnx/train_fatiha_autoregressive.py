@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Train model on Al-Fatiha segments
+Train model on Al-Fatiha (001) segments with autoregressive generation
 """
 import json
 import torch
@@ -57,8 +57,9 @@ def tokenize_text(text, vocab):
     return [word_to_idx.get(word, 0) for word in words]
 
 
-def train_on_segments(model, segment_files, transcriptions, vocab, num_epochs=50, initial_lr=1e-3, min_lr=1e-5):
-    """Train model on segments"""
+def train_on_segments_autoregressive(model, segment_files, transcriptions, vocab,
+                                     num_epochs=10, initial_lr=1e-3, min_lr=1e-5):
+    """Train model on segments with autoregressive generation"""
     model = model.to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=initial_lr, weight_decay=0.01)
 
@@ -75,6 +76,7 @@ def train_on_segments(model, segment_files, transcriptions, vocab, num_epochs=50
     print(f"Minimum learning rate: {min_lr}")
     print(f"Epochs: {num_epochs}")
     print(f"Optimizer: AdamW with Cosine Annealing")
+    print(f"Training mode: Autoregressive with 100% teacher forcing")
 
     model.train()
 
@@ -90,39 +92,68 @@ def train_on_segments(model, segment_files, transcriptions, vocab, num_epochs=50
     for epoch in range(num_epochs):
         total_loss = 0
 
+        # Use 100% teacher forcing - we always want exact Quran text, not random generation
+        teacher_forcing_ratio = 1.0
+
         # Get current learning rate
         current_lr = optimizer.param_groups[0]['lr']
 
         # Train on each segment
         for segment_file, transcription in zip(segment_files, transcriptions):
-            optimizer.zero_grad()
-
             # Extract audio features
             audio_features, sample_rate = extract_mel_features(segment_file)
             audio_batch = audio_features.unsqueeze(0).to(device)
 
             # Tokenize text
             text_tokens = tokenize_text(transcription, vocab)
+            if len(text_tokens) == 0:
+                continue
 
-            input_tokens = [1] + text_tokens  # Add <s>
-            target_tokens = text_tokens + [2]  # Add </s>
+            # Prepare input: <s> + tokens
+            # Prepare target: tokens + </s>
+            input_tokens = [1] + text_tokens  # <s> + text
+            target_tokens = text_tokens + [2]  # text + </s>
 
-            input_ids = torch.tensor([input_tokens], dtype=torch.long, device=device)
-            labels = torch.tensor([target_tokens], dtype=torch.long, device=device)
+            # Autoregressive training: predict each token one by one
+            segment_loss = 0
 
-            # Forward pass
-            logits, loss = model(
-                audio_features=audio_batch,
-                text_ids=input_ids,
-                labels=labels
-            )
+            for i in range(len(target_tokens)):
+                # Always use ground truth tokens (100% teacher forcing)
+                current_input = input_tokens[:i+1]
 
-            # Backward pass
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-            optimizer.step()
+                # Prepare input tensor
+                input_ids = torch.tensor([current_input], dtype=torch.long, device=device)
 
-            total_loss += loss.item()
+                # Zero gradients for this token
+                optimizer.zero_grad()
+
+                # Forward pass
+                logits = model(
+                    audio_features=audio_batch,
+                    text_ids=input_ids,
+                    labels=None
+                )
+
+                # Get prediction for current position (last token)
+                current_logits = logits[0, -1, :]
+
+                # Compute loss for this token
+                target_token = target_tokens[i]
+                loss = nn.CrossEntropyLoss()(
+                    current_logits.unsqueeze(0),
+                    torch.tensor([target_token], device=device)
+                )
+
+                # Backward pass for this token
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+                optimizer.step()
+
+                segment_loss += loss.item()
+
+            # Average loss over sequence length
+            avg_segment_loss = segment_loss / len(target_tokens)
+            total_loss += avg_segment_loss
 
         avg_loss = total_loss / len(segment_files)
 
@@ -136,13 +167,12 @@ def train_on_segments(model, segment_files, transcriptions, vocab, num_epochs=50
             torch.save(model.state_dict(), "quran_model.pt")
             is_best = True
 
-        # Print progress every 5 epochs OR when there's a new best
-        if (epoch + 1) % 5 == 0 or epoch == 0 or is_best:
-            elapsed = time.time() - start_time
-            best_marker = " ⭐ NEW BEST!" if is_best else ""
-            print(f"Epoch {epoch+1:3d}/{num_epochs}: Avg Loss = {avg_loss:.4f} | LR = {current_lr:.6f} | Time: {elapsed:.1f}s{best_marker}")
-            if is_best:
-                print(f"  ✓ Best model saved (loss: {best_loss:.4f})")
+        # Print progress every epoch
+        elapsed = time.time() - start_time
+        best_marker = " ⭐ NEW BEST!" if is_best else ""
+        print(f"Epoch {epoch+1:3d}/{num_epochs}: Loss={avg_loss:.4f} | LR={current_lr:.6f} | TF={teacher_forcing_ratio:.2f} | Time={elapsed:.1f}s{best_marker}")
+        if is_best:
+            print(f"  ✓ Best model saved (loss: {best_loss:.4f})")
 
     total_time = time.time() - start_time
     print(f"\n{'='*60}")
@@ -180,15 +210,10 @@ def main():
     print(f"Found {len(segment_files)} audio segments")
 
     if len(segment_files) != len(transcriptions):
-        print(f"⚠️  Warning: Mismatch between segments ({len(segment_files)}) and transcriptions ({len(transcriptions)})")
+        print(f"⚠️  Warning: Mismatch between segments ({len(segment_files)}) and transcriptions ({len(transcriptions)})  ")
 
-    # Display segment-text pairs
-    print(f"\nSegment-Text pairs:")
-    for seg, text in zip(segment_files, transcriptions):
-        print(f"  {os.path.basename(seg)}: {text}")
-
-    # Create model
-    print("\nCreating model...")
+    # Create model from scratch
+    print("\nCreating fresh model...")
     model = ImprovedDecoderTransformer(
         vocab_size=len(vocab),
         d_model=800,
@@ -198,20 +223,13 @@ def main():
         dropout=0.1
     )
 
-    # Load existing weights if available
-    if os.path.exists(model_path):
-        print(f"✓ Loading existing model weights from: {model_path}")
-        model.load_state_dict(torch.load(model_path))
-    else:
-        print(f"✗ Starting with fresh model weights")
-
     total_params = sum(p.numel() for p in model.parameters())
     model_size_mb = total_params * 4 / (1024**2)
     print(f"Model parameters: {total_params:,}")
     print(f"Model size (FP32): ~{model_size_mb:.1f} MB")
 
-    # Train model
-    model = train_on_segments(
+    # Train model with autoregressive approach
+    model = train_on_segments_autoregressive(
         model,
         segment_files,
         transcriptions,

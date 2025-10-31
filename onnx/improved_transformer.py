@@ -11,11 +11,11 @@ class ImprovedDecoderTransformer(nn.Module):
     - Multiple layers (4 layers instead of 1)
     - Multiple attention heads (4 heads instead of 1)
     - Better regularization with dropout
-    - Dimension: 1600
+    - Dimension: 800 (default)
     """
 
-    def __init__(self, vocab_size, d_model=1600, n_layers=4, n_heads=4,
-                 d_ff=6400, dropout=0.1, max_seq_len=512):
+    def __init__(self, vocab_size, d_model=800, n_layers=4, n_heads=4,
+                 d_ff=3200, dropout=0.1, max_seq_len=512):
         super(ImprovedDecoderTransformer, self).__init__()
 
         self.d_model = d_model
@@ -72,7 +72,8 @@ class ImprovedDecoderTransformer(nn.Module):
         # Process audio
         if audio_features is not None:
             audio_len = audio_features.shape[1]
-            audio_embeds = self.audio_projection(audio_features)
+            # Scale audio embeddings to prevent dominating attention
+            audio_embeds = self.audio_projection(audio_features) / math.sqrt(self.d_model)
 
             # Add positional + modality embeddings
             audio_positions = torch.arange(0, audio_len, dtype=torch.long, device=audio_features.device)
@@ -134,18 +135,30 @@ class ImprovedDecoderTransformer(nn.Module):
 
         return logits if loss is None else (logits, loss)
 
-    def generate(self, audio_features, max_new_tokens=50, temperature=1.0):
-        """Generate text from audio"""
+    def generate(self, audio_features, max_new_tokens=50, temperature=1.0, min_tokens=1):
+        """Generate text from audio using greedy decoding
+
+        Args:
+            audio_features: audio input
+            max_new_tokens: maximum tokens to generate
+            temperature: sampling temperature
+            min_tokens: minimum tokens before allowing </s> (default 1)
+        """
         self.eval()
         batch_size = audio_features.shape[0]
         text_ids = torch.ones((batch_size, 1), dtype=torch.long, device=audio_features.device)
 
         with torch.no_grad():
-            for _ in range(max_new_tokens):
+            for step in range(max_new_tokens):
                 logits = self.forward(audio_features=audio_features, text_ids=text_ids)
                 logits = logits[:, -1, :] / temperature
-                probs = F.softmax(logits, dim=-1)
-                next_token = torch.multinomial(probs, num_samples=1)
+
+                # Mask out </s> token for first few tokens
+                if step < min_tokens:
+                    logits[:, 2] = float('-inf')  # Prevent </s> from being selected
+
+                # Use greedy decoding (argmax) instead of sampling
+                next_token = torch.argmax(logits, dim=-1, keepdim=True)
                 text_ids = torch.cat([text_ids, next_token], dim=1)
 
                 if (next_token == 2).all():

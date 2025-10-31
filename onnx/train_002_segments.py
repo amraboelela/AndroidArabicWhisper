@@ -159,7 +159,7 @@ def main():
 
     # Paths
     segments_dir = "segments"
-    text_path = "segments/001.txt"
+    text_path = "segments/002-01.txt"
     vocab_path = "vocabulary.json"
     model_path = "quran_model.pt"
 
@@ -176,7 +176,7 @@ def main():
     print(f"Loaded {len(transcriptions)} transcriptions")
 
     # Get segment files
-    segment_files = sorted(glob.glob(os.path.join(segments_dir, "001-*.wav")))
+    segment_files = sorted(glob.glob(os.path.join(segments_dir, "002-01-*.wav")))
     print(f"Found {len(segment_files)} audio segments")
 
     if len(segment_files) != len(transcriptions):
@@ -216,7 +216,7 @@ def main():
         segment_files,
         transcriptions,
         vocab,
-        num_epochs=10,
+        num_epochs=50,
         initial_lr=1e-3,
         min_lr=1e-5
     )

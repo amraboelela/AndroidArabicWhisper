@@ -7,13 +7,13 @@ import torchaudio
 import numpy as np
 from quran_transformer import DecoderOnlyTransformer
 
-def extract_mel_features(audio_path, n_mels=1600, target_fps=10):
+def extract_mel_features(audio_path, n_mels=800, target_fps=10):
     """
     Extract mel spectrogram features from audio
 
     Args:
         audio_path: path to audio file
-        n_mels: number of mel bins (should be 1600)
+        n_mels: number of mel bins (should be 800)
         target_fps: target frames per second (10 fps)
 
     Returns:
@@ -86,20 +86,22 @@ def tokenize_text(text, vocab):
     return token_ids
 
 
-def prepare_alfatiha_data(audio_path, vocab):
+def prepare_alfatiha_data(audio_path, text_path, vocab):
     """
     Prepare Al-Fatiha audio and text data
 
     Args:
         audio_path: path to 001.wav
+        text_path: path to 001.txt
         vocab: vocabulary list
 
     Returns:
-        audio_features: (num_frames, 1600) tensor
+        audio_features: (num_frames, 800) tensor
         text_tokens: list of token IDs
     """
-    # Al-Fatiha text (normalized)
-    alfatiha_text = """اعوذ بالله من الشيطان الرجيم بسم الله الرحمن الرحيم الحمد لله رب العالمين الرحمن الرحيم مالك يوم الدين اياك نعبد واياك نستعين اهدنا الصراط المستقيم"""
+    # Read Al-Fatiha text from file
+    with open(text_path, "r", encoding="utf-8") as f:
+        alfatiha_text = f.read().strip().replace('\n', ' ')
 
     print(f"\nAl-Fatiha text:")
     print(f"  {alfatiha_text}")
@@ -124,7 +126,7 @@ def train_on_alfatiha(model, audio_features, text_tokens, vocab, num_epochs=100,
 
     Args:
         model: DecoderOnlyTransformer
-        audio_features: (num_frames, 1600) tensor
+        audio_features: (num_frames, 800) tensor
         text_tokens: list of token IDs
         vocab: vocabulary list
         num_epochs: number of training epochs
@@ -133,7 +135,7 @@ def train_on_alfatiha(model, audio_features, text_tokens, vocab, num_epochs=100,
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=0.01)
 
     # Prepare data
-    audio_features = audio_features.unsqueeze(0)  # (1, num_frames, 1600)
+    audio_features = audio_features.unsqueeze(0)  # (1, num_frames, 800)
 
     # Add <s> at beginning of text
     input_tokens = [1] + text_tokens  # <s> + text
@@ -244,6 +246,7 @@ def main():
 
     # Paths
     audio_path = "/Users/amraboelela/develop/android/AndroidArabicWhisper/app/src/main/assets/001.wav"
+    text_path = "segments/001.txt"
     vocab_path = "vocabulary.json"
 
     # Load vocabulary
@@ -255,7 +258,7 @@ def main():
 
     # Create model
     print("\nCreating model...")
-    model = DecoderOnlyTransformer(vocab_size=len(vocab), d_model=1600)
+    model = DecoderOnlyTransformer(vocab_size=len(vocab), d_model=800)
 
     total_params = sum(p.numel() for p in model.parameters())
     print(f"Model parameters: {total_params:,}")
@@ -264,7 +267,7 @@ def main():
     print(f"\n{'='*60}")
     print(f"Preparing Al-Fatiha Data:")
     print(f"{'='*60}")
-    audio_features, text_tokens = prepare_alfatiha_data(audio_path, vocab)
+    audio_features, text_tokens = prepare_alfatiha_data(audio_path, text_path, vocab)
 
     # Train model
     model = train_on_alfatiha(

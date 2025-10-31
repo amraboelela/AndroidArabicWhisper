@@ -8,18 +8,18 @@ import math
 class DecoderOnlyTransformer(nn.Module):
     """
     Audio-to-text decoder-only transformer for Quran transcription
-    - Dimension: 1600
+    - Dimension: 800
     - 1 attention layer
     - 1 head
     - 1 FFN output projection layer
 
     Input format: Audio: a1, a2, ..., an Text: t1, t2, ..., tm
-    - Audio embeddings (a1, a2, ...): mel spectrum features, 1600 dim, 10 per second
+    - Audio embeddings (a1, a2, ...): mel spectrum features, 800 dim, 10 per second
     - Text tokens (t1, t2, ...): vocabulary indices to predict
     - Audio length: 1-5 seconds (10-50 audio frames)
     """
 
-    def __init__(self, vocab_size, d_model=1600, max_seq_len=512, max_audio_len=100):
+    def __init__(self, vocab_size, d_model=800, max_seq_len=512, max_audio_len=100):
         super(DecoderOnlyTransformer, self).__init__()
 
         self.d_model = d_model
@@ -27,7 +27,7 @@ class DecoderOnlyTransformer(nn.Module):
         self.max_audio_len = max_audio_len
 
         # Audio embedding projection (in case audio features need transformation)
-        # If audio is already 1600-dim mel spectrum, this is identity-like
+        # If audio is already 800-dim mel spectrum, this is identity-like
         self.audio_projection = nn.Linear(d_model, d_model)
 
         # Token embedding for text
@@ -274,12 +274,12 @@ def create_model_from_vocabulary(vocab_file="vocabulary.json"):
 
     print(f"Creating decoder-only transformer:")
     print(f"  Vocabulary size: {vocab_size}")
-    print(f"  Model dimension: 1600")
+    print(f"  Model dimension: 800")
     print(f"  Attention heads: 1")
     print(f"  Layers: 1 attention + 1 FFN")
 
     # Create model
-    model = DecoderOnlyTransformer(vocab_size=vocab_size, d_model=1600)
+    model = DecoderOnlyTransformer(vocab_size=vocab_size, d_model=800)
 
     # Count parameters
     total_params = sum(p.numel() for p in model.parameters())
@@ -308,8 +308,8 @@ def main():
     audio_len = 30  # 3 seconds at 10 fps
     text_len = 10
 
-    # Create dummy audio features (mel spectrum, already 1600-dim)
-    audio_features = torch.randn(batch_size, audio_len, 1600)
+    # Create dummy audio features (mel spectrum, already 800-dim)
+    audio_features = torch.randn(batch_size, audio_len, 800)
 
     # Create dummy text tokens
     text_ids = torch.randint(3, len(vocab), (batch_size, text_len))  # Start from 3 (after special tokens)
@@ -335,9 +335,9 @@ def main():
     print("="*60)
 
     # Single audio sample (2 seconds)
-    audio_features_single = torch.randn(1, 20, 1600)  # 2 seconds at 10 fps
+    audio_features_single = torch.randn(1, 20, 800)  # 2 seconds at 10 fps
 
-    print(f"\nInput audio: {audio_features_single.shape} (1, 20, 1600)")
+    print(f"\nInput audio: {audio_features_single.shape} (1, 20, 800)")
     print(f"  Duration: 2 seconds (20 frames at 10 fps)")
 
     # Generate text
@@ -351,14 +351,14 @@ def main():
     print("Prompt Format Example:")
     print("="*60)
     print("\nTraining format:")
-    print("  Audio: a1, a2, a3, ..., an  (mel spectrum, 1600-dim each, 10 per second)")
+    print("  Audio: a1, a2, a3, ..., an  (mel spectrum, 800-dim each, 10 per second)")
     print("  Text: t1, t2, t3, ..., tm   (vocabulary tokens)")
     print("\nFor 3-second audio clip:")
     print("  Audio frames: 30 (a1...a30)")
     print("  Text tokens: variable length (e.g., 5-15 words)")
     print("\nExample batch:")
     print("  Batch size: 2")
-    print("  Audio: (2, 30, 1600)")
+    print("  Audio: (2, 30, 800)")
     print("  Text: (2, 10) -> vocabulary indices")
 
     # Save model architecture
