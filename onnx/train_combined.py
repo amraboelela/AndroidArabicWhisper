@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-Train encoder-decoder model on Al-Fatiha segments (Whisper Tiny-compatible)
+Train encoder-decoder model combining both approaches:
+- Full segments (complete audio + complete transcription)
+- First second (1 second audio + first word only)
 """
 import json
 import torch
@@ -10,6 +12,7 @@ import glob
 import os
 import random
 import time
+import shutil
 from encoder_decoder_transformer import EncoderDecoderTransformer
 
 # ==============================================================
@@ -70,9 +73,9 @@ def tokenize_text(text, vocab):
     return [word_to_idx.get(word, 0) for word in words]  # 0 = unknown
 
 # ==============================================================
-# Training
+# Combined Training
 # ==============================================================
-def train_on_segments(model, segment_files, transcriptions, vocab, num_epochs=300, initial_lr=1e-3, min_lr=1e-6):
+def train_combined(model, segment_files, transcriptions, vocab, num_epochs=100, initial_lr=1e-3, min_lr=1e-6):
     model = model.to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=initial_lr, weight_decay=0.01)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epochs, eta_min=min_lr)
@@ -90,15 +93,26 @@ def train_on_segments(model, segment_files, transcriptions, vocab, num_epochs=30
 
         for i in indices:
             seg_file = segment_files[i]
-            text = transcriptions[i]
+            full_text = transcriptions[i]
 
-            # Extract mel features for full segment
-            audio_features, _ = extract_mel_features(seg_file)
+            # Randomly choose between full segment or first-second training
+            use_first_second = random.random() < 0.5
+
+            if use_first_second:
+                # First-second training (1 second audio + first word)
+                first_word = full_text.split()[0] if full_text.split() else full_text
+                audio_features, _ = extract_mel_features(seg_file, max_duration_seconds=1.0)
+                text_to_use = first_word
+            else:
+                # Full segment training
+                audio_features, _ = extract_mel_features(seg_file)
+                text_to_use = full_text
+
             # audio_features is (time, n_mels), need (n_mels, time) for Whisper
             audio_batch = audio_features.transpose(0, 1).unsqueeze(0).to(device)
 
-            # Tokenize full text
-            text_tokens = tokenize_text(text, vocab)
+            # Tokenize text
+            text_tokens = tokenize_text(text_to_use, vocab)
             full_sequence = [1] + text_tokens + [2]  # <s> + tokens + </s>
             input_ids = torch.tensor([full_sequence[:-1]], dtype=torch.long, device=device)
             labels = torch.tensor([full_sequence[1:]], dtype=torch.long, device=device)
@@ -138,22 +152,38 @@ def train_on_segments(model, segment_files, transcriptions, vocab, num_epochs=30
         # Sample generation every 50 epochs
         if (epoch + 1) % 50 == 0:
             model.eval()
-            test_audio, sample_rate = extract_mel_features(segment_files[0])
-            # Calculate audio duration
+
+            # Test on full segment
+            test_audio_full, sample_rate = extract_mel_features(segment_files[0])
             waveform, sr = torchaudio.load(segment_files[0])
             audio_duration = waveform.shape[1] / sr
-            # test_audio is (time, n_mels), need (batch, n_mels, time) for encoder
-            test_audio = test_audio.transpose(0, 1).unsqueeze(0).to(device)
+            test_audio_full = test_audio_full.transpose(0, 1).unsqueeze(0).to(device)
             with torch.no_grad():
-                generated = model.generate(test_audio, max_new_tokens=50, audio_duration_seconds=audio_duration)
+                generated = model.generate(test_audio_full, max_new_tokens=50, audio_duration_seconds=audio_duration)
                 generated_ids = generated[0].tolist()
                 if generated_ids and generated_ids[0] == 1:
                     generated_ids = generated_ids[1:]
                 if 2 in generated_ids:
                     generated_ids = generated_ids[:generated_ids.index(2)]
                 generated_words = [vocab[idx] for idx in generated_ids if idx < len(vocab)]
-                print(f"  🔹 Sample: {' '.join(generated_words)}")
+                print(f"  🔹 Full segment: {' '.join(generated_words)}")
                 print(f"  🔸 Expected: {transcriptions[0]}")
+
+            # Test on first second
+            test_audio_first, _ = extract_mel_features(segment_files[0], max_duration_seconds=1.0)
+            test_audio_first = test_audio_first.transpose(0, 1).unsqueeze(0).to(device)
+            with torch.no_grad():
+                generated = model.generate(test_audio_first, max_new_tokens=10, audio_duration_seconds=1.0)
+                generated_ids = generated[0].tolist()
+                if generated_ids and generated_ids[0] == 1:
+                    generated_ids = generated_ids[1:]
+                if 2 in generated_ids:
+                    generated_ids = generated_ids[:generated_ids.index(2)]
+                generated_words = [vocab[idx] for idx in generated_ids if idx < len(vocab)]
+                first_word_expected = transcriptions[0].split()[0] if transcriptions[0].split() else transcriptions[0]
+                print(f"  🔹 First second: {' '.join(generated_words)}")
+                print(f"  🔸 Expected: {first_word_expected}")
+
             model.train()
 
     total_time = time.time() - start_time
@@ -195,6 +225,7 @@ def main():
     transcriptions = fatiha_transcriptions + baqara_transcriptions
     segment_files = fatiha_segments + baqara_segments
     print(f"Total combined: {len(transcriptions)} transcriptions, {len(segment_files)} segments")
+    print(f"Training with combined approach: 50% full segments, 50% first-second")
 
     # Create smaller 128-dimension encoder-decoder
     model = EncoderDecoderTransformer(
@@ -207,25 +238,21 @@ def main():
         dropout=0.1
     )
 
-    # Start with fresh weights for combined training
-    print("Starting fresh weights for combined Al-Fatiha + Al-Baqara training")
+    # Load existing model if available
+    if os.path.exists(model_path):
+        # Create backup before training
+        backup_path = model_path.replace(".pt", "_backup.pt")
+        shutil.copy2(model_path, backup_path)
+        print(f"✓ Backup created: {backup_path}")
 
-    # Freeze encoder parameters (only train decoder)
-    # print("\n🔒 Freezing encoder parameters...")
-    # frozen_params = 0
-    # for name, param in model.named_parameters():
-    #     if any(enc_name in name for enc_name in ['conv1', 'conv2', 'positional_embedding', 'blocks', 'ln_post']):
-    #         param.requires_grad = False
-    #         frozen_params += param.numel()
+        print(f"Loading existing model from {model_path}...")
+        model.load_state_dict(torch.load(model_path, map_location=device))
+        print("✓ Model loaded successfully! Continuing training with combined approach.")
+    else:
+        print("No existing model found. Starting with fresh weights for combined training")
 
-    # total_params = sum(p.numel() for p in model.parameters())
-    # trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    # print(f"  Total parameters: {total_params:,}")
-    # print(f"  Frozen parameters: {frozen_params:,}")
-    # print(f"  Trainable parameters: {trainable_params:,} ({trainable_params/total_params*100:.1f}%)")
-
-    # Train
-    model = train_on_segments(
+    # Train with combined approach
+    model = train_combined(
         model,
         segment_files,
         transcriptions,

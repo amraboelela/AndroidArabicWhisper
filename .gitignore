@@ -91,3 +91,4 @@ Thumbs.db
 *.pt
 *.onnx
 *.wav
+log*.txt
