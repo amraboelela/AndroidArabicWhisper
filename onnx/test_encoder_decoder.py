@@ -73,7 +73,7 @@ def test_encoder_decoder():
     # -------------------------------
     # File paths
     # -------------------------------
-    segments_dir = "segments"
+    datasets_dir = "datasets/base"
     vocab_path = "vocabulary.json"
     model_path = "encoder_decoder_model.pt"
 
@@ -81,12 +81,12 @@ def test_encoder_decoder():
     test_sets = [
         {
             "name": "Al-Fatiha (001)",
-            "text_path": os.path.join(segments_dir, "001.txt"),
+            "text_path": os.path.join(datasets_dir, "001.txt"),
             "pattern": "001-*.wav"
         },
         {
             "name": "Al-Baqara (002-01)",
-            "text_path": os.path.join(segments_dir, "002-01.txt"),
+            "text_path": os.path.join(datasets_dir, "002-01.txt"),
             "pattern": "002-01-*.wav"
         }
     ]
@@ -152,7 +152,7 @@ def test_encoder_decoder():
         print(f"Loaded {len(expected_texts)} transcriptions")
 
         # Load audio segments
-        segment_files = sorted(glob.glob(os.path.join(segments_dir, test_set["pattern"])))
+        segment_files = sorted(glob.glob(os.path.join(datasets_dir, test_set["pattern"])))
         print(f"Found {len(segment_files)} audio segments")
 
         if len(segment_files) != len(expected_texts):
@@ -228,7 +228,7 @@ def test_encoder_decoder():
     print("OVERALL RESULTS (ALL DATASETS)")
     print("="*60)
     print(f"Token accuracy: {overall_correct}/{overall_tokens} ({overall_accuracy:.1f}%)")
-    print(f"Total segments tested: {sum(len(glob.glob(os.path.join(segments_dir, ts['pattern']))) for ts in test_sets)}")
+    print(f"Total segments tested: {sum(len(glob.glob(os.path.join(datasets_dir, ts['pattern']))) for ts in test_sets)}")
 
 
 if __name__ == "__main__":

@@ -58,7 +58,7 @@ def find_best_match(transcription, quran_lines):
     return best_match_idx, best_ratio
 
 def main():
-    segments_dir = "segments"
+    datasets_dir = "datasets/base"
     output_file = "002-01.txt"
     quran_file = "quran-simple-norm.txt"
 
@@ -75,7 +75,7 @@ def main():
 
     # Get all 002-01 segments
     segment_files = sorted([
-        f for f in os.listdir(segments_dir)
+        f for f in os.listdir(datasets_dir)
         if f.startswith("002-01-") and f.endswith(".wav")
     ])
 
@@ -84,7 +84,7 @@ def main():
     results = []
 
     for i, segment_file in enumerate(segment_files, 1):
-        segment_path = os.path.join(segments_dir, segment_file)
+        segment_path = os.path.join(datasets_dir, segment_file)
 
         print(f"[{i}/{len(segment_files)}] Transcribing {segment_file}...", end=" ")
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Train encoder-decoder model on first 1 second of each segment mapped to first word - 100 epochs
+Train encoder-decoder model on Al-Baqara first second → first word
 """
 import json
 import torch
@@ -30,18 +30,18 @@ print(f"Device: {device}")
 # ==============================================================
 # Audio feature extraction
 # ==============================================================
-def extract_mel_features(audio_path, n_mels=80, max_duration_seconds=None):
-    """Extract Whisper-compatible mel spectrogram features"""
+def extract_first_second_mel(audio_path, n_mels=80):
+    """Extract mel features from only the first second of the audio"""
     waveform, sample_rate = torchaudio.load(audio_path)
 
-    # Truncate audio if max_duration_seconds is specified
-    if max_duration_seconds is not None:
-        max_samples = int(max_duration_seconds * sample_rate)
-        if waveform.shape[1] > max_samples:
-            waveform = waveform[:, :max_samples]
-
+    # Convert stereo to mono
     if waveform.shape[0] > 1:
         waveform = waveform.mean(dim=0, keepdim=True)
+
+    # Trim to first second
+    num_samples = int(sample_rate * 1.0)
+    if waveform.shape[1] > num_samples:
+        waveform = waveform[:, :num_samples]
 
     # Whisper parameters (100 fps: 16000 / 160 = 100)
     n_fft = 400
@@ -72,13 +72,13 @@ def tokenize_text(text, vocab):
 # ==============================================================
 # Training
 # ==============================================================
-def train_on_first_second(model, segment_files, transcriptions, vocab, num_epochs=100, initial_lr=1e-3, min_lr=1e-6):
+def train_first_second(model, segment_files, transcriptions, vocab, num_epochs=5, learning_rate=1e-5):
     model = model.to(device)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=initial_lr, weight_decay=0.01)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epochs, eta_min=min_lr)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=0.01)
     criterion = nn.CrossEntropyLoss(ignore_index=-100, label_smoothing=0.1)
 
     best_loss = float('inf')
+    prev_loss = float('inf')
     start_time = time.time()
 
     for epoch in range(num_epochs):
@@ -92,19 +92,18 @@ def train_on_first_second(model, segment_files, transcriptions, vocab, num_epoch
             seg_file = segment_files[i]
             text = transcriptions[i]
 
-            # Extract mel features for FIRST 1 SECOND only
-            audio_features, _ = extract_mel_features(seg_file, max_duration_seconds=1.0)
-            # audio_features is (time, n_mels), need (n_mels, time) for Whisper
+            # Train on FIRST SECOND -> first word
+            audio_features, sample_rate = extract_first_second_mel(seg_file)
+            first_word = text.split()[0] if text.split() else ""
+            if not first_word:
+                continue
+            text_tokens = tokenize_text(first_word, vocab)
             audio_batch = audio_features.transpose(0, 1).unsqueeze(0).to(device)
 
-            # Tokenize FIRST WORD only
-            first_word = text.split()[0] if text.split() else ""
-            text_tokens = tokenize_text(first_word, vocab)
-            full_sequence = [1] + text_tokens + [2]  # <s> + first_word_token + </s>
+            full_sequence = [1] + text_tokens + [2]  # <s> + tokens + </s>
             input_ids = torch.tensor([full_sequence[:-1]], dtype=torch.long, device=device)
             labels = torch.tensor([full_sequence[1:]], dtype=torch.long, device=device)
 
-            # Forward + loss
             logits = model(mel_features=audio_batch, text_ids=input_ids)
             loss = criterion(logits.view(-1, logits.size(-1)), labels.view(-1))
 
@@ -117,8 +116,6 @@ def train_on_first_second(model, segment_files, transcriptions, vocab, num_epoch
             total_iterations += 1
 
         avg_loss = total_loss / total_iterations
-        scheduler.step()
-        current_lr = optimizer.param_groups[0]['lr']
 
         # Save best
         if avg_loss < best_loss:
@@ -126,34 +123,38 @@ def train_on_first_second(model, segment_files, transcriptions, vocab, num_epoch
             torch.save({
                 "model": model.state_dict(),
                 "optimizer": optimizer.state_dict(),
-                "scheduler": scheduler.state_dict(),
                 "epoch": epoch
-            }, "checkpoint_best.pt")
+            }, "checkpoint_best_first_second.pt")
             best_marker = " ⭐ NEW BEST!"
         else:
             best_marker = ""
 
         elapsed = time.time() - start_time
-        print(f"Epoch {epoch+1}/{num_epochs} | Loss={avg_loss:.4f} | LR={current_lr:.6f} | Time={elapsed:.1f}s{best_marker}")
+        print(f"Epoch {epoch+1}/{num_epochs} | Loss={avg_loss:.4f} | LR={learning_rate:.6f} | Time={elapsed:.1f}s{best_marker}")
 
-        # Sample generation every 50 epochs
-        if (epoch + 1) % 50 == 0:
-            model.eval()
-            test_audio, sample_rate = extract_mel_features(segment_files[0], max_duration_seconds=1.0)
-            # test_audio is (time, n_mels), need (batch, n_mels, time) for encoder
-            test_audio = test_audio.transpose(0, 1).unsqueeze(0).to(device)
-            with torch.no_grad():
-                generated = model.generate(test_audio, max_new_tokens=5, audio_duration_seconds=1.0)
-                generated_ids = generated[0].tolist()
-                if generated_ids and generated_ids[0] == 1:
-                    generated_ids = generated_ids[1:]
-                if 2 in generated_ids:
-                    generated_ids = generated_ids[:generated_ids.index(2)]
-                generated_words = [vocab[idx] for idx in generated_ids if idx < len(vocab)]
-                first_word = transcriptions[0].split()[0]
-                print(f"  🔹 Sample: {' '.join(generated_words)}")
-                print(f"  🔸 Expected: {first_word}")
-            model.train()
+        # Early stopping check
+        loss_change = prev_loss - avg_loss
+        if loss_change < 0.001 and epoch > 0:
+            print(f"⚠️ Early stopping: loss change ({loss_change:.6f}) < 0.001")
+            break
+        prev_loss = avg_loss
+
+        # Sample generation
+        model.eval()
+        test_audio, sample_rate = extract_first_second_mel(segment_files[0])
+        test_audio = test_audio.transpose(0, 1).unsqueeze(0).to(device)
+        first_word = transcriptions[0].split()[0] if transcriptions[0].split() else ""
+        with torch.no_grad():
+            generated = model.generate(test_audio, max_new_tokens=20, audio_duration_seconds=1.0)
+            generated_ids = generated[0].tolist()
+            if generated_ids and generated_ids[0] == 1:
+                generated_ids = generated_ids[1:]
+            if 2 in generated_ids:
+                generated_ids = generated_ids[:generated_ids.index(2)]
+            generated_words = [vocab[idx] for idx in generated_ids if idx < len(vocab)]
+            print(f"  🔹 Generated: {' '.join(generated_words)}")
+            print(f"  🔸 Expected: {first_word}")
+        model.train()
 
     total_time = time.time() - start_time
     print(f"Training complete in {total_time:.1f}s | Best loss: {best_loss:.4f}")
@@ -163,7 +164,7 @@ def train_on_first_second(model, segment_files, transcriptions, vocab, num_epoch
 # Main
 # ==============================================================
 def main():
-    segments_dir = "segments"
+    datasets_dir = "datasets/base"
     vocab_path = "vocabulary.json"
     model_path = "encoder_decoder_model.pt"
 
@@ -172,35 +173,36 @@ def main():
         vocab = json.load(f)
     print(f"Vocabulary size: {len(vocab)}")
 
-    # Load ALL segments
+    # Load Al-Baqara segments
     all_transcriptions = []
     all_segment_files = []
 
-    # Load Al-Fatiha (001)
-    fatiha_text_path = os.path.join(segments_dir, "001.txt")
-    with open(fatiha_text_path, "r", encoding="utf-8") as f:
-        fatiha_transcriptions = [line.strip() for line in f if line.strip()]
-    fatiha_segments = sorted(glob.glob(os.path.join(segments_dir, "001-*.wav")))
-    print(f"Loaded {len(fatiha_transcriptions)} Al-Fatiha transcriptions, {len(fatiha_segments)} segments")
-
     # Load Al-Baqara part 1 (002-01)
-    baqara_01_text_path = os.path.join(segments_dir, "002-01.txt")
+    baqara_01_text_path = os.path.join(datasets_dir, "002-01.txt")
     with open(baqara_01_text_path, "r", encoding="utf-8") as f:
         baqara_01_transcriptions = [line.strip() for line in f if line.strip()]
-    baqara_01_segments = sorted(glob.glob(os.path.join(segments_dir, "002-01-*.wav")))
+    baqara_01_segments = sorted(glob.glob(os.path.join(datasets_dir, "002-01-*.wav")))
     print(f"Loaded {len(baqara_01_transcriptions)} Al-Baqara part 1 transcriptions, {len(baqara_01_segments)} segments")
 
     # Load Al-Baqara part 2 (002-02)
-    baqara_02_text_path = os.path.join(segments_dir, "002-02.txt")
+    baqara_02_text_path = os.path.join(datasets_dir, "002-02.txt")
     with open(baqara_02_text_path, "r", encoding="utf-8") as f:
         baqara_02_transcriptions = [line.strip() for line in f if line.strip()]
-    baqara_02_segments = sorted(glob.glob(os.path.join(segments_dir, "002-02-*.wav")))
+    baqara_02_segments = sorted(glob.glob(os.path.join(datasets_dir, "002-02-*.wav")))
     print(f"Loaded {len(baqara_02_transcriptions)} Al-Baqara part 2 transcriptions, {len(baqara_02_segments)} segments")
 
-    # Combine all datasets
-    all_transcriptions = fatiha_transcriptions + baqara_01_transcriptions + baqara_02_transcriptions
-    all_segment_files = fatiha_segments + baqara_01_segments + baqara_02_segments
-    print(f"\n✓ Total combined: {len(all_transcriptions)} transcriptions, {len(all_segment_files)} segments")
+    # Load Al-Baqara part 3 (002-03)
+    baqara_03_text_path = os.path.join(datasets_dir, "002-03.txt")
+    with open(baqara_03_text_path, "r", encoding="utf-8") as f:
+        baqara_03_transcriptions = [line.strip() for line in f if line.strip()]
+    baqara_03_segments = sorted(glob.glob(os.path.join(datasets_dir, "002-03-*.wav")))
+    print(f"Loaded {len(baqara_03_transcriptions)} Al-Baqara part 3 transcriptions, {len(baqara_03_segments)} segments")
+
+    # Combine all Baqara datasets
+    all_transcriptions = baqara_01_transcriptions + baqara_02_transcriptions + baqara_03_transcriptions
+    all_segment_files = baqara_01_segments + baqara_02_segments + baqara_03_segments
+    print(f"\n✓ Total Al-Baqara: {len(all_transcriptions)} transcriptions, {len(all_segment_files)} segments")
+    print("Training on: Al-Baqara first second → first word")
 
     # Create smaller 128-dimension encoder-decoder
     model = EncoderDecoderTransformer(
@@ -216,26 +218,25 @@ def main():
     # Load existing model and continue training
     import shutil
     if os.path.exists(model_path):
-        backup_path = model_path.replace(".pt", "_backup.pt")
+        backup_path = model_path.replace(".pt", "_backup_first_second.pt")
         shutil.copy2(model_path, backup_path)
         print(f"✓ Backup created: {backup_path}")
 
         print(f"Loading existing model from {model_path}...")
         model.load_state_dict(torch.load(model_path, map_location=device))
-        print("✓ Model loaded successfully! Training on first 1 second -> first word mapping.")
+        print("✓ Model loaded successfully! Training on first second.")
     else:
-        print("No existing model found. Starting with fresh weights for first-second training.")
+        print("No existing model found. Starting with fresh weights for first second training.")
 
     # Train
-    print(f"\nStarting training for 100 epochs on first 1 second of {len(all_segment_files)} segments...\n")
-    model = train_on_first_second(
+    print(f"\nStarting training for up to 5 epochs on {len(all_segment_files)} segments (first second → first word)...\n")
+    model = train_first_second(
         model,
         all_segment_files,
         all_transcriptions,
         vocab,
-        num_epochs=100,
-        initial_lr=1e-3,
-        min_lr=1e-6
+        num_epochs=5,
+        learning_rate=1e-5
     )
 
     # Save final model

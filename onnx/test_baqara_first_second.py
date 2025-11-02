@@ -69,24 +69,24 @@ def test_baqara_first_second():
     torch.manual_seed(42)
     print("🎲 Random seed set to 42 for reproducibility")
 
-    segments_dir = "segments"
+    datasets_dir = "datasets/base"
     vocab_path = "vocabulary.json"
     model_path = "encoder_decoder_model.pt"
 
     test_sets = [
         {
             "name": "Al-Baqara Part 1 (002-01)",
-            "text_path": os.path.join(segments_dir, "002-01.txt"),
+            "text_path": os.path.join(datasets_dir, "002-01.txt"),
             "pattern": "002-01-*.wav"
         },
         {
             "name": "Al-Baqara Part 2 (002-02)",
-            "text_path": os.path.join(segments_dir, "002-02.txt"),
+            "text_path": os.path.join(datasets_dir, "002-02.txt"),
             "pattern": "002-02-*.wav"
         },
         {
             "name": "Al-Baqara Part 3 (002-03)",
-            "text_path": os.path.join(segments_dir, "002-03.txt"),
+            "text_path": os.path.join(datasets_dir, "002-03.txt"),
             "pattern": "002-03-*.wav"
         }
     ]
@@ -125,7 +125,7 @@ def test_baqara_first_second():
         with open(test_set["text_path"], "r", encoding="utf-8") as f:
             expected_texts = [line.strip() for line in f if line.strip()]
 
-        segment_files = sorted(glob.glob(os.path.join(segments_dir, test_set["pattern"])))
+        segment_files = sorted(glob.glob(os.path.join(datasets_dir, test_set["pattern"])))
         print(f"Found {len(segment_files)} audio segments")
 
         total_correct = 0

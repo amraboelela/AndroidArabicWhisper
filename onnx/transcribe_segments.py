@@ -41,7 +41,7 @@ def main():
     """Transcribe all segments in segments/ directory"""
 
     # Paths
-    segments_dir = "segments"
+    datasets_dir = "datasets/base"
     vocab_path = "vocabulary.json"
     model_path = "quran_model.pt"
     output_path = "001.txt"
@@ -68,7 +68,7 @@ def main():
     print("Model loaded successfully!")
 
     # Get all segment files
-    segment_files = sorted(glob.glob(os.path.join(segments_dir, "001-*.wav")))
+    segment_files = sorted(glob.glob(os.path.join(datasets_dir, "001-*.wav")))
     print(f"\nFound {len(segment_files)} segments")
 
     # Transcribe each segment

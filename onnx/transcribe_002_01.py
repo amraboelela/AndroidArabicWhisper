@@ -9,7 +9,7 @@ import os
 def main():
     """Transcribe all 002-01 segments using faster_whisper"""
 
-    segments_dir = "segments"
+    datasets_dir = "datasets/base"
     output_path = "002-01.txt"
 
     # Load faster_whisper model (offline mode)
@@ -18,7 +18,7 @@ def main():
     print("Model loaded successfully!")
 
     # Get all 002-01 segment files
-    segment_files = sorted(glob.glob(os.path.join(segments_dir, "002-01-*.wav")))
+    segment_files = sorted(glob.glob(os.path.join(datasets_dir, "002-01-*.wav")))
     print(f"\nFound {len(segment_files)} segments")
 
     # Transcribe each segment

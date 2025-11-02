@@ -9,7 +9,7 @@ import os
 def main():
     """Transcribe all segments in segments/ directory using Whisper"""
 
-    segments_dir = "segments"
+    datasets_dir = "datasets/base"
     output_path = "001.txt"
 
     # Load Whisper model
@@ -18,7 +18,7 @@ def main():
     print("Model loaded successfully!")
 
     # Get all segment files
-    segment_files = sorted(glob.glob(os.path.join(segments_dir, "001-*.wav")))
+    segment_files = sorted(glob.glob(os.path.join(datasets_dir, "001-*.wav")))
     print(f"\nFound {len(segment_files)} segments")
 
     # Transcribe each segment

@@ -95,8 +95,8 @@ for ayah in ayat_with_lengths:
 print(f"\n✓ Total lines: {len(final_lines)}")
 
 # Save to text file
-segments_dir = "segments"
-text_filename = os.path.join(segments_dir, "002-02.txt")
+datasets_dir = "datasets/base"
+text_filename = os.path.join(datasets_dir, "002-02.txt")
 with open(text_filename, "w", encoding="utf-8") as f:
     for line in final_lines:
         f.write(line + "\n")

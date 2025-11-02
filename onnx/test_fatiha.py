@@ -73,7 +73,7 @@ def test_fatiha():
     # -------------------------------
     # File paths
     # -------------------------------
-    segments_dir = "segments"
+    datasets_dir = "datasets/base"
     vocab_path = "vocabulary.json"
     model_path = "encoder_decoder_model.pt"
 
@@ -81,7 +81,7 @@ def test_fatiha():
     test_sets = [
         {
             "name": "Al-Fatiha (001)",
-            "text_path": os.path.join(segments_dir, "001.txt"),
+            "text_path": os.path.join(datasets_dir, "001.txt"),
             "pattern": "001-*.wav"
         }
     ]
@@ -147,7 +147,7 @@ def test_fatiha():
         print(f"Loaded {len(expected_texts)} transcriptions")
 
         # Load audio segments
-        segment_files = sorted(glob.glob(os.path.join(segments_dir, test_set["pattern"])))
+        segment_files = sorted(glob.glob(os.path.join(datasets_dir, test_set["pattern"])))
         print(f"Found {len(segment_files)} audio segments")
 
         if len(segment_files) != len(expected_texts):
@@ -223,7 +223,7 @@ def test_fatiha():
     print("OVERALL RESULTS (Al-Fatiha)")
     print("="*60)
     print(f"Token accuracy: {overall_correct}/{overall_tokens} ({overall_accuracy:.1f}%)")
-    print(f"Total segments tested: {sum(len(glob.glob(os.path.join(segments_dir, ts['pattern']))) for ts in test_sets)}")
+    print(f"Total segments tested: {sum(len(glob.glob(os.path.join(datasets_dir, ts['pattern']))) for ts in test_sets)}")
 
 
 if __name__ == "__main__":

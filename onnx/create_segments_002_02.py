@@ -10,7 +10,7 @@ import subprocess
 # Audio file info
 audio_path = "/Users/amraboelela/audio/Quran-A/002-02.mp3"
 total_duration = 900.0  # 15 minutes in seconds
-segments_dir = "segments"
+datasets_dir = "datasets/base"
 
 # Full text for 002-02 (ayat 65-76 approximately)
 # Based on the pattern from 002-01, each line is one ayah or part of ayah
@@ -86,7 +86,7 @@ for i, verse_text in enumerate(verses_text, 1):
     segment_duration = num_words * seconds_per_word
 
     # Extract segment using ffmpeg
-    segment_filename = f"{segments_dir}/002-02-{i:03d}.wav"
+    segment_filename = f"{datasets_dir}/002-02-{i:03d}.wav"
 
     # Make sure we don't exceed audio length
     if current_time + segment_duration > total_duration:
@@ -120,7 +120,7 @@ for i, verse_text in enumerate(verses_text, 1):
     current_time += segment_duration
 
 # Save text file
-text_filename = f"{segments_dir}/002-02.txt"
+text_filename = f"{datasets_dir}/002-02.txt"
 with open(text_filename, "w", encoding="utf-8") as f:
     for segment in segments:
         f.write(segment["text"] + "\n")

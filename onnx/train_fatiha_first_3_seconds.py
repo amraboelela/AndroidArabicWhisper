@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Train encoder-decoder model on 002-02 segments (Al-Baqara part 2)
+Train encoder-decoder model on Al-Fatiha first 3 seconds → first 2 words
 """
 import json
 import torch
@@ -30,18 +30,18 @@ print(f"Device: {device}")
 # ==============================================================
 # Audio feature extraction
 # ==============================================================
-def extract_mel_features(audio_path, n_mels=80, max_duration_seconds=None):
-    """Extract Whisper-compatible mel spectrogram features"""
+def extract_first_3_seconds_mel(audio_path, n_mels=80, target_seconds=3.0):
+    """Extract mel features from only the first 3 seconds of the audio"""
     waveform, sample_rate = torchaudio.load(audio_path)
 
-    # Truncate audio if max_duration_seconds is specified
-    if max_duration_seconds is not None:
-        max_samples = int(max_duration_seconds * sample_rate)
-        if waveform.shape[1] > max_samples:
-            waveform = waveform[:, :max_samples]
-
+    # Convert stereo to mono
     if waveform.shape[0] > 1:
         waveform = waveform.mean(dim=0, keepdim=True)
+
+    # Trim to first N seconds
+    num_samples = int(sample_rate * target_seconds)
+    if waveform.shape[1] > num_samples:
+        waveform = waveform[:, :num_samples]
 
     # Whisper parameters (100 fps: 16000 / 160 = 100)
     n_fft = 400
@@ -72,13 +72,13 @@ def tokenize_text(text, vocab):
 # ==============================================================
 # Training
 # ==============================================================
-def train_on_segments(model, segment_files, transcriptions, vocab, num_epochs=300, initial_lr=1e-3, min_lr=1e-6):
+def train_first_3_seconds(model, segment_files, transcriptions, vocab, num_epochs=5, learning_rate=1e-5):
     model = model.to(device)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=initial_lr, weight_decay=0.01)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epochs, eta_min=min_lr)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=0.01)
     criterion = nn.CrossEntropyLoss(ignore_index=-100, label_smoothing=0.1)
 
     best_loss = float('inf')
+    prev_loss = float('inf')
     start_time = time.time()
 
     for epoch in range(num_epochs):
@@ -92,18 +92,19 @@ def train_on_segments(model, segment_files, transcriptions, vocab, num_epochs=30
             seg_file = segment_files[i]
             text = transcriptions[i]
 
-            # Extract mel features for full segment
-            audio_features, _ = extract_mel_features(seg_file)
-            # audio_features is (time, n_mels), need (n_mels, time) for Whisper
+            # Train on FIRST 3 SECONDS -> first 2 words
+            audio_features, sample_rate = extract_first_3_seconds_mel(seg_file)
+            words = text.split()
+            first_two_words = " ".join(words[:2]) if len(words) >= 2 else text
+            if not first_two_words:
+                continue
+            text_tokens = tokenize_text(first_two_words, vocab)
             audio_batch = audio_features.transpose(0, 1).unsqueeze(0).to(device)
 
-            # Tokenize full text
-            text_tokens = tokenize_text(text, vocab)
             full_sequence = [1] + text_tokens + [2]  # <s> + tokens + </s>
             input_ids = torch.tensor([full_sequence[:-1]], dtype=torch.long, device=device)
             labels = torch.tensor([full_sequence[1:]], dtype=torch.long, device=device)
 
-            # Forward + loss
             logits = model(mel_features=audio_batch, text_ids=input_ids)
             loss = criterion(logits.view(-1, logits.size(-1)), labels.view(-1))
 
@@ -116,8 +117,6 @@ def train_on_segments(model, segment_files, transcriptions, vocab, num_epochs=30
             total_iterations += 1
 
         avg_loss = total_loss / total_iterations
-        scheduler.step()
-        current_lr = optimizer.param_groups[0]['lr']
 
         # Save best
         if avg_loss < best_loss:
@@ -125,36 +124,41 @@ def train_on_segments(model, segment_files, transcriptions, vocab, num_epochs=30
             torch.save({
                 "model": model.state_dict(),
                 "optimizer": optimizer.state_dict(),
-                "scheduler": scheduler.state_dict(),
                 "epoch": epoch
-            }, "checkpoint_best.pt")
+            }, "checkpoint_best_first_3_seconds.pt")
             best_marker = " ⭐ NEW BEST!"
         else:
             best_marker = ""
 
         elapsed = time.time() - start_time
-        print(f"Epoch {epoch+1}/{num_epochs} | Loss={avg_loss:.4f} | LR={current_lr:.6f} | Time={elapsed:.1f}s{best_marker}")
+        print(f"Epoch {epoch+1}/{num_epochs} | Loss={avg_loss:.4f} | LR={learning_rate:.6f} | Time={elapsed:.1f}s{best_marker}")
 
-        # Sample generation every 50 epochs
-        if (epoch + 1) % 50 == 0:
-            model.eval()
-            test_audio, sample_rate = extract_mel_features(segment_files[0])
-            # Calculate audio duration
-            waveform, sr = torchaudio.load(segment_files[0])
-            audio_duration = waveform.shape[1] / sr
-            # test_audio is (time, n_mels), need (batch, n_mels, time) for encoder
-            test_audio = test_audio.transpose(0, 1).unsqueeze(0).to(device)
-            with torch.no_grad():
-                generated = model.generate(test_audio, max_new_tokens=50, audio_duration_seconds=audio_duration)
-                generated_ids = generated[0].tolist()
-                if generated_ids and generated_ids[0] == 1:
-                    generated_ids = generated_ids[1:]
-                if 2 in generated_ids:
-                    generated_ids = generated_ids[:generated_ids.index(2)]
-                generated_words = [vocab[idx] for idx in generated_ids if idx < len(vocab)]
-                print(f"  🔹 Sample: {' '.join(generated_words)}")
-                print(f"  🔸 Expected: {transcriptions[0]}")
-            model.train()
+        # Early stopping check
+        loss_change = prev_loss - avg_loss
+        if loss_change < 0.001 and epoch > 0:
+            print(f"⚠️ Early stopping: loss change ({loss_change:.6f}) < 0.001")
+            break
+        prev_loss = avg_loss
+
+        # Sample generation
+        model.eval()
+        test_audio, sample_rate = extract_first_3_seconds_mel(segment_files[0])
+        test_audio = test_audio.transpose(0, 1).unsqueeze(0).to(device)
+        words = transcriptions[0].split()
+        first_two_words = " ".join(words[:2]) if len(words) >= 2 else transcriptions[0]
+        with torch.no_grad():
+            generated = model.generate(test_audio, max_new_tokens=30, audio_duration_seconds=3.0)
+            generated_ids = generated[0].tolist()
+            if generated_ids and generated_ids[0] == 1:
+                generated_ids = generated_ids[1:]
+            if 2 in generated_ids:
+                generated_ids = generated_ids[:generated_ids.index(2)]
+            generated_words = [vocab[idx] for idx in generated_ids if idx < len(vocab)]
+            # Only show first 2 words since we're testing first 3 seconds
+            display_words = generated_words[:2] if len(generated_words) >= 2 else generated_words
+            print(f"  🔹 Generated: {' '.join(display_words)}")
+            print(f"  🔸 Expected: {first_two_words}")
+        model.train()
 
     total_time = time.time() - start_time
     print(f"Training complete in {total_time:.1f}s | Best loss: {best_loss:.4f}")
@@ -164,7 +168,7 @@ def train_on_segments(model, segment_files, transcriptions, vocab, num_epochs=30
 # Main
 # ==============================================================
 def main():
-    segments_dir = "segments"
+    datasets_dir = "datasets/base"
     vocab_path = "vocabulary.json"
     model_path = "encoder_decoder_model.pt"
 
@@ -173,12 +177,22 @@ def main():
         vocab = json.load(f)
     print(f"Vocabulary size: {len(vocab)}")
 
-    # Load 002-02 data only
-    text_path = os.path.join(segments_dir, "002-02.txt")
-    with open(text_path, "r", encoding="utf-8") as f:
-        transcriptions = [line.strip() for line in f if line.strip()]
-    segment_files = sorted(glob.glob(os.path.join(segments_dir, "002-02-*.wav")))
-    print(f"Loaded {len(transcriptions)} 002-02 transcriptions, {len(segment_files)} segments")
+    # Load Al-Fatiha segments
+    all_transcriptions = []
+    all_segment_files = []
+
+    # Load Al-Fatiha (001)
+    fatiha_text_path = os.path.join(datasets_dir, "001.txt")
+    with open(fatiha_text_path, "r", encoding="utf-8") as f:
+        fatiha_transcriptions = [line.strip() for line in f if line.strip()]
+    fatiha_segments = sorted(glob.glob(os.path.join(datasets_dir, "001-*.wav")))
+    print(f"Loaded {len(fatiha_transcriptions)} Al-Fatiha transcriptions, {len(fatiha_segments)} segments")
+
+    # Use Al-Fatiha data
+    all_transcriptions = fatiha_transcriptions
+    all_segment_files = fatiha_segments
+    print(f"\n✓ Total Al-Fatiha: {len(all_transcriptions)} transcriptions, {len(all_segment_files)} segments")
+    print("Training on: Al-Fatiha first 3 seconds → first 2 words")
 
     # Create smaller 128-dimension encoder-decoder
     model = EncoderDecoderTransformer(
@@ -194,25 +208,25 @@ def main():
     # Load existing model and continue training
     import shutil
     if os.path.exists(model_path):
-        backup_path = model_path.replace(".pt", "_backup.pt")
+        backup_path = model_path.replace(".pt", "_backup_first_3_seconds.pt")
         shutil.copy2(model_path, backup_path)
         print(f"✓ Backup created: {backup_path}")
 
         print(f"Loading existing model from {model_path}...")
         model.load_state_dict(torch.load(model_path, map_location=device))
-        print("✓ Model loaded successfully! Continuing training on 002-02 segments.")
+        print("✓ Model loaded successfully! Training on first 3 seconds.")
     else:
-        print("No existing model found. Starting with fresh weights for 002-02 training.")
+        print("No existing model found. Starting with fresh weights for first 3 seconds training.")
 
     # Train
-    model = train_on_segments(
+    print(f"\nStarting training for up to 5 epochs on {len(all_segment_files)} segments (first 3 seconds → first 2 words)...\n")
+    model = train_first_3_seconds(
         model,
-        segment_files,
-        transcriptions,
+        all_segment_files,
+        all_transcriptions,
         vocab,
-        num_epochs=100,
-        initial_lr=1e-3,
-        min_lr=1e-6
+        num_epochs=5,
+        learning_rate=1e-5
     )
 
     # Save final model

@@ -157,3 +157,5 @@ set(CTRANSLATE2_ROOT "/Users/amraboelela/develop/android/CTranslate2")
   - So when I ask you to convert e.g. test_whisper_ct2_offline.py to test_whisper_ct2_offline.cpp then do not call test_whisper_ct2_offline.py inside test_whisper_ct2_offline.cpp but rather call from faster_whisper import WhisperModel or any other python imported packages.
 - Inside faster_whisper do not do make test, just make is enough, all what i need to know that it is transcribing the audio 001.wav file to al-fatiha correctly, and i can know that by myself, no need to write code to verify that.
 - 
+- When training model on new data, use very low Learning Rate (1e-5), Early stop when loss plateaus (change < 0.001)
+- When training model on new data, use very low Learning Rate (1e-5), Early stop when loss plateaus (change < 0.001), use max number of epochs = 5

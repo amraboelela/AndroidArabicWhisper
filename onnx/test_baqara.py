@@ -73,7 +73,7 @@ def test_baqara():
     # -------------------------------
     # File paths
     # -------------------------------
-    segments_dir = "segments"
+    datasets_dir = "datasets/base"
     vocab_path = "vocabulary.json"
     model_path = "encoder_decoder_model.pt"
 
@@ -81,17 +81,17 @@ def test_baqara():
     test_sets = [
         {
             "name": "Al-Baqara Part 1 (002-01)",
-            "text_path": os.path.join(segments_dir, "002-01.txt"),
+            "text_path": os.path.join(datasets_dir, "002-01.txt"),
             "pattern": "002-01-*.wav"
         },
         {
             "name": "Al-Baqara Part 2 (002-02)",
-            "text_path": os.path.join(segments_dir, "002-02.txt"),
+            "text_path": os.path.join(datasets_dir, "002-02.txt"),
             "pattern": "002-02-*.wav"
         },
         {
             "name": "Al-Baqara Part 3 (002-03)",
-            "text_path": os.path.join(segments_dir, "002-03.txt"),
+            "text_path": os.path.join(datasets_dir, "002-03.txt"),
             "pattern": "002-03-*.wav"
         }
     ]
@@ -157,7 +157,7 @@ def test_baqara():
         print(f"Loaded {len(expected_texts)} transcriptions")
 
         # Load audio segments
-        segment_files = sorted(glob.glob(os.path.join(segments_dir, test_set["pattern"])))
+        segment_files = sorted(glob.glob(os.path.join(datasets_dir, test_set["pattern"])))
         print(f"Found {len(segment_files)} audio segments")
 
         if len(segment_files) != len(expected_texts):
@@ -233,7 +233,7 @@ def test_baqara():
     print("OVERALL RESULTS (Al-Baqara 002-01 + 002-02 + 002-03)")
     print("="*60)
     print(f"Token accuracy: {overall_correct}/{overall_tokens} ({overall_accuracy:.1f}%)")
-    print(f"Total segments tested: {sum(len(glob.glob(os.path.join(segments_dir, ts['pattern']))) for ts in test_sets)}")
+    print(f"Total segments tested: {sum(len(glob.glob(os.path.join(datasets_dir, ts['pattern']))) for ts in test_sets)}")
 
 
 if __name__ == "__main__":

@@ -61,10 +61,10 @@ verses_text = [
     "افتطمعون ان يؤمنوا لكم وقد كان فريق منهم يسمعون كلام الله ثم يحرفونه من بعد ما عقلوه وهم يعلمون",
 ]
 
-segments_dir = "segments"
+datasets_dir = "datasets/base"
 
 # Get all 002-02 segment files and their durations
-segment_files = sorted(glob.glob(os.path.join(segments_dir, "002-02-*.wav")))
+segment_files = sorted(glob.glob(os.path.join(datasets_dir, "002-02-*.wav")))
 print(f"Found {len(segment_files)} audio segments")
 
 # Calculate durations and word counts
@@ -121,7 +121,7 @@ for i, duration in enumerate(segment_durations):
     print(f"Segment {i+1:3d}: {duration:5.2f}s ({len(segment_words):2d} words) - {segment_text[:50]}...")
 
 # Save to text file
-text_filename = os.path.join(segments_dir, "002-02.txt")
+text_filename = os.path.join(datasets_dir, "002-02.txt")
 with open(text_filename, "w", encoding="utf-8") as f:
     for text in segment_texts:
         f.write(text + "\n")
