@@ -88,6 +88,11 @@ def test_baqara():
             "name": "Al-Baqara Part 2 (002-02)",
             "text_path": os.path.join(segments_dir, "002-02.txt"),
             "pattern": "002-02-*.wav"
+        },
+        {
+            "name": "Al-Baqara Part 3 (002-03)",
+            "text_path": os.path.join(segments_dir, "002-03.txt"),
+            "pattern": "002-03-*.wav"
         }
     ]
 
@@ -225,7 +230,7 @@ def test_baqara():
     # -------------------------------
     overall_accuracy = (overall_correct / overall_tokens * 100) if overall_tokens > 0 else 0.0
     print(f"\n{'='*60}")
-    print("OVERALL RESULTS (Al-Baqara 002-01 + 002-02)")
+    print("OVERALL RESULTS (Al-Baqara 002-01 + 002-02 + 002-03)")
     print("="*60)
     print(f"Token accuracy: {overall_correct}/{overall_tokens} ({overall_accuracy:.1f}%)")
     print(f"Total segments tested: {sum(len(glob.glob(os.path.join(segments_dir, ts['pattern']))) for ts in test_sets)}")
