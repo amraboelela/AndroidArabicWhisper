@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """
-Test encoder-decoder model on Al-Fatiha segments
+Test encoder-decoder model on Al-Baqara segments (002-01 and 002-02)
 """
 import json
 import torch
 import torchaudio
 import glob
 import os
+import sys
+sys.path.append("../..")
 from encoder_decoder_transformer import EncoderDecoderTransformer
 
 
@@ -49,8 +51,8 @@ def normalize_text(text):
     return " ".join(normalized.split())
 
 
-def test_encoder_decoder():
-    """Evaluate trained encoder-decoder model on Al-Fatiha and Al-Baqara segments"""
+def test_baqara():
+    """Evaluate trained encoder-decoder model on Al-Baqara segments"""
 
     # -------------------------------
     # Device setup
@@ -73,21 +75,26 @@ def test_encoder_decoder():
     # -------------------------------
     # File paths
     # -------------------------------
-    datasets_dir = "datasets/base"
-    vocab_path = "vocabulary.json"
-    model_path = "encoder_decoder_model.pt"
+    datasets_dir = "audio"
+    vocab_path = "../../vocabulary.json"
+    model_path = "../../encoder_decoder_model.pt"
 
     # Test datasets
     test_sets = [
         {
-            "name": "Al-Fatiha (001)",
-            "text_path": os.path.join(datasets_dir, "001.txt"),
-            "pattern": "001-*.wav"
+            "name": "Al-Baqara Part 1 (002-01)",
+            "text_path": "002-01.txt",
+            "pattern": "002-01-*.wav"
         },
         {
-            "name": "Al-Baqara (002-01)",
-            "text_path": os.path.join(datasets_dir, "002-01.txt"),
-            "pattern": "002-01-*.wav"
+            "name": "Al-Baqara Part 2 (002-02)",
+            "text_path": "002-02.txt",
+            "pattern": "002-02-*.wav"
+        },
+        {
+            "name": "Al-Baqara Part 3 (002-03)",
+            "text_path": "002-03.txt",
+            "pattern": "002-03-*.wav"
         }
     ]
 
@@ -180,7 +187,7 @@ def test_encoder_decoder():
             with torch.no_grad():
                 generated_ids = model.generate(
                     audio_batch,
-                    max_new_tokens=50,
+                    max_new_tokens=100,
                     temperature=1.0,
                     min_tokens=1,
                     use_sampling=False,  # Use greedy decoding for testing
@@ -225,11 +232,11 @@ def test_encoder_decoder():
     # -------------------------------
     overall_accuracy = (overall_correct / overall_tokens * 100) if overall_tokens > 0 else 0.0
     print(f"\n{'='*60}")
-    print("OVERALL RESULTS (ALL DATASETS)")
+    print("OVERALL RESULTS (Al-Baqara 002-01 + 002-02 + 002-03)")
     print("="*60)
     print(f"Token accuracy: {overall_correct}/{overall_tokens} ({overall_accuracy:.1f}%)")
     print(f"Total segments tested: {sum(len(glob.glob(os.path.join(datasets_dir, ts['pattern']))) for ts in test_sets)}")
 
 
 if __name__ == "__main__":
-    test_encoder_decoder()
+    test_baqara()

@@ -1,20 +1,17 @@
 #!/bin/bash
 #
-# Run all training scripts sequentially and log results to log_train.txt
+# Run training scripts for Al-Baqara (002) and log results to log_train_002.txt
 #
 # Training scripts (curriculum learning order):
-# 1. train_fatiha_first_second.py - Al-Fatiha first 1 second → first word
-# 2. train_fatiha_first_3_seconds.py - Al-Fatiha first 3 seconds → first 2 words
-# 3. train_fatiha.py - Al-Fatiha full segments → full transcriptions
-# 4. train_baqara_first_second.py - Al-Baqara first 1 second → first word
-# 5. train_baqara_first_3_seconds.py - Al-Baqara first 3 seconds → first 2 words
-# 6. train_baqara.py - Al-Baqara full segments → full transcriptions
+# 1. train_002_1.py - Al-Baqara (002) first 1 second → first word
+# 2. train_002_3.py - Al-Baqara (002) first 3 seconds → first 2 words
+# 3. train_002.py - Al-Baqara (002) full segments → full transcriptions
 #
 
-LOG_FILE="log_train.txt"
+LOG_FILE="../../log_train_002.txt"
 
 echo "============================================================" | tee "$LOG_FILE"
-echo "RUNNING ALL TRAINING SCRIPTS (CURRICULUM LEARNING)" | tee -a "$LOG_FILE"
+echo "RUNNING AL-BAQARA (002) TRAINING SCRIPTS (CURRICULUM LEARNING)" | tee -a "$LOG_FILE"
 echo "Started: $(date)" | tee -a "$LOG_FILE"
 echo "============================================================" | tee -a "$LOG_FILE"
 echo "" | tee -a "$LOG_FILE"
@@ -31,7 +28,7 @@ run_training() {
     TOTAL=$((TOTAL + 1))
 
     echo "============================================================" | tee -a "$LOG_FILE"
-    echo "[$TOTAL/6] Starting: $script" | tee -a "$LOG_FILE"
+    echo "[$TOTAL/3] Starting: $script" | tee -a "$LOG_FILE"
     echo "============================================================" | tee -a "$LOG_FILE"
 
     local script_start=$(date +%s)
@@ -72,13 +69,10 @@ run_training() {
     return 0
 }
 
-# Run all training scripts in curriculum learning order
-run_training "train_fatiha_first_second.py" || exit 1
-run_training "train_fatiha_first_3_seconds.py" || exit 1
-run_training "train_fatiha.py" || exit 1
-run_training "train_baqara_first_second.py" || exit 1
-run_training "train_baqara_first_3_seconds.py" || exit 1
-run_training "train_baqara.py" || exit 1
+# Run all training scripts for 002 in curriculum learning order
+run_training "train_002_1.py" || exit 1
+run_training "train_002_3.py" || exit 1
+run_training "train_002.py" || exit 1
 
 # Summary
 END_TIME=$(date +%s)
@@ -87,7 +81,7 @@ MINUTES=$((TOTAL_ELAPSED / 60))
 SECONDS=$((TOTAL_ELAPSED % 60))
 
 echo "============================================================" | tee -a "$LOG_FILE"
-echo "TRAINING PIPELINE SUMMARY" | tee -a "$LOG_FILE"
+echo "AL-BAQARA (002) TRAINING SUMMARY" | tee -a "$LOG_FILE"
 echo "============================================================" | tee -a "$LOG_FILE"
 echo "Total:     $TOTAL training scripts" | tee -a "$LOG_FILE"
 echo "Completed: $PASSED scripts" | tee -a "$LOG_FILE"

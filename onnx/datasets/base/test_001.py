@@ -7,6 +7,8 @@ import torch
 import torchaudio
 import glob
 import os
+import sys
+sys.path.append("../..")
 from encoder_decoder_transformer import EncoderDecoderTransformer
 
 
@@ -73,15 +75,15 @@ def test_fatiha():
     # -------------------------------
     # File paths
     # -------------------------------
-    datasets_dir = "datasets/base"
-    vocab_path = "vocabulary.json"
-    model_path = "encoder_decoder_model.pt"
+    datasets_dir = "audio"
+    vocab_path = "../../vocabulary.json"
+    model_path = "../../encoder_decoder_model.pt"
 
     # Test dataset
     test_sets = [
         {
             "name": "Al-Fatiha (001)",
-            "text_path": os.path.join(datasets_dir, "001.txt"),
+            "text_path": "001.txt",
             "pattern": "001-*.wav"
         }
     ]

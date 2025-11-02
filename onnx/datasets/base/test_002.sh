@@ -1,20 +1,17 @@
 #!/bin/bash
 #
-# Run all test scripts sequentially and log results to log_test.txt
+# Run test scripts for Al-Baqara (002) and log results to log_test_002.txt
 #
 # Test scripts:
-# 1. test_fatiha.py - Al-Fatiha full segments
-# 2. test_fatiha_first_second.py - Al-Fatiha first 1 second
-# 3. test_fatiha_first_3_seconds.py - Al-Fatiha first 3 seconds
-# 4. test_baqara.py - Al-Baqara full segments
-# 5. test_baqara_first_second.py - Al-Baqara first 1 second
-# 6. test_baqara_first_3_seconds.py - Al-Baqara first 3 seconds
+# 1. test_002.py - Al-Baqara (002) full segments
+# 2. test_002_1.py - Al-Baqara (002) first 1 second
+# 3. test_002_3.py - Al-Baqara (002) first 3 seconds
 #
 
-LOG_FILE="log_test.txt"
+LOG_FILE="../../log_test_002.txt"
 
 echo "============================================================" | tee "$LOG_FILE"
-echo "RUNNING ALL TEST SCRIPTS" | tee -a "$LOG_FILE"
+echo "RUNNING AL-BAQARA (002) TEST SCRIPTS" | tee -a "$LOG_FILE"
 echo "Started: $(date)" | tee -a "$LOG_FILE"
 echo "============================================================" | tee -a "$LOG_FILE"
 echo "" | tee -a "$LOG_FILE"
@@ -32,7 +29,7 @@ run_test() {
     TOTAL=$((TOTAL + 1))
 
     echo "------------------------------------------------------------" | tee -a "$LOG_FILE"
-    echo "[$TOTAL/6] Running: $script" | tee -a "$LOG_FILE"
+    echo "[$TOTAL/3] Running: $script" | tee -a "$LOG_FILE"
     echo "------------------------------------------------------------" | tee -a "$LOG_FILE"
 
     if python3 "$script" >> "$LOG_FILE" 2>&1; then
@@ -62,17 +59,14 @@ run_test() {
     echo "" | tee -a "$LOG_FILE"
 }
 
-# Run all test scripts
-run_test "test_fatiha.py"
-run_test "test_fatiha_first_second.py"
-run_test "test_fatiha_first_3_seconds.py"
-run_test "test_baqara.py"
-run_test "test_baqara_first_second.py"
-run_test "test_baqara_first_3_seconds.py"
+# Run all test scripts for 002
+run_test "test_002.py"
+run_test "test_002_1.py"
+run_test "test_002_3.py"
 
 # Summary
 echo "============================================================" | tee -a "$LOG_FILE"
-echo "TEST SUMMARY" | tee -a "$LOG_FILE"
+echo "AL-BAQARA (002) TEST SUMMARY" | tee -a "$LOG_FILE"
 echo "============================================================" | tee -a "$LOG_FILE"
 echo "Total:  $TOTAL tests" | tee -a "$LOG_FILE"
 echo "Passed: $PASSED tests" | tee -a "$LOG_FILE"
