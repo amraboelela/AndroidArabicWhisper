@@ -32,7 +32,7 @@ run_training_suite() {
 
     local suite_start=$(date +%s)
 
-    if ./"$script" "$DATASET" >> "$LOG_FILE" 2>&1; then
+    if ./"$script" "$DATASET" 2>&1 | tee -a "$LOG_FILE"; then
         local suite_end=$(date +%s)
         local elapsed=$((suite_end - suite_start))
         local minutes=$((elapsed / 60))

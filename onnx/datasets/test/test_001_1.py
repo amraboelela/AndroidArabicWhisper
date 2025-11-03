@@ -75,11 +75,11 @@ def test_fatiha_first_second():
     dataset_name = sys.argv[1] if len(sys.argv) > 1 else "base"
     datasets_dir = f"../{dataset_name}/audio"
     vocab_path = "../../vocabulary.json"
-    model_path = f"../../models/encoder_decoder_model_{dataset_name}.pt"
+    model_path = "../../models/encoder_decoder_model.pt"
 
     test_set = {
         "name": "Al-Fatiha (001)",
-        "text_path": f"../{dataset_name}/001.txt",
+        "text_path": f"../{dataset_name}/text/001.txt",
         "pattern": "001-*.wav"
     }
 
