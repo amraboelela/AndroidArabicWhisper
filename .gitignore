@@ -92,3 +92,4 @@ Thumbs.db
 *.onnx
 *.wav
 log*.txt
+*.safetensors

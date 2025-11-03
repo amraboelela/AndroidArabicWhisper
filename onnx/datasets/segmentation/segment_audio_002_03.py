@@ -86,8 +86,8 @@ def segment_audio_simple(audio_path, output_dir):
 
 
 def main():
-    audio_path = "/Users/amraboelela/audio/Quran-A/002-03.mp3"
-    output_dir = "segments"
+    audio_path = os.path.expanduser("~/audio/Quran-A/002-03.mp3")
+    output_dir = "../base/audio"
 
     os.makedirs(output_dir, exist_ok=True)
     segment_audio_simple(audio_path, output_dir)

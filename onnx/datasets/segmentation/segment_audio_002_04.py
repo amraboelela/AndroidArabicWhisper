@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Split an existing audio file based on silence detection (-30dB threshold)
-Output segments named like 002-02-001.wav, 002-02-002.wav, ...
+Split 002-04.mp3 audio file based on silence detection (-30dB threshold)
+Output segments named like 002-04-01.wav, 002-04-02.wav, ...
 """
 
 import numpy as np
@@ -86,7 +86,7 @@ def segment_audio_simple(audio_path, output_dir):
 
 
 def main():
-    audio_path = os.path.expanduser("~/audio/Quran-A/002-02.mp3")
+    audio_path = os.path.expanduser("~/audio/Quran-A/002-04.mp3")
     output_dir = "../base/audio"
 
     os.makedirs(output_dir, exist_ok=True)
