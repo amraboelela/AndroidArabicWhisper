@@ -75,15 +75,17 @@ def test_fatiha():
     # -------------------------------
     # File paths
     # -------------------------------
-    datasets_dir = "audio"
+    import sys
+    dataset_name = sys.argv[1] if len(sys.argv) > 1 else "base"
+    datasets_dir = f"../{dataset_name}/audio"
     vocab_path = "../../vocabulary.json"
-    model_path = "../../encoder_decoder_model.pt"
+    model_path = f"../../models/encoder_decoder_model_{dataset_name}.pt"
 
     # Test dataset
     test_sets = [
         {
             "name": "Al-Fatiha (001)",
-            "text_path": "001.txt",
+            "text_path": f"../{dataset_name}/001.txt",
             "pattern": "001-*.wav"
         }
     ]

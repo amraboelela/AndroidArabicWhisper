@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Train encoder-decoder model on Al-Fatiha full segments → full transcriptions
+Train encoder-decoder model on Al-Baqara full segments → full transcriptions
 """
 import json
 import torch
@@ -158,22 +158,47 @@ def train_full_segments(model, segment_files, transcriptions, vocab, num_epochs=
 # Main
 # ==============================================================
 def main():
-    datasets_dir = "audio"
+    import sys
+    dataset_name = sys.argv[1] if len(sys.argv) > 1 else "base"
+    datasets_dir = f"../{dataset_name}/audio"
     vocab_path = "../../vocabulary.json"
-    model_path = "../../encoder_decoder_model.pt"
+    model_path = "../../models/encoder_decoder_model.pt"
 
     # Load vocab
     with open(vocab_path, "r", encoding="utf-8") as f:
         vocab = json.load(f)
     print(f"Vocabulary size: {len(vocab)}")
 
-    # Load Al-Fatiha (001)
-    fatiha_text_path = "001.txt"
-    with open(fatiha_text_path, "r", encoding="utf-8") as f:
-        all_transcriptions = [line.strip() for line in f if line.strip()]
-    all_segment_files = sorted(glob.glob(os.path.join(datasets_dir, "001-*.wav")))
-    print(f"Loaded {len(all_transcriptions)} Al-Fatiha transcriptions, {len(all_segment_files)} segments")
-    print("Training on: Al-Fatiha full segments → full transcriptions")
+    # Load Al-Baqara segments
+    all_transcriptions = []
+    all_segment_files = []
+
+    # Load Al-Baqara part 1 (002-01)
+    baqara_01_text_path = f"../{dataset_name}/text/002-01.txt"
+    with open(baqara_01_text_path, "r", encoding="utf-8") as f:
+        baqara_01_transcriptions = [line.strip() for line in f if line.strip()]
+    baqara_01_segments = sorted(glob.glob(os.path.join(datasets_dir, "002-01-*.wav")))
+    print(f"Loaded {len(baqara_01_transcriptions)} Al-Baqara part 1 transcriptions, {len(baqara_01_segments)} segments")
+
+    # Load Al-Baqara part 2 (002-02)
+    baqara_02_text_path = f"../{dataset_name}/text/002-02.txt"
+    with open(baqara_02_text_path, "r", encoding="utf-8") as f:
+        baqara_02_transcriptions = [line.strip() for line in f if line.strip()]
+    baqara_02_segments = sorted(glob.glob(os.path.join(datasets_dir, "002-02-*.wav")))
+    print(f"Loaded {len(baqara_02_transcriptions)} Al-Baqara part 2 transcriptions, {len(baqara_02_segments)} segments")
+
+    # Load Al-Baqara part 3 (002-03)
+    baqara_03_text_path = f"../{dataset_name}/text/002-03.txt"
+    with open(baqara_03_text_path, "r", encoding="utf-8") as f:
+        baqara_03_transcriptions = [line.strip() for line in f if line.strip()]
+    baqara_03_segments = sorted(glob.glob(os.path.join(datasets_dir, "002-03-*.wav")))
+    print(f"Loaded {len(baqara_03_transcriptions)} Al-Baqara part 3 transcriptions, {len(baqara_03_segments)} segments")
+
+    # Combine all Baqara datasets
+    all_transcriptions = baqara_01_transcriptions + baqara_02_transcriptions + baqara_03_transcriptions
+    all_segment_files = baqara_01_segments + baqara_02_segments + baqara_03_segments
+    print(f"\n✓ Total Al-Baqara: {len(all_transcriptions)} transcriptions, {len(all_segment_files)} segments")
+    print("Training on: Al-Baqara full segments → full transcriptions")
 
     # Create smaller 128-dimension encoder-decoder
     model = EncoderDecoderTransformer(

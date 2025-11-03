@@ -3,7 +3,10 @@
 # Run all training scripts by calling individual train_*.sh scripts (curriculum learning)
 #
 
-LOG_FILE="../../log_train.txt"
+# Get dataset name parameter (defaults to base)
+DATASET=${1:-base}
+
+LOG_FILE="../${DATASET}/log/log_train.txt"
 
 echo "============================================================" | tee "$LOG_FILE"
 echo "RUNNING ALL TRAINING SCRIPTS (CURRICULUM LEARNING)" | tee -a "$LOG_FILE"
@@ -29,7 +32,7 @@ run_training_suite() {
 
     local suite_start=$(date +%s)
 
-    if ./"$script" >> "$LOG_FILE" 2>&1; then
+    if ./"$script" "$DATASET" >> "$LOG_FILE" 2>&1; then
         local suite_end=$(date +%s)
         local elapsed=$((suite_end - suite_start))
         local minutes=$((elapsed / 60))
@@ -46,17 +49,12 @@ run_training_suite() {
 
         echo "" | tee -a "$LOG_FILE"
         echo "✗ FAILED: $suite_name (${minutes}m ${seconds}s)" | tee -a "$LOG_FILE"
-        FAILED=$((FAILED + 1))
-
-        # Ask if user wants to continue
         echo "" | tee -a "$LOG_FILE"
-        echo "⚠️  Training failed at $suite_name" | tee -a "$LOG_FILE"
-        echo "Do you want to continue with remaining suites? (y/n)" | tee -a "$LOG_FILE"
-        read -r response
-        if [ "$response" != "y" ] && [ "$response" != "Y" ]; then
-            echo "Aborting training pipeline." | tee -a "$LOG_FILE"
-            return 1
-        fi
+        echo "ERROR: Training suite failed. Check $LOG_FILE for details." | tee -a "$LOG_FILE"
+        echo "Last 30 lines of log:" | tee -a "$LOG_FILE"
+        tail -30 "$LOG_FILE" | tee -a "$LOG_FILE"
+        FAILED=$((FAILED + 1))
+        return 1
     fi
 
     echo "" | tee -a "$LOG_FILE"

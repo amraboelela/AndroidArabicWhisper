@@ -71,24 +71,26 @@ def test_baqara_first_3_seconds():
     torch.manual_seed(42)
     print("🎲 Random seed set to 42 for reproducibility")
 
-    datasets_dir = "audio"
+    import sys
+    dataset_name = sys.argv[1] if len(sys.argv) > 1 else "base"
+    datasets_dir = f"../{dataset_name}/audio"
     vocab_path = "../../vocabulary.json"
-    model_path = "../../encoder_decoder_model.pt"
+    model_path = f"../../models/encoder_decoder_model_{dataset_name}.pt"
 
     test_sets = [
         {
             "name": "Al-Baqara Part 1 (002-01)",
-            "text_path": "002-01.txt",
+            "text_path": f"../{dataset_name}/002-01.txt",
             "pattern": "002-01-*.wav"
         },
         {
             "name": "Al-Baqara Part 2 (002-02)",
-            "text_path": "002-02.txt",
+            "text_path": f"../{dataset_name}/002-02.txt",
             "pattern": "002-02-*.wav"
         },
         {
             "name": "Al-Baqara Part 3 (002-03)",
-            "text_path": "002-03.txt",
+            "text_path": f"../{dataset_name}/002-03.txt",
             "pattern": "002-03-*.wav"
         }
     ]

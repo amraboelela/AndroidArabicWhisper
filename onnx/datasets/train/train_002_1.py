@@ -74,7 +74,7 @@ def tokenize_text(text, vocab):
 # ==============================================================
 # Training
 # ==============================================================
-def train_first_second(model, segment_files, transcriptions, vocab, num_epochs=5, learning_rate=1e-5):
+def train_first_second(model, segment_files, transcriptions, vocab, dataset_name, num_epochs=5, learning_rate=1e-5):
     model = model.to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=0.01)
     criterion = nn.CrossEntropyLoss(ignore_index=-100, label_smoothing=0.1)
@@ -126,7 +126,7 @@ def train_first_second(model, segment_files, transcriptions, vocab, num_epochs=5
                 "model": model.state_dict(),
                 "optimizer": optimizer.state_dict(),
                 "epoch": epoch
-            }, "../../../checkpoint_best_first_second.pt")
+            }, "../../models/checkpoint_best_first_second.pt")
             best_marker = " ⭐ NEW BEST!"
         else:
             best_marker = ""
@@ -166,9 +166,11 @@ def train_first_second(model, segment_files, transcriptions, vocab, num_epochs=5
 # Main
 # ==============================================================
 def main():
-    datasets_dir = "audio"
+    import sys
+    dataset_name = sys.argv[1] if len(sys.argv) > 1 else "base"
+    datasets_dir = f"../{dataset_name}/audio"
     vocab_path = "../../vocabulary.json"
-    model_path = "../../encoder_decoder_model.pt"
+    model_path = "../../models/encoder_decoder_model.pt"
 
     # Load vocab
     with open(vocab_path, "r", encoding="utf-8") as f:
@@ -180,21 +182,21 @@ def main():
     all_segment_files = []
 
     # Load Al-Baqara part 1 (002-01)
-    baqara_01_text_path = "002-01.txt"
+    baqara_01_text_path = f"../{dataset_name}/text/002-01.txt"
     with open(baqara_01_text_path, "r", encoding="utf-8") as f:
         baqara_01_transcriptions = [line.strip() for line in f if line.strip()]
     baqara_01_segments = sorted(glob.glob(os.path.join(datasets_dir, "002-01-*.wav")))
     print(f"Loaded {len(baqara_01_transcriptions)} Al-Baqara part 1 transcriptions, {len(baqara_01_segments)} segments")
 
     # Load Al-Baqara part 2 (002-02)
-    baqara_02_text_path = "002-02.txt"
+    baqara_02_text_path = f"../{dataset_name}/text/002-02.txt"
     with open(baqara_02_text_path, "r", encoding="utf-8") as f:
         baqara_02_transcriptions = [line.strip() for line in f if line.strip()]
     baqara_02_segments = sorted(glob.glob(os.path.join(datasets_dir, "002-02-*.wav")))
     print(f"Loaded {len(baqara_02_transcriptions)} Al-Baqara part 2 transcriptions, {len(baqara_02_segments)} segments")
 
     # Load Al-Baqara part 3 (002-03)
-    baqara_03_text_path = "002-03.txt"
+    baqara_03_text_path = f"../{dataset_name}/text/002-03.txt"
     with open(baqara_03_text_path, "r", encoding="utf-8") as f:
         baqara_03_transcriptions = [line.strip() for line in f if line.strip()]
     baqara_03_segments = sorted(glob.glob(os.path.join(datasets_dir, "002-03-*.wav")))
@@ -237,6 +239,7 @@ def main():
         all_segment_files,
         all_transcriptions,
         vocab,
+        dataset_name,
         num_epochs=5,
         learning_rate=1e-5
     )

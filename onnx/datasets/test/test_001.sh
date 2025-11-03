@@ -1,12 +1,20 @@
 #!/bin/bash
 #
-# Run all test scripts by calling individual test_*.sh scripts
+# Run test scripts for Al-Fatiha (001) and log results to log_test_001.txt
+#
+# Test scripts:
+# 1. test_001.py - Al-Fatiha (001) full segments
+# 2. test_001_1.py - Al-Fatiha (001) first 1 second
+# 3. test_001_3.py - Al-Fatiha (001) first 3 seconds
 #
 
-LOG_FILE="../../log_test.txt"
+# Get dataset name parameter (defaults to base)
+DATASET=${1:-base}
+
+LOG_FILE="../${DATASET}/log/log_test_001.txt"
 
 echo "============================================================" | tee "$LOG_FILE"
-echo "RUNNING ALL TEST SCRIPTS" | tee -a "$LOG_FILE"
+echo "RUNNING AL-FATIHA (001) TEST SCRIPTS" | tee -a "$LOG_FILE"
 echo "Started: $(date)" | tee -a "$LOG_FILE"
 echo "============================================================" | tee -a "$LOG_FILE"
 echo "" | tee -a "$LOG_FILE"
@@ -18,24 +26,21 @@ FAILED=0
 TOTAL_CORRECT=0
 TOTAL_SAMPLES=0
 
-# Function to run a test suite
-run_test_suite() {
+# Function to run a test script
+run_test() {
     local script=$1
-    local suite_name=$2
     TOTAL=$((TOTAL + 1))
 
-    echo "============================================================" | tee -a "$LOG_FILE"
-    echo "[$TOTAL/2] Running: $suite_name" | tee -a "$LOG_FILE"
-    echo "============================================================" | tee -a "$LOG_FILE"
+    echo "------------------------------------------------------------" | tee -a "$LOG_FILE"
+    echo "[$TOTAL/3] Running: $script" | tee -a "$LOG_FILE"
+    echo "------------------------------------------------------------" | tee -a "$LOG_FILE"
 
-    if ./"$script" >> "$LOG_FILE" 2>&1; then
-        # Extract overall accuracy from the suite's log
-        local suite_log="${script/test_/../../log_test_}"
-        suite_log="${suite_log/.sh/.txt}"
-        local accuracy=$(grep "Overall Accuracy:" "$suite_log" | tail -1 | grep -o "([0-9.]*%)" | tr -d "()")
+    if python3 "$script" >> "$LOG_FILE" 2>&1; then
+        # Extract accuracy percentage from log file (handles both "Accuracy:" and "Token accuracy:")
+        local accuracy=$(grep -E "(Token accuracy|Accuracy): [0-9]*/[0-9]* \([0-9.]*%\)" "$LOG_FILE" | tail -1 | grep -o "([0-9.]*%)" | tr -d "()")
 
-        # Extract correct/total counts
-        local counts=$(grep "Overall Accuracy:" "$suite_log" | tail -1 | grep -o "[0-9]*/[0-9]*")
+        # Extract correct/total counts for overall accuracy
+        local counts=$(grep -E "(Token accuracy|Accuracy): [0-9]*/[0-9]* \([0-9.]*%\)" "$LOG_FILE" | tail -1 | grep -o "[0-9]*/[0-9]*")
         if [ -n "$counts" ]; then
             local correct=$(echo "$counts" | cut -d'/' -f1)
             local total=$(echo "$counts" | cut -d'/' -f2)
@@ -44,30 +49,31 @@ run_test_suite() {
         fi
 
         if [ -n "$accuracy" ]; then
-            echo "✓ PASSED: $suite_name - $accuracy" | tee -a "$LOG_FILE"
+            echo "✓ PASSED: $script - $accuracy" | tee -a "$LOG_FILE"
         else
-            echo "✓ PASSED: $suite_name" | tee -a "$LOG_FILE"
+            echo "✓ PASSED: $script" | tee -a "$LOG_FILE"
         fi
         PASSED=$((PASSED + 1))
     else
-        echo "✗ FAILED: $suite_name" | tee -a "$LOG_FILE"
+        echo "✗ FAILED: $script" | tee -a "$LOG_FILE"
         FAILED=$((FAILED + 1))
     fi
 
     echo "" | tee -a "$LOG_FILE"
 }
 
-# Run all test suites
-run_test_suite "test_001.sh" "Al-Fatiha (001) Tests"
-run_test_suite "test_002.sh" "Al-Baqara (002) Tests"
+# Run all test scripts for 001
+run_test "test_001.py"
+run_test "test_001_1.py"
+run_test "test_001_3.py"
 
 # Summary
 echo "============================================================" | tee -a "$LOG_FILE"
-echo "TEST SUMMARY" | tee -a "$LOG_FILE"
+echo "AL-FATIHA (001) TEST SUMMARY" | tee -a "$LOG_FILE"
 echo "============================================================" | tee -a "$LOG_FILE"
-echo "Total:  $TOTAL test suites" | tee -a "$LOG_FILE"
-echo "Passed: $PASSED test suites" | tee -a "$LOG_FILE"
-echo "Failed: $FAILED test suites" | tee -a "$LOG_FILE"
+echo "Total:  $TOTAL tests" | tee -a "$LOG_FILE"
+echo "Passed: $PASSED tests" | tee -a "$LOG_FILE"
+echo "Failed: $FAILED tests" | tee -a "$LOG_FILE"
 
 # Calculate and display overall accuracy
 if [ $TOTAL_SAMPLES -gt 0 ]; then
@@ -81,7 +87,7 @@ echo "============================================================" | tee -a "$L
 # Exit with error if any tests failed
 if [ $FAILED -gt 0 ]; then
     echo "" | tee -a "$LOG_FILE"
-    echo "⚠️  Some test suites failed. Check $LOG_FILE for details." | tee -a "$LOG_FILE"
+    echo "⚠️  Some tests failed. Check $LOG_FILE for details." | tee -a "$LOG_FILE"
     exit 1
 else
     echo "" | tee -a "$LOG_FILE"

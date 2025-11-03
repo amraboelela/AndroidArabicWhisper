@@ -1,17 +1,21 @@
 #!/bin/bash
 #
-# Run training scripts for Al-Fatiha (001) and log results to log_train_001.txt
+# Run training scripts for Al-Baqara (002) and log results to log_train_002.txt
 #
 # Training scripts (curriculum learning order):
-# 1. train_001_1.py - Al-Fatiha (001) first 1 second → first word
-# 2. train_001_3.py - Al-Fatiha (001) first 3 seconds → first 2 words
-# 3. train_001.py - Al-Fatiha (001) full segments → full transcriptions
+# 1. train_002_1.py - Al-Baqara (002) first 1 second → first word
+# 2. train_002_3.py - Al-Baqara (002) first 3 seconds → first 2 words
+# 3. train_002_4.py - Al-Baqara (002) first 4 seconds → first 3 words
+# 4. train_002.py - Al-Baqara (002) full segments → full transcriptions
 #
 
-LOG_FILE="../../log_train_001.txt"
+# Get dataset name parameter (defaults to base)
+DATASET=${1:-base}
+
+LOG_FILE="../${DATASET}/log/log_train_002.txt"
 
 echo "============================================================" | tee "$LOG_FILE"
-echo "RUNNING AL-FATIHA (001) TRAINING SCRIPTS (CURRICULUM LEARNING)" | tee -a "$LOG_FILE"
+echo "RUNNING AL-BAQARA (002) TRAINING SCRIPTS (CURRICULUM LEARNING)" | tee -a "$LOG_FILE"
 echo "Started: $(date)" | tee -a "$LOG_FILE"
 echo "============================================================" | tee -a "$LOG_FILE"
 echo "" | tee -a "$LOG_FILE"
@@ -25,15 +29,16 @@ START_TIME=$(date +%s)
 # Function to run a training script
 run_training() {
     local script=$1
+    local dataset=$2
     TOTAL=$((TOTAL + 1))
 
     echo "============================================================" | tee -a "$LOG_FILE"
-    echo "[$TOTAL/3] Starting: $script" | tee -a "$LOG_FILE"
+    echo "[$TOTAL/4] Starting: $script" | tee -a "$LOG_FILE"
     echo "============================================================" | tee -a "$LOG_FILE"
 
     local script_start=$(date +%s)
 
-    if python3 "$script" >> "$LOG_FILE" 2>&1; then
+    if python3 "./$script" "$dataset" >> "$LOG_FILE" 2>&1; then
         local script_end=$(date +%s)
         local elapsed=$((script_end - script_start))
 
@@ -52,27 +57,23 @@ run_training() {
         local elapsed=$((script_end - script_start))
         echo "" | tee -a "$LOG_FILE"
         echo "✗ FAILED: $script (${elapsed}s)" | tee -a "$LOG_FILE"
-        FAILED=$((FAILED + 1))
-
-        # Ask if user wants to continue
         echo "" | tee -a "$LOG_FILE"
-        echo "⚠️  Training failed at $script" | tee -a "$LOG_FILE"
-        echo "Do you want to continue with remaining scripts? (y/n)" | tee -a "$LOG_FILE"
-        read -r response
-        if [ "$response" != "y" ] && [ "$response" != "Y" ]; then
-            echo "Aborting training pipeline." | tee -a "$LOG_FILE"
-            return 1
-        fi
+        echo "ERROR: Training failed. Check $LOG_FILE for details." | tee -a "$LOG_FILE"
+        echo "Last 20 lines of log:" | tee -a "$LOG_FILE"
+        tail -20 "$LOG_FILE" | tee -a "$LOG_FILE"
+        FAILED=$((FAILED + 1))
+        return 1
     fi
 
     echo "" | tee -a "$LOG_FILE"
     return 0
 }
 
-# Run all training scripts for 001 in curriculum learning order
-run_training "train_001_1.py" || exit 1
-run_training "train_001_3.py" || exit 1
-run_training "train_001.py" || exit 1
+# Run all training scripts for 002 in curriculum learning order
+run_training "train_002_1.py" "$DATASET" || exit 1
+run_training "train_002_3.py" "$DATASET" || exit 1
+run_training "train_002_4.py" "$DATASET" || exit 1
+run_training "train_002.py" "$DATASET" || exit 1
 
 # Summary
 END_TIME=$(date +%s)
@@ -81,7 +82,7 @@ MINUTES=$((TOTAL_ELAPSED / 60))
 SECONDS=$((TOTAL_ELAPSED % 60))
 
 echo "============================================================" | tee -a "$LOG_FILE"
-echo "AL-FATIHA (001) TRAINING SUMMARY" | tee -a "$LOG_FILE"
+echo "AL-BAQARA (002) TRAINING SUMMARY" | tee -a "$LOG_FILE"
 echo "============================================================" | tee -a "$LOG_FILE"
 echo "Total:     $TOTAL training scripts" | tee -a "$LOG_FILE"
 echo "Completed: $PASSED scripts" | tee -a "$LOG_FILE"

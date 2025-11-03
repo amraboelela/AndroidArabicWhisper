@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+#\!/usr/bin/env python3
 """
-Test encoder-decoder model on first-second of Al-Baqara segments, expecting only first word
+Test encoder-decoder model on first 4 seconds of Al-Baqara segments, expecting first 3 words
 """
 import json
 import torch
@@ -12,15 +12,15 @@ sys.path.append("../..")
 from encoder_decoder_transformer import EncoderDecoderTransformer
 
 
-def extract_first_second_mel(audio_path, n_mels=80, target_seconds=1.0):
-    """Extract mel features from only the first second of the audio"""
+def extract_first_seconds_mel(audio_path, n_mels=80, target_seconds=4.0):
+    """Extract mel features from only the first N seconds of the audio"""
     waveform, sample_rate = torchaudio.load(audio_path)
 
     # Convert stereo to mono
     if waveform.shape[0] > 1:
         waveform = waveform.mean(dim=0, keepdim=True)
 
-    # Trim to first second
+    # Trim to first N seconds
     num_samples = int(sample_rate * target_seconds)
     if waveform.shape[1] > num_samples:
         waveform = waveform[:, :num_samples]
@@ -54,8 +54,8 @@ def normalize_text(text):
     return " ".join(normalized.split())
 
 
-def test_baqara_first_second():
-    """Evaluate trained model using only first second of Al-Baqara segments"""
+def test_baqara_first_4_seconds():
+    """Evaluate trained model using only first 4 seconds of Al-Baqara segments"""
     # Device
     if torch.backends.mps.is_available():
         device = torch.device("mps")
@@ -71,24 +71,26 @@ def test_baqara_first_second():
     torch.manual_seed(42)
     print("🎲 Random seed set to 42 for reproducibility")
 
-    datasets_dir = "audio"
+    import sys
+    dataset_name = sys.argv[1] if len(sys.argv) > 1 else "base"
+    datasets_dir = f"../{dataset_name}/audio"
     vocab_path = "../../vocabulary.json"
-    model_path = "../../encoder_decoder_model.pt"
+    model_path = f"../../models/encoder_decoder_model_{dataset_name}.pt"
 
     test_sets = [
         {
             "name": "Al-Baqara Part 1 (002-01)",
-            "text_path": "002-01.txt",
+            "text_path": f"../{dataset_name}/002-01.txt",
             "pattern": "002-01-*.wav"
         },
         {
             "name": "Al-Baqara Part 2 (002-02)",
-            "text_path": "002-02.txt",
+            "text_path": f"../{dataset_name}/002-02.txt",
             "pattern": "002-02-*.wav"
         },
         {
             "name": "Al-Baqara Part 3 (002-03)",
-            "text_path": "002-03.txt",
+            "text_path": f"../{dataset_name}/002-03.txt",
             "pattern": "002-03-*.wav"
         }
     ]
@@ -114,14 +116,14 @@ def test_baqara_first_second():
     print(f"Loading trained weights from {model_path}...")
     model.load_state_dict(torch.load(model_path, map_location=device))
     model.eval()
-    print("✓ Model loaded successfully!")
+    print("✓ Model loaded successfully\!")
 
     overall_correct = 0
     overall_total = 0
 
     for test_set in test_sets:
         print(f"\n{'='*60}")
-        print(f"Testing (first 1s → first word): {test_set['name']}")
+        print(f"Testing (first 4s → first 3 words): {test_set['name']}")
         print(f"{'='*60}")
 
         with open(test_set["text_path"], "r", encoding="utf-8") as f:
@@ -135,22 +137,23 @@ def test_baqara_first_second():
 
         for i, (segment_file, expected_text) in enumerate(zip(segment_files, expected_texts), 1):
             segment_name = os.path.basename(segment_file)
-            first_word = expected_text.split()[0] if expected_text.split() else ""
+            words = expected_text.split()
+            first_three_words = " ".join(words[:3]) if len(words) >= 3 else expected_text
             print(f"\n[Segment {i}/{len(segment_files)}] {segment_name}")
-            print(f"Expected (first word): {first_word}")
+            print(f"Expected (first 3 words): {first_three_words}")
 
-            # Extract only first-second mel
-            mel_features = extract_first_second_mel(segment_file)
+            # Extract first 4 seconds mel
+            mel_features = extract_first_seconds_mel(segment_file, target_seconds=4.0)
             audio_batch = mel_features.transpose(0, 1).unsqueeze(0).to(device)
 
             with torch.no_grad():
                 generated_ids = model.generate(
                     audio_batch,
-                    max_new_tokens=20,
+                    max_new_tokens=30,
                     temperature=1.0,
                     min_tokens=1,
                     use_sampling=False,
-                    audio_duration_seconds=1.0
+                    audio_duration_seconds=4.0
                 )
 
             tokens = generated_ids[0].tolist()
@@ -160,13 +163,13 @@ def test_baqara_first_second():
                 tokens = tokens[:tokens.index(2)]
             generated_words = [id_to_token[idx] for idx in tokens if idx in id_to_token]
 
-            # Take first word from model output
-            generated_first_word = generated_words[0] if generated_words else ""
-            print(f"Generated (first word): {generated_first_word}")
+            # Take first 3 words from model output
+            generated_first_three = " ".join(generated_words[:3]) if len(generated_words) >= 3 else " ".join(generated_words)
+            print(f"Generated (first 3 words): {generated_first_three}")
 
             # Compare normalized
-            normalized_generated = normalize_text(generated_first_word)
-            normalized_expected = normalize_text(first_word)
+            normalized_generated = normalize_text(generated_first_three)
+            normalized_expected = normalize_text(first_three_words)
             match = "✓" if normalized_generated == normalized_expected else "✗"
             print(f"Match: {match}")
 
@@ -175,7 +178,7 @@ def test_baqara_first_second():
             total_segments += 1
 
         accuracy = (total_correct / total_segments * 100) if total_segments > 0 else 0.0
-        print(f"\n{test_set['name']} (1s → first-word) RESULTS")
+        print(f"\n{test_set['name']} (4s → first 3 words) RESULTS")
         print("="*60)
         print(f"Accuracy: {total_correct}/{total_segments} ({accuracy:.1f}%)")
         overall_correct += total_correct
@@ -183,10 +186,10 @@ def test_baqara_first_second():
 
     overall_accuracy = (overall_correct / overall_total * 100) if overall_total > 0 else 0.0
     print(f"\n{'='*60}")
-    print("OVERALL RESULTS (Al-Baqara 1s → first word)")
+    print("OVERALL RESULTS (Al-Baqara 4s → first 3 words)")
     print("="*60)
     print(f"Accuracy: {overall_correct}/{overall_total} ({overall_accuracy:.1f}%)")
 
 
 if __name__ == "__main__":
-    test_baqara_first_second()
+    test_baqara_first_4_seconds()

@@ -6,9 +6,13 @@
 # 1. test_002.py - Al-Baqara (002) full segments
 # 2. test_002_1.py - Al-Baqara (002) first 1 second
 # 3. test_002_3.py - Al-Baqara (002) first 3 seconds
+# 4. test_002_4.py - Al-Baqara (002) first 4 seconds
 #
 
-LOG_FILE="../../log_test_002.txt"
+# Get dataset name parameter (defaults to base)
+DATASET=${1:-base}
+
+LOG_FILE="../${DATASET}/log/log_test_002.txt"
 
 echo "============================================================" | tee "$LOG_FILE"
 echo "RUNNING AL-BAQARA (002) TEST SCRIPTS" | tee -a "$LOG_FILE"
@@ -29,7 +33,7 @@ run_test() {
     TOTAL=$((TOTAL + 1))
 
     echo "------------------------------------------------------------" | tee -a "$LOG_FILE"
-    echo "[$TOTAL/3] Running: $script" | tee -a "$LOG_FILE"
+    echo "[$TOTAL/4] Running: $script" | tee -a "$LOG_FILE"
     echo "------------------------------------------------------------" | tee -a "$LOG_FILE"
 
     if python3 "$script" >> "$LOG_FILE" 2>&1; then
@@ -63,6 +67,7 @@ run_test() {
 run_test "test_002.py"
 run_test "test_002_1.py"
 run_test "test_002_3.py"
+run_test "test_002_4.py"
 
 # Summary
 echo "============================================================" | tee -a "$LOG_FILE"
