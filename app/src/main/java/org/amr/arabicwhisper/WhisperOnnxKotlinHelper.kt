@@ -236,7 +236,6 @@ class WhisperOnnxKotlinHelper(private val context: Context) {
     }
 
     Log.d("#whisper-onnx", "✅ Decoder generated ${generatedTokens.size} tokens")
-    Log.d("#whisper-onnx", "Generated tokens: $generatedTokens")
 
     encoderInput.close()
     encoderOutputs.close()
@@ -254,11 +253,13 @@ class WhisperOnnxKotlinHelper(private val context: Context) {
   }
 
   /**
-   * Extract mel spectrogram features using C++ native implementation
+   * Extract mel spectrogram features using pure Kotlin implementation
    * This matches the Python faster-whisper preprocessing exactly
    */
   private fun extractMelFeatures(audio: FloatArray): Array<FloatArray> {
-    Log.d("#whisper-onnx", "Using C++ native preprocessing for ${audio.size} samples")
+    Log.d("#whisper-onnx", "========================================")
+    Log.d("#whisper-onnx", "🎯 Using Kotlin preprocessing for ${audio.size} samples")
+    Log.d("#whisper-onnx", "========================================")
 
     try {
       // Pad or truncate to N_SAMPLES (30 seconds at 16kHz)
@@ -266,29 +267,56 @@ class WhisperOnnxKotlinHelper(private val context: Context) {
       val copyLength = min(audio.size, N_SAMPLES)
       audio.copyInto(paddedAudio, 0, 0, copyLength)
 
-      Log.d("#whisper-onnx", "Padded audio to ${paddedAudio.size} samples")
+      Log.d("#whisper-onnx", "✅ Padded audio to ${paddedAudio.size} samples")
 
-      // Use native C++ preprocessing (whisper_audio.cpp)
-      val melFeatures = extractMelFeaturesNative(paddedAudio)
+      // Step 1: Compute STFT magnitudes
+      Log.d("#whisper-onnx", "🔧 Computing STFT...")
+      val targetFrames = 3000  // Whisper expects exactly 3000 frames
+      val stft = computeSTFT(paddedAudio, N_FFT, HOP_LENGTH, targetFrames)
+      Log.d("#whisper-onnx", "✅ STFT shape: ${stft.size} x ${stft[0].size}")
 
-      Log.d("#whisper-onnx", "Native C++ mel features shape: ${melFeatures.size} x ${melFeatures[0].size}")
+      // Step 2: Apply mel filterbank
+      Log.d("#whisper-onnx", "🔧 Applying mel filterbank...")
+      val melSpec = applyMelFilterbank(stft)
+      Log.d("#whisper-onnx", "✅ Mel spectrogram shape: ${melSpec.size} x ${melSpec[0].size}")
 
-      // Log statistics for comparison with Python
-      val min = melFeatures.flatMap { it.toList() }.minOrNull() ?: 0f
-      val max = melFeatures.flatMap { it.toList() }.maxOrNull() ?: 0f
-      val mean = melFeatures.flatMap { it.toList() }.average().toFloat()
-      val std = sqrt(melFeatures.flatMap { it.toList() }.map { (it - mean) * (it - mean) }.average()).toFloat()
-      Log.d("#whisper-onnx", "Mel stats: min=${"%.6f".format(min)}, max=${"%.6f".format(max)}, mean=${"%.6f".format(mean)}, std=${"%.6f".format(std)}")
-      Log.d("#whisper-onnx", "Mel[0] first 10: ${melFeatures[0].take(10).joinToString { "%.6f".format(it) }}")
-      Log.d("#whisper-onnx", "Mel[40] first 10: ${melFeatures[40].take(10).joinToString { "%.6f".format(it) }}")
+      // Step 3: Apply log10 transform
+      Log.d("#whisper-onnx", "🔧 Applying log10 transform...")
+      val logMelSpec = Array(melSpec.size) { i ->
+        FloatArray(melSpec[i].size) { j ->
+          log10(max(melSpec[i][j], 1e-10f))
+        }
+      }
+      Log.d("#whisper-onnx", "✅ Log-mel shape: ${logMelSpec.size} x ${logMelSpec[0].size}")
 
-      return melFeatures
-    } catch (e: UnsatisfiedLinkError) {
-      Log.e("#whisper-onnx", "Native library not loaded: ${e.message}", e)
-      throw RuntimeException("Failed to load native preprocessing library", e)
+      // Step 4: Apply Whisper normalization (subtract mean, divide by std)
+      // These are the global statistics from Whisper training data
+      Log.d("#whisper-onnx", "🔧 Applying Whisper normalization...")
+      val WHISPER_MEL_MEAN = -4.2677393f
+      val WHISPER_MEL_STD = 4.5689974f
+
+      val normalizedMel = Array(logMelSpec.size) { i ->
+        FloatArray(logMelSpec[i].size) { j ->
+          (logMelSpec[i][j] - WHISPER_MEL_MEAN) / WHISPER_MEL_STD
+        }
+      }
+      Log.d("#whisper-onnx", "✅ Normalization complete")
+
+      // Log statistics for verification
+      val min = normalizedMel.flatMap { it.toList() }.minOrNull() ?: 0f
+      val max = normalizedMel.flatMap { it.toList() }.maxOrNull() ?: 0f
+      val mean = normalizedMel.flatMap { it.toList() }.average().toFloat()
+      val std = sqrt(normalizedMel.flatMap { it.toList() }.map { (it - mean) * (it - mean) }.average()).toFloat()
+      Log.d("#whisper-onnx", "📊 Mel stats: min=${"%.6f".format(min)}, max=${"%.6f".format(max)}, mean=${"%.6f".format(mean)}, std=${"%.6f".format(std)}")
+      Log.d("#whisper-onnx", "📊 Mel[0] first 10: ${normalizedMel[0].take(10).joinToString(", ") { "%.6f".format(it) }}")
+      Log.d("#whisper-onnx", "📊 Mel[40] first 10: ${normalizedMel[40].take(10).joinToString(", ") { "%.6f".format(it) }}")
+      Log.d("#whisper-onnx", "========================================")
+
+      return normalizedMel
     } catch (e: Exception) {
-      Log.e("#whisper-onnx", "C++ preprocessing failed: ${e.message}", e)
-      throw RuntimeException("C++ preprocessing failed", e)
+      Log.e("#whisper-onnx", "❌ Kotlin preprocessing FAILED: ${e.message}", e)
+      e.printStackTrace()
+      throw RuntimeException("Kotlin mel extraction failed", e)
     }
   }
 
@@ -299,10 +327,12 @@ class WhisperOnnxKotlinHelper(private val context: Context) {
   private fun computeSTFT(audio: FloatArray, nFFT: Int, hopLength: Int, targetFrames: Int): Array<FloatArray> {
     val fftBins = nFFT / 2 + 1
 
-    // Hann window
-    val window = FloatArray(nFFT) { i ->
-      (0.5 * (1.0 - cos(2.0 * PI * i / (nFFT - 1)))).toFloat()
+    // Hann window - match Python's np.hanning(n_fft + 1)[:-1]
+    // Create window_size + 1 elements, then drop the last one
+    val windowTemp = FloatArray(nFFT + 1) { i ->
+      (0.5 * (1.0 - cos(2.0 * PI * i / nFFT))).toFloat()
     }
+    val window = windowTemp.copyOfRange(0, nFFT)  // Drop the last element
 
     // Apply center padding (pad audio by N_FFT // 2 on both sides)
     val padSize = nFFT / 2
@@ -337,11 +367,12 @@ class WhisperOnnxKotlinHelper(private val context: Context) {
       // Compute FFT (in-place)
       fft.complexForward(fftInput)
 
-      // Extract magnitude spectrum
+      // Extract magnitude SQUARED (to match C++ and Python librosa with power=2.0)
       for (i in 0 until fftBins) {
         val real = fftInput[i * 2]
         val imag = fftInput[i * 2 + 1]
-        magnitudes[i][frame] = sqrt(real * real + imag * imag)
+        val mag = sqrt(real * real + imag * imag)
+        magnitudes[i][frame] = mag * mag  // Square the magnitude
       }
     }
 
@@ -394,6 +425,13 @@ class WhisperOnnxKotlinHelper(private val context: Context) {
           }
         }
       }
+
+      // Apply Slaney-style normalization (same as C++ implementation)
+      // This normalizes the mel filters to have consistent energy
+      val enorm = 2.0f / (endHz - startHz)
+      for (j in 0 until fftBins) {
+        melFilters[i][j] *= enorm
+      }
     }
 
     return melFilters
@@ -440,14 +478,12 @@ class WhisperOnnxKotlinHelper(private val context: Context) {
   }
 
   private fun decodeTokens(tokens: List<Int>): String {
-    Log.d("#whisper-onnx", "🔧 decodeTokens() called with ${tokens.size} total tokens")
-    Log.d("#whisper-onnx", "All tokens: $tokens")
+    Log.d("#whisper-onnx", "🔧 Decoding ${tokens.size} total tokens...")
 
     // Skip special tokens (>= 50257)
     val textTokens = tokens.filter { it < 50257 }
 
-    Log.d("#whisper-onnx", "After filtering special tokens: ${textTokens.size} text tokens")
-    Log.d("#whisper-onnx", "Text tokens: ${textTokens.take(20)}")
+    Log.d("#whisper-onnx", "Text tokens after filtering: ${textTokens.size}")
 
     if (textTokens.isEmpty()) {
       Log.w("#whisper-onnx", "⚠️ No text tokens found! Only special tokens were generated.")
@@ -465,12 +501,8 @@ class WhisperOnnxKotlinHelper(private val context: Context) {
       str
     }
 
-    Log.d("#whisper-onnx", "Mapped to ${tokenStrings.size} BPE strings")
-    Log.d("#whisper-onnx", "First 10 BPE strings: ${tokenStrings.take(10)}")
-
     // Join all tokens
     val joined = tokenStrings.joinToString("")
-    Log.d("#whisper-onnx", "Joined BPE string (first 100 chars): ${joined.take(100)}")
 
     try {
       // Decode using GPT-2 BPE byte decoder
