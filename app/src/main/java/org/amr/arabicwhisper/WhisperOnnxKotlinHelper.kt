@@ -22,6 +22,9 @@ class WhisperOnnxKotlinHelper(private val context: Context) {
   private val audioBuffer = mutableListOf<Byte>()
   private val bufferLock = Any()
 
+  // Switch between Kotlin and C++ preprocessing
+  private val useCppPreprocessing = true  // Set to true to use C++ preprocessing, false for Kotlin
+
   // 4 seconds at 16kHz, 16-bit = 128000 bytes
   private val CHUNK_SIZE_BYTES = 128000
   private var isProcessing = false
@@ -71,7 +74,19 @@ class WhisperOnnxKotlinHelper(private val context: Context) {
       sessionOptions.setIntraOpNumThreads(4)
       sessionOptions.setInterOpNumThreads(4)
 
+      // Try to enable NNAPI (Android Neural Networks API) for GPU/NPU acceleration
+      Log.d("#whisper-onnx", "🔧 Attempting to enable NNAPI acceleration...")
+      try {
+        sessionOptions.addNnapi()
+        Log.d("#whisper-onnx", "✅ NNAPI (GPU/NPU acceleration) ENABLED")
+      } catch (e: Exception) {
+        Log.w("#whisper-onnx", "⚠️ NNAPI not available, using CPU only: ${e.message}")
+        e.printStackTrace()
+      }
+
+      Log.d("#whisper-onnx", "📦 Loading encoder model from: $encoderPath")
       encoderSession = env?.createSession(encoderPath, sessionOptions)
+      Log.d("#whisper-onnx", "📦 Loading decoder model from: $decoderPath")
       decoderSession = env?.createSession(decoderPath, sessionOptions)
 
       Log.d("#whisper-onnx", "✅ ONNX models loaded successfully")
@@ -188,14 +203,17 @@ class WhisperOnnxKotlinHelper(private val context: Context) {
 
       // Run encoder
       Log.d("#whisper-onnx", "🔧 Running ONNX encoder...")
+      val encoderStart = System.currentTimeMillis()
       val encoderInputName = encoderSession!!.inputNames.iterator().next()
       val encoderInput = OnnxTensor.createTensor(env, arrayOf(melFeatures))
       val encoderOutputs = encoderSession!!.run(mapOf(encoderInputName to encoderInput))
       val encoderHiddenStates = encoderOutputs[0].value as Array<Array<FloatArray>>
-      Log.d("#whisper-onnx", "✅ Encoder output shape: ${encoderHiddenStates.size} x ${encoderHiddenStates[0].size} x ${encoderHiddenStates[0][0].size}")
+      val encoderTime = System.currentTimeMillis() - encoderStart
+      Log.d("#whisper-onnx", "✅ Encoder output shape: ${encoderHiddenStates.size} x ${encoderHiddenStates[0].size} x ${encoderHiddenStates[0][0].size} (${encoderTime}ms)")
 
       // Run decoder with autoregressive generation
       Log.d("#whisper-onnx", "🔧 Running ONNX decoder...")
+      val decoderStart = System.currentTimeMillis()
       val decoderStartTokenId = 50258L  // <|startoftranscript|>
       val langTokenId = 50272L           // <|ar|>
       val taskTokenId = 50359L           // <|transcribe|>
@@ -235,7 +253,8 @@ class WhisperOnnxKotlinHelper(private val context: Context) {
       decoderOutputs.close()
     }
 
-    Log.d("#whisper-onnx", "✅ Decoder generated ${generatedTokens.size} tokens")
+    val decoderTime = System.currentTimeMillis() - decoderStart
+    Log.d("#whisper-onnx", "✅ Decoder generated ${generatedTokens.size} tokens (${decoderTime}ms)")
 
     encoderInput.close()
     encoderOutputs.close()
@@ -244,6 +263,9 @@ class WhisperOnnxKotlinHelper(private val context: Context) {
     Log.d("#whisper-onnx", "🔧 Decoding ${generatedTokens.size} tokens to text...")
     val result = decodeTokens(generatedTokens.map { it.toInt() })
     Log.d("#whisper-onnx", "✅ Final transcription: '$result'")
+
+    val totalInferenceTime = encoderTime + decoderTime
+    Log.d("#whisper-onnx", "⏱️ TOTAL inference time: ${totalInferenceTime}ms (Encoder: ${encoderTime}ms, Decoder: ${decoderTime}ms)")
     return result
     } catch (e: Exception) {
       Log.e("#whisper-onnx", "❌ transcribeAudio() failed: ${e.message}", e)
@@ -253,10 +275,26 @@ class WhisperOnnxKotlinHelper(private val context: Context) {
   }
 
   /**
+   * Extract mel spectrogram features
+   * Uses either C++ or Kotlin implementation based on useCppPreprocessing flag
+   */
+  private fun extractMelFeatures(audio: FloatArray): Array<FloatArray> {
+    return if (useCppPreprocessing) {
+      Log.d("#whisper-onnx", "🔧 Using C++ preprocessing...")
+      val result = extractMelFeaturesNative(audio)
+      Log.d("#whisper-onnx", "✅ C++ preprocessing complete: ${result.size} x ${result[0].size}")
+      result
+    } else {
+      extractMelFeaturesKotlin(audio)
+    }
+  }
+
+  /**
    * Extract mel spectrogram features using pure Kotlin implementation
    * This matches the Python faster-whisper preprocessing exactly
    */
-  private fun extractMelFeatures(audio: FloatArray): Array<FloatArray> {
+  private fun extractMelFeaturesKotlin(audio: FloatArray): Array<FloatArray> {
+    val startTime = System.currentTimeMillis()
     Log.d("#whisper-onnx", "========================================")
     Log.d("#whisper-onnx", "🎯 Using Kotlin preprocessing for ${audio.size} samples")
     Log.d("#whisper-onnx", "========================================")
@@ -271,27 +309,34 @@ class WhisperOnnxKotlinHelper(private val context: Context) {
 
       // Step 1: Compute STFT magnitudes
       Log.d("#whisper-onnx", "🔧 Computing STFT...")
+      val stftStart = System.currentTimeMillis()
       val targetFrames = 3000  // Whisper expects exactly 3000 frames
       val stft = computeSTFT(paddedAudio, N_FFT, HOP_LENGTH, targetFrames)
-      Log.d("#whisper-onnx", "✅ STFT shape: ${stft.size} x ${stft[0].size}")
+      val stftTime = System.currentTimeMillis() - stftStart
+      Log.d("#whisper-onnx", "✅ STFT shape: ${stft.size} x ${stft[0].size} (${stftTime}ms)")
 
       // Step 2: Apply mel filterbank
       Log.d("#whisper-onnx", "🔧 Applying mel filterbank...")
+      val melStart = System.currentTimeMillis()
       val melSpec = applyMelFilterbank(stft)
-      Log.d("#whisper-onnx", "✅ Mel spectrogram shape: ${melSpec.size} x ${melSpec[0].size}")
+      val melTime = System.currentTimeMillis() - melStart
+      Log.d("#whisper-onnx", "✅ Mel spectrogram shape: ${melSpec.size} x ${melSpec[0].size} (${melTime}ms)")
 
       // Step 3: Apply log10 transform
       Log.d("#whisper-onnx", "🔧 Applying log10 transform...")
+      val logStart = System.currentTimeMillis()
       val logMelSpec = Array(melSpec.size) { i ->
         FloatArray(melSpec[i].size) { j ->
           log10(max(melSpec[i][j], 1e-10f))
         }
       }
-      Log.d("#whisper-onnx", "✅ Log-mel shape: ${logMelSpec.size} x ${logMelSpec[0].size}")
+      val logTime = System.currentTimeMillis() - logStart
+      Log.d("#whisper-onnx", "✅ Log-mel shape: ${logMelSpec.size} x ${logMelSpec[0].size} (${logTime}ms)")
 
       // Step 4: Apply Whisper normalization (subtract mean, divide by std)
       // These are the global statistics from Whisper training data
       Log.d("#whisper-onnx", "🔧 Applying Whisper normalization...")
+      val normStart = System.currentTimeMillis()
       val WHISPER_MEL_MEAN = -4.2677393f
       val WHISPER_MEL_STD = 4.5689974f
 
@@ -300,7 +345,8 @@ class WhisperOnnxKotlinHelper(private val context: Context) {
           (logMelSpec[i][j] - WHISPER_MEL_MEAN) / WHISPER_MEL_STD
         }
       }
-      Log.d("#whisper-onnx", "✅ Normalization complete")
+      val normTime = System.currentTimeMillis() - normStart
+      Log.d("#whisper-onnx", "✅ Normalization complete (${normTime}ms)")
 
       // Log statistics for verification
       val min = normalizedMel.flatMap { it.toList() }.minOrNull() ?: 0f
@@ -310,6 +356,9 @@ class WhisperOnnxKotlinHelper(private val context: Context) {
       Log.d("#whisper-onnx", "📊 Mel stats: min=${"%.6f".format(min)}, max=${"%.6f".format(max)}, mean=${"%.6f".format(mean)}, std=${"%.6f".format(std)}")
       Log.d("#whisper-onnx", "📊 Mel[0] first 10: ${normalizedMel[0].take(10).joinToString(", ") { "%.6f".format(it) }}")
       Log.d("#whisper-onnx", "📊 Mel[40] first 10: ${normalizedMel[40].take(10).joinToString(", ") { "%.6f".format(it) }}")
+
+      val totalTime = System.currentTimeMillis() - startTime
+      Log.d("#whisper-onnx", "⏱️ TOTAL Kotlin preprocessing time: ${totalTime}ms (STFT: ${stftTime}ms, Mel: ${melTime}ms, Log: ${logTime}ms, Norm: ${normTime}ms)")
       Log.d("#whisper-onnx", "========================================")
 
       return normalizedMel

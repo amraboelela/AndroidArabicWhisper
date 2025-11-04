@@ -10,10 +10,14 @@
 #include <chrono>
 #include <ctime>
 #include <sstream>
+#include <android/log.h>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
+
+#define LOG_TAG "#whisper-onnx"
+#define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, __VA_ARGS__)
 
 // Helper function to log with timestamp
 std::string getAudioTimestamp() {
@@ -160,17 +164,17 @@ std::vector<float> AudioProcessor::apply_preemphasis(const std::vector<float>& a
 }
 
 std::vector<std::vector<float>> AudioProcessor::extract_mel_spectrogram(const std::vector<float>& audio) {
-  // Compute STFT directly (no pre-emphasis to match Python's faster-whisper)
-  auto stft = compute_stft(audio);
+  auto startTime = std::chrono::high_resolution_clock::now();
+  LOGD("========================================");
+  LOGD("🎯 C++ preprocessing for %zu samples", audio.size());
+  LOGD("========================================");
 
-//  logAudioTimestamp("STFT output shape (complex)");
-//  std::cout << "  STFT output shape (complex): (" << stft.size() << ", " << (stft.empty() ? 0 : stft[0].size()) << ")" << std::endl;
-//
-//  // Note: To match Python's output, we would need to track complex stats here
-//  // But C++ implementation computes magnitude squared directly for efficiency
-//  // For now, we'll note that these stats are not available in the optimized C++ version
-//  std::cout << "  STFT complex stats: min_real=-34.068371, max_real=33.004295" << std::endl;
-//  std::cout << "  STFT complex stats: min_imag=-30.427790, max_imag=29.789591" << std::endl;
+  // Compute STFT directly (no pre-emphasis to match Python's faster-whisper)
+  LOGD("🔧 Computing STFT...");
+  auto stftStart = std::chrono::high_resolution_clock::now();
+  auto stft = compute_stft(audio);
+  auto stftEnd = std::chrono::high_resolution_clock::now();
+  auto stftTime = std::chrono::duration_cast<std::chrono::milliseconds>(stftEnd - stftStart).count();
 
   // Drop the last frame to match Python's behavior (stft[..., :-1])
   // Python intentionally drops the last time frame
@@ -185,51 +189,12 @@ std::vector<std::vector<float>> AudioProcessor::extract_mel_spectrogram(const st
   // stft is now [freq_bins][time_frames]
   size_t n_freq_bins = stft.size();
   size_t n_frames = stft.empty() ? 0 : stft[0].size();
-  //   std::cout << "  STFT magnitudes shape: (" << n_freq_bins << ", " << n_frames << ")" << std::endl;
-
-  // Calculate and log STFT magnitudes statistics
-  float stft_min = std::numeric_limits<float>::infinity();
-  float stft_max = -std::numeric_limits<float>::infinity();
-  double stft_sum = 0.0;
-  size_t stft_count = 0;
-  for (const auto& freq_band : stft) {
-    for (float val : freq_band) {
-      stft_min = std::min(stft_min, val);
-      stft_max = std::max(stft_max, val);
-      stft_sum += val;
-      stft_count++;
-    }
-  }
-  float stft_mean = stft_sum / stft_count;
-  //   std::cout << "  STFT magnitudes stats: min=" << std::fixed << std::setprecision(6) << stft_min << ", max=" << stft_max << ", mean=" << stft_mean << std::endl;
-
-  // Print first 5 magnitude values from first frequency bin (same as Python)
-//   //   std::cout << "  First 5 magnitude values: [";
-//   for (size_t i = 0; i < std::min(size_t(5), stft.empty() ? 0 : stft[0].size()); ++i) {
-//     if (i > 0) std::cout << " ";
-//     std::cout << std::scientific << std::setprecision(7) << stft[0][i];
-//   }
-//   std::cout << "]" << std::endl;
-//   std::cout << std::fixed; // Reset to fixed notation
+  LOGD("✅ STFT shape: %zu x %zu (%lldms)", n_freq_bins, n_frames, stftTime);
 
   // Apply mel filter bank
+  LOGD("🔧 Applying mel filterbank...");
+  auto melStart = std::chrono::high_resolution_clock::now();
   auto mel_filters = get_mel_filter_bank();
-
-  // Debug: Log mel filter stats
-  float mel_filter_min = std::numeric_limits<float>::infinity();
-  float mel_filter_max = -std::numeric_limits<float>::infinity();
-  double mel_filter_sum = 0.0;
-  size_t mel_filter_count = 0;
-  for (const auto& mel_filter_band : mel_filters) {
-    for (float val : mel_filter_band) {
-      mel_filter_min = std::min(mel_filter_min, val);
-      mel_filter_max = std::max(mel_filter_max, val);
-      mel_filter_sum += val;
-      mel_filter_count++;
-    }
-  }
-  float mel_filter_mean = mel_filter_sum / mel_filter_count;
-  //   std::cout << "  Mel filter stats: min=" << std::setprecision(6) << mel_filter_min << ", max=" << mel_filter_max << ", mean=" << mel_filter_mean << std::endl;
 
   // Apply mel filters to STFT magnitude
   // STFT is now [freq_bins][time_frames], mel_spec should be [mel_bins][time_frames]
@@ -247,40 +212,22 @@ std::vector<std::vector<float>> AudioProcessor::extract_mel_spectrogram(const st
       mel_spec[mel][frame] = mel_value;
       }
   }
-
-  // Log raw mel spec shape first
-  //   std::cout << "  Raw mel spec shape: (" << mel_spec.size() << ", " << (mel_spec.empty() ? 0 : mel_spec[0].size()) << ")" << std::endl;
-
-  // Log raw mel spec statistics
-  float mel_min = std::numeric_limits<float>::infinity();
-  float mel_max = -std::numeric_limits<float>::infinity();
-  double mel_sum = 0.0;
-  size_t mel_count = 0;
-  for (const auto& mel_band : mel_spec) {
-    for (float val : mel_band) {
-      mel_min = std::min(mel_min, val);
-      mel_max = std::max(mel_max, val);
-      mel_sum += val;
-      mel_count++;
-    }
-  }
-  float mel_mean = mel_sum / mel_count;
-  //   std::cout << "  Raw mel spec stats: min=" << std::setprecision(6) << mel_min << ", max=" << mel_max << ", mean=" << mel_mean << std::endl;
-
-  // Print first 5 mel values from first mel band
-//   //   std::cout << "  First 5 mel values: [";
-//   for (size_t i = 0; i < std::min(size_t(5), mel_spec[0].size()); ++i) {
-//     if (i > 0) std::cout << " ";
-//     std::cout << std::scientific << std::setprecision(7) << mel_spec[0][i];
-//   }
-//   std::cout << "]" << std::endl;
-//   std::cout << std::fixed; // Reset to fixed notation
+  auto melEnd = std::chrono::high_resolution_clock::now();
+  auto melTime = std::chrono::duration_cast<std::chrono::milliseconds>(melEnd - melStart).count();
+  LOGD("✅ Mel spectrogram shape: %zu x %zu (%lldms)", mel_spec.size(), (mel_spec.empty() ? 0 : mel_spec[0].size()), melTime);
 
   // Apply log transform
+  LOGD("🔧 Applying log10 transform...");
+  auto logStart = std::chrono::high_resolution_clock::now();
   auto log_mel_spec = apply_log_transform(mel_spec);
+  auto logEnd = std::chrono::high_resolution_clock::now();
+  auto logTime = std::chrono::duration_cast<std::chrono::milliseconds>(logEnd - logStart).count();
+  LOGD("✅ Log-mel shape: %zu x %zu (%lldms)", log_mel_spec.size(), (log_mel_spec.empty() ? 0 : log_mel_spec[0].size()), logTime);
 
   // Apply Whisper normalization: (log_mel - mean) / std
   // Whisper uses global statistics from training data
+  LOGD("🔧 Applying Whisper normalization...");
+  auto normStart = std::chrono::high_resolution_clock::now();
   const float WHISPER_MEL_MEAN = -4.2677393f;  // Global mean from Whisper training
   const float WHISPER_MEL_STD = 4.5689974f;    // Global std from Whisper training
 
@@ -289,6 +236,14 @@ std::vector<std::vector<float>> AudioProcessor::extract_mel_spectrogram(const st
       value = (value - WHISPER_MEL_MEAN) / WHISPER_MEL_STD;
     }
   }
+  auto normEnd = std::chrono::high_resolution_clock::now();
+  auto normTime = std::chrono::duration_cast<std::chrono::milliseconds>(normEnd - normStart).count();
+  LOGD("✅ Normalization complete (%lldms)", normTime);
+
+  auto totalTime = std::chrono::duration_cast<std::chrono::milliseconds>(normEnd - startTime).count();
+  LOGD("⏱️ TOTAL C++ preprocessing time: %lldms (STFT: %lldms, Mel: %lldms, Log: %lldms, Norm: %lldms)",
+       totalTime, stftTime, melTime, logTime, normTime);
+  LOGD("========================================");
 
   return log_mel_spec;
 }
@@ -301,22 +256,6 @@ std::vector<std::vector<float>> AudioProcessor::apply_log_transform(const std::v
       value = std::log10(std::max(value, 1e-10f)); // Use log10 to match Python's np.log10
       }
   }
-
-  // Log statistics after log10
-  float log_min = std::numeric_limits<float>::infinity();
-  float log_max = -std::numeric_limits<float>::infinity();
-  double log_sum = 0.0;
-  size_t log_count = 0;
-  for (const auto& mel_band : log_mel_spec) {
-    for (float val : mel_band) {
-      log_min = std::min(log_min, val);
-      log_max = std::max(log_max, val);
-      log_sum += val;
-      log_count++;
-    }
-  }
-  float log_mean = log_sum / log_count;
-  //   std::cout << "  After log10 stats: min=" << std::fixed << std::setprecision(6) << log_min << ", max=" << log_max << ", mean=" << log_mean << std::endl;
 
   return log_mel_spec;
 }

@@ -203,11 +203,17 @@ Java_org_amr_arabicwhisper_WhisperOnnxKotlinHelper_extractMelFeaturesNative(JNIE
     jfloat* audio_floats = env->GetFloatArrayElements(audio_data, nullptr);
     jsize audio_size = env->GetArrayLength(audio_data);
 
-    // Convert to std::vector
-    std::vector<float> audio_vec(audio_floats, audio_floats + audio_size);
+    __android_log_print(ANDROID_LOG_DEBUG, "#whisper-onnx", "Native: Extracting mel features from %d samples", audio_size);
+
+    // Pad or truncate to 30 seconds (480000 samples at 16kHz) to match Kotlin preprocessing
+    const int N_SAMPLES = 480000;  // 30 seconds at 16kHz
+    std::vector<float> audio_vec(N_SAMPLES, 0.0f);  // Initialize with zeros (padding)
+    int copy_length = std::min(audio_size, N_SAMPLES);
+    std::copy(audio_floats, audio_floats + copy_length, audio_vec.begin());
+
     env->ReleaseFloatArrayElements(audio_data, audio_floats, JNI_ABORT);
 
-    __android_log_print(ANDROID_LOG_DEBUG, "#whisper-onnx", "Native: Extracting mel features from %d samples", audio_size);
+    __android_log_print(ANDROID_LOG_DEBUG, "#whisper-onnx", "Native: Padded/truncated to %d samples", N_SAMPLES);
 
     // Extract mel features using whisper::AudioProcessor (same as Python implementation)
     std::vector<std::vector<float>> mel_features = whisper::AudioProcessor::extract_mel_spectrogram(audio_vec);
