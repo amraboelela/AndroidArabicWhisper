@@ -22,9 +22,6 @@ class WhisperOnnxKotlinHelper(private val context: Context) {
   private val audioBuffer = mutableListOf<Byte>()
   private val bufferLock = Any()
 
-  // Switch between Kotlin and C++ preprocessing
-  private val useCppPreprocessing = true  // Set to true to use C++ preprocessing, false for Kotlin
-
   // 4 seconds at 16kHz, 16-bit = 128000 bytes
   private val CHUNK_SIZE_BYTES = 128000
   private var isProcessing = false
@@ -50,9 +47,7 @@ class WhisperOnnxKotlinHelper(private val context: Context) {
   init {
     initializeOnnx()
     loadTokenizer()
-    // Load native library for C++ preprocessing
-    System.loadLibrary("whisper_jni")
-    Log.d("#whisper-onnx", "📱 WhisperOnnxKotlinHelper initialized (C++ preprocessing + Kotlin ONNX)")
+    Log.d("#whisper-onnx", "📱 WhisperOnnxKotlinHelper initialized (Kotlin preprocessing + Kotlin ONNX)")
   }
 
   private fun initializeOnnx() {
@@ -275,25 +270,10 @@ class WhisperOnnxKotlinHelper(private val context: Context) {
   }
 
   /**
-   * Extract mel spectrogram features
-   * Uses either C++ or Kotlin implementation based on useCppPreprocessing flag
-   */
-  private fun extractMelFeatures(audio: FloatArray): Array<FloatArray> {
-    return if (useCppPreprocessing) {
-      Log.d("#whisper-onnx", "🔧 Using C++ preprocessing...")
-      val result = extractMelFeaturesNative(audio)
-      Log.d("#whisper-onnx", "✅ C++ preprocessing complete: ${result.size} x ${result[0].size}")
-      result
-    } else {
-      extractMelFeaturesKotlin(audio)
-    }
-  }
-
-  /**
    * Extract mel spectrogram features using pure Kotlin implementation
    * This matches the Python faster-whisper preprocessing exactly
    */
-  private fun extractMelFeaturesKotlin(audio: FloatArray): Array<FloatArray> {
+  private fun extractMelFeatures(audio: FloatArray): Array<FloatArray> {
     val startTime = System.currentTimeMillis()
     Log.d("#whisper-onnx", "========================================")
     Log.d("#whisper-onnx", "🎯 Using Kotlin preprocessing for ${audio.size} samples")
@@ -629,7 +609,4 @@ class WhisperOnnxKotlinHelper(private val context: Context) {
     decoderSession?.close()
     env?.close()
   }
-
-  // Native method for C++ mel spectrogram extraction using whisper_audio.cpp
-  private external fun extractMelFeaturesNative(audioData: FloatArray): Array<FloatArray>
 }
