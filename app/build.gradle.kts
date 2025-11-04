@@ -39,11 +39,12 @@ android {
     compose = true
     viewBinding = true
   }
-  externalNativeBuild {
-    cmake {
-      path = file("src/main/cpp/CMakeLists.txt")
-    }
-  }
+  // Disable native build since we're using pure Kotlin ONNX implementation
+  // externalNativeBuild {
+  //   cmake {
+  //     path = file("src/main/cpp/CMakeLists.txt")
+  //   }
+  // }
 }
 
 dependencies {
@@ -59,6 +60,9 @@ dependencies {
   implementation("androidx.appcompat:appcompat:1.6.1")
   implementation("com.microsoft.onnxruntime:onnxruntime-android:1.23.0")
   implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
+
+  // JTransforms for fast FFT computation
+  implementation("com.github.wendykierp:JTransforms:3.1")
 
   testImplementation(libs.junit)
   androidTestImplementation(libs.androidx.junit)

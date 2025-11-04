@@ -1,6 +1,7 @@
 #include <jni.h>
 #include "transcribe.h"
 #include "audio.h"
+#include "feature_extractor.h"
 #include <android/log.h>
 #include <string>
 #include <vector>
@@ -9,6 +10,7 @@
 #include <locale>
 
 static WhisperModel* whisper_model = nullptr;
+static FeatureExtractor* feature_extractor = nullptr;
 
 // Helper function to convert UTF-8 string to jstring properly
 jstring createJavaStringFromUTF8(JNIEnv* env, const std::string& utf8_str) {
@@ -191,4 +193,41 @@ Java_org_amr_arabicwhisper_WhisperHelper_transcribeStreamNative(JNIEnv* env, job
 extern "C" JNIEXPORT void JNICALL
 Java_org_amr_arabicwhisper_WhisperHelper_clearTranscriptionNative(JNIEnv* env, jobject thiz) {
     __android_log_print(ANDROID_LOG_DEBUG, "#transcribe", "Native: Cleared");
+}
+
+// JNI method for ONNX: Extract mel spectrogram features from audio
+extern "C" JNIEXPORT jobjectArray JNICALL
+Java_org_amr_arabicwhisper_WhisperOnnxHelper_extractMelFeaturesNative(JNIEnv* env, jobject thiz, jfloatArray audio_data) {
+    // Initialize feature extractor if needed
+    if (!feature_extractor) {
+        feature_extractor = new FeatureExtractor(80, 16000, 160, 30, 400);
+    }
+
+    // Get audio data from Java
+    jfloat* audio_floats = env->GetFloatArrayElements(audio_data, nullptr);
+    jsize audio_size = env->GetArrayLength(audio_data);
+
+    // Convert to std::vector
+    std::vector<float> audio_vec(audio_floats, audio_floats + audio_size);
+    env->ReleaseFloatArrayElements(audio_data, audio_floats, JNI_ABORT);
+
+    __android_log_print(ANDROID_LOG_DEBUG, "#whisper-onnx", "Extracting mel features from %d samples", audio_size);
+
+    // Extract mel features
+    Matrix mel_features = feature_extractor->__call__(audio_vec);
+
+    __android_log_print(ANDROID_LOG_DEBUG, "#whisper-onnx", "Extracted mel features: %zu x %zu", mel_features.size(), mel_features.empty() ? 0 : mel_features[0].size());
+
+    // Convert Matrix to Java 2D array
+    jclass floatArrayClass = env->FindClass("[F");
+    jobjectArray result = env->NewObjectArray(mel_features.size(), floatArrayClass, nullptr);
+
+    for (size_t i = 0; i < mel_features.size(); i++) {
+        jfloatArray row = env->NewFloatArray(mel_features[i].size());
+        env->SetFloatArrayRegion(row, 0, mel_features[i].size(), mel_features[i].data());
+        env->SetObjectArrayElement(result, i, row);
+        env->DeleteLocalRef(row);
+    }
+
+    return result;
 }

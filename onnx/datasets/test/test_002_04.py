@@ -1,6 +1,7 @@
-#\!/usr/bin/env python3
+#!/usr/bin/env python3
 """
-Test encoder-decoder model on first 4 seconds of Al-Baqara segments, expecting first 3 words
+Test encoder-decoder model on 002-04 segments at different durations
+Tests: full audio, first 1s, first 3s, and first 4s
 """
 import json
 import torch
@@ -12,18 +13,19 @@ sys.path.append("../..")
 from encoder_decoder_transformer import EncoderDecoderTransformer
 
 
-def extract_first_seconds_mel(audio_path, n_mels=80, target_seconds=4.0):
-    """Extract mel features from only the first N seconds of the audio"""
+def extract_first_seconds_mel(audio_path, n_mels=80, target_seconds=None):
+    """Extract mel features from first N seconds of audio (or full if None)"""
     waveform, sample_rate = torchaudio.load(audio_path)
 
     # Convert stereo to mono
     if waveform.shape[0] > 1:
         waveform = waveform.mean(dim=0, keepdim=True)
 
-    # Trim to first N seconds
-    num_samples = int(sample_rate * target_seconds)
-    if waveform.shape[1] > num_samples:
-        waveform = waveform[:, :num_samples]
+    # Trim to first N seconds if specified
+    if target_seconds is not None:
+        num_samples = int(sample_rate * target_seconds)
+        if waveform.shape[1] > num_samples:
+            waveform = waveform[:, :num_samples]
 
     # Whisper-like parameters (hop_length=160 → 100 fps)
     n_fft = 400
@@ -54,8 +56,8 @@ def normalize_text(text):
     return " ".join(normalized.split())
 
 
-def test_baqara_first_4_seconds():
-    """Evaluate trained model using only first 4 seconds of Al-Baqara segments"""
+def test_002_04_segments():
+    """Evaluate trained model on 002-04 segments at different durations"""
     # Device
     if torch.backends.mps.is_available():
         device = torch.device("mps")
@@ -71,29 +73,10 @@ def test_baqara_first_4_seconds():
     torch.manual_seed(42)
     print("🎲 Random seed set to 42 for reproducibility")
 
-    import sys
     dataset_name = sys.argv[1] if len(sys.argv) > 1 else "base"
     datasets_dir = f"../{dataset_name}/audio"
     vocab_path = "../../vocabulary.json"
     model_path = "../../models/encoder_decoder_model.pt"
-
-    test_sets = [
-        {
-            "name": "Al-Baqara Part 1 (002-01)",
-            "text_path": f"../{dataset_name}/text/002-01.txt",
-            "pattern": "002-01-*.wav"
-        },
-        {
-            "name": "Al-Baqara Part 2 (002-02)",
-            "text_path": f"../{dataset_name}/text/002-02.txt",
-            "pattern": "002-02-*.wav"
-        },
-        {
-            "name": "Al-Baqara Part 3 (002-03)",
-            "text_path": f"../{dataset_name}/text/002-03.txt",
-            "pattern": "002-03-*.wav"
-        }
-    ]
 
     # Load vocabulary
     with open(vocab_path, "r", encoding="utf-8") as f:
@@ -116,44 +99,65 @@ def test_baqara_first_4_seconds():
     print(f"Loading trained weights from {model_path}...")
     model.load_state_dict(torch.load(model_path, map_location=device))
     model.eval()
-    print("✓ Model loaded successfully\!")
+    print("✓ Model loaded successfully!")
 
-    overall_correct = 0
-    overall_total = 0
+    # Load reference text
+    text_path = f"../{dataset_name}/text/002-04.txt"
+    with open(text_path, "r", encoding="utf-8") as f:
+        expected_texts = [line.strip() for line in f if line.strip()]
 
-    for test_set in test_sets:
-        print(f"\n{'='*60}")
-        print(f"Testing (first 4s → first 3 words): {test_set['name']}")
-        print(f"{'='*60}")
+    # Find all 002-04 audio files
+    segment_files = sorted(glob.glob(os.path.join(datasets_dir, "002-04-*.wav")))
+    print(f"\nFound {len(segment_files)} audio segments for 002-04")
 
-        with open(test_set["text_path"], "r", encoding="utf-8") as f:
-            expected_texts = [line.strip() for line in f if line.strip()]
+    # Test configurations: (duration_seconds, max_tokens, description)
+    test_configs = [
+        (None, 50, "Full audio"),
+        (1.0, 10, "First 1s → first 2 words"),
+        (3.0, 20, "First 3s → first 5 words"),
+        (4.0, 30, "First 4s → first 8 words"),
+    ]
 
-        segment_files = sorted(glob.glob(os.path.join(datasets_dir, test_set["pattern"])))
-        print(f"Found {len(segment_files)} audio segments")
+    for duration, max_tokens, description in test_configs:
+        print(f"\n{'='*70}")
+        print(f"Testing 002-04: {description}")
+        print(f"{'='*70}")
 
         total_correct = 0
         total_segments = 0
 
         for i, (segment_file, expected_text) in enumerate(zip(segment_files, expected_texts), 1):
             segment_name = os.path.basename(segment_file)
-            words = expected_text.split()
-            first_three_words = " ".join(words[:3]) if len(words) >= 3 else expected_text
-            print(f"\n[Segment {i}/{len(segment_files)}] {segment_name}")
-            print(f"Expected (first 3 words): {first_three_words}")
 
-            # Extract first 4 seconds mel
-            mel_features = extract_first_seconds_mel(segment_file, target_seconds=4.0)
+            # Determine expected words based on duration
+            if duration is None:
+                expected_output = expected_text  # Full text
+            elif duration == 1.0:
+                words = expected_text.split()
+                expected_output = " ".join(words[:2]) if len(words) >= 2 else expected_text
+            elif duration == 3.0:
+                words = expected_text.split()
+                expected_output = " ".join(words[:5]) if len(words) >= 5 else expected_text
+            else:  # 4.0
+                words = expected_text.split()
+                expected_output = " ".join(words[:8]) if len(words) >= 8 else expected_text
+
+            if i <= 5:  # Show first 5 segments in detail
+                print(f"\n[{i:02d}/{len(segment_files)}] {segment_name}")
+                print(f"Expected: {expected_output}")
+
+            # Extract mel features
+            mel_features = extract_first_seconds_mel(segment_file, target_seconds=duration)
             audio_batch = mel_features.transpose(0, 1).unsqueeze(0).to(device)
 
             with torch.no_grad():
                 generated_ids = model.generate(
                     audio_batch,
-                    max_new_tokens=30,
+                    max_new_tokens=max_tokens,
                     temperature=1.0,
                     min_tokens=1,
                     use_sampling=False,
-                    audio_duration_seconds=4.0
+                    audio_duration_seconds=duration if duration else 30.0
                 )
 
             tokens = generated_ids[0].tolist()
@@ -163,33 +167,36 @@ def test_baqara_first_4_seconds():
                 tokens = tokens[:tokens.index(2)]
             generated_words = [id_to_token[idx] for idx in tokens if idx in id_to_token]
 
-            # Take first 3 words from model output
-            generated_first_three = " ".join(generated_words[:3]) if len(generated_words) >= 3 else " ".join(generated_words)
-            print(f"Generated (first 3 words): {generated_first_three}")
+            # For partial duration tests, take only expected number of words
+            if duration is None:
+                generated_output = " ".join(generated_words)
+            elif duration == 1.0:
+                generated_output = " ".join(generated_words[:2]) if len(generated_words) >= 2 else " ".join(generated_words)
+            elif duration == 3.0:
+                generated_output = " ".join(generated_words[:5]) if len(generated_words) >= 5 else " ".join(generated_words)
+            else:  # 4.0
+                generated_output = " ".join(generated_words[:8]) if len(generated_words) >= 8 else " ".join(generated_words)
+
+            if i <= 5:
+                print(f"Generated: {generated_output}")
 
             # Compare normalized
-            normalized_generated = normalize_text(generated_first_three)
-            normalized_expected = normalize_text(first_three_words)
-            match = "✓" if normalized_generated == normalized_expected else "✗"
-            print(f"Match: {match}")
+            normalized_generated = normalize_text(generated_output)
+            normalized_expected = normalize_text(expected_output)
+            match = normalized_generated == normalized_expected
 
-            if normalized_generated == normalized_expected:
+            if i <= 5:
+                print(f"Match: {'✓' if match else '✗'}")
+
+            if match:
                 total_correct += 1
             total_segments += 1
 
         accuracy = (total_correct / total_segments * 100) if total_segments > 0 else 0.0
-        print(f"\n{test_set['name']} (4s → first 3 words) RESULTS")
-        print("="*60)
+        print(f"\n{description} - RESULTS")
+        print("="*70)
         print(f"Accuracy: {total_correct}/{total_segments} ({accuracy:.1f}%)")
-        overall_correct += total_correct
-        overall_total += total_segments
-
-    overall_accuracy = (overall_correct / overall_total * 100) if overall_total > 0 else 0.0
-    print(f"\n{'='*60}")
-    print("OVERALL RESULTS (Al-Baqara 4s → first 3 words)")
-    print("="*60)
-    print(f"Accuracy: {overall_correct}/{overall_total} ({overall_accuracy:.1f}%)")
 
 
 if __name__ == "__main__":
-    test_baqara_first_4_seconds()
+    test_002_04_segments()

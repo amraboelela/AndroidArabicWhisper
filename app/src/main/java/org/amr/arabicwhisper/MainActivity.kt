@@ -41,7 +41,10 @@ import java.io.File
 import android.content.res.AssetManager
 
 class MainActivity : ComponentActivity() {
-  private lateinit var whisperHelper: WhisperHelper
+  // Switch between CTranslate2 and ONNX implementations
+  private val useOnnx = true
+  private var whisperHelper: WhisperHelper? = null
+  private var whisperOnnxHelper: WhisperOnnxKotlinHelper? = null
   private var audioRecorder: AudioRecorder? = null
   private var accumulatedTranscription = StringBuilder()
 
@@ -61,17 +64,22 @@ class MainActivity : ComponentActivity() {
     // Check and request audio recording permission
     checkAudioPermission()
 
-    // Initialize Whisper model
-    val modelDir = File(this.filesDir, "whisper_ct2")
-    if (!modelDir.exists()) {
-      modelDir.mkdirs()
+    // Initialize Whisper model (CTranslate2 or ONNX)
+    if (useOnnx) {
+      Log.d("#transcribe", "Using ONNX implementation (pure Kotlin with FFT)")
+      whisperOnnxHelper = WhisperOnnxKotlinHelper(this)
+    } else {
+      Log.d("#transcribe", "Using CTranslate2 implementation")
+      val modelDir = File(this.filesDir, "whisper_ct2")
+      if (!modelDir.exists()) {
+        modelDir.mkdirs()
+      }
+      copyModelFromAssets(assets, modelDir)
+      whisperHelper = WhisperHelper(this)
     }
-    copyModelFromAssets(assets, modelDir)
 
     // Copy audio test files to internal storage
     copyAudioFromAssets(assets, this.filesDir)
-
-    whisperHelper = WhisperHelper(this)
 
     // Create the audio file path using Context.getFilesDir()
     val audioFilePath = File(this.filesDir, "001.wav").absolutePath
@@ -83,7 +91,8 @@ class MainActivity : ComponentActivity() {
           color = MaterialTheme.colorScheme.background
         ) {
           MainScreen(
-            whisperHelper = whisperHelper,
+            whisperHelper = if (useOnnx) null else whisperHelper,
+            whisperOnnxHelper = if (useOnnx) whisperOnnxHelper else null,
             audioFilePath = audioFilePath,
             onStartRecording = { startRecording() },
             onStopRecording = { stopRecording() },
@@ -119,25 +128,40 @@ class MainActivity : ComponentActivity() {
     }
 
     // Clear state before starting new recording
-    whisperHelper.clearTranscription()
+    if (useOnnx) {
+      whisperOnnxHelper?.clearTranscription()
+    } else {
+      whisperHelper?.clearTranscription()
+    }
     accumulatedTranscription.clear()
     Log.d("#transcribe", "Starting new recording, state cleared")
 
     audioRecorder = AudioRecorder { audioData ->
-      // Call transcribeStream directly without creating new threads
-      whisperHelper.transcribeStream(audioData) { result ->
-        runOnUiThread {
-          // Only append if we got a non-empty result
-          if (result.isNotEmpty()) {
-            Log.d("#transcribe", "New chunk transcribed: $result")
-            // Append the new chunk to accumulated text
-            if (accumulatedTranscription.isNotEmpty()) {
-              accumulatedTranscription.append(" ")
+      // Call transcribeStream with the appropriate helper
+      if (useOnnx) {
+        whisperOnnxHelper?.transcribeStream(audioData) { result ->
+          runOnUiThread {
+            if (result.isNotEmpty()) {
+              Log.d("#transcribe", "ONNX: New chunk transcribed: $result")
+              if (accumulatedTranscription.isNotEmpty()) {
+                accumulatedTranscription.append(" ")
+              }
+              accumulatedTranscription.append(result)
+              whisperOnnxHelper?.onTranscriptionUpdate?.invoke(accumulatedTranscription.toString())
             }
-            accumulatedTranscription.append(result)
-            // Update UI with accumulated transcription
-            Log.d("#transcribe", "UI update with full transcription: $accumulatedTranscription")
-            whisperHelper.onTranscriptionUpdate?.invoke(accumulatedTranscription.toString())
+          }
+        }
+      } else {
+        whisperHelper?.transcribeStream(audioData) { result ->
+          runOnUiThread {
+            if (result.isNotEmpty()) {
+              Log.d("#transcribe", "CT2: New chunk transcribed: $result")
+              if (accumulatedTranscription.isNotEmpty()) {
+                accumulatedTranscription.append(" ")
+              }
+              accumulatedTranscription.append(result)
+              whisperHelper?.onTranscriptionUpdate?.invoke(accumulatedTranscription.toString())
+            }
           }
         }
       }
@@ -150,20 +174,21 @@ class MainActivity : ComponentActivity() {
   private fun stopRecording() {
     audioRecorder?.stopRecording()
     audioRecorder = null
-    whisperHelper.clearTranscription()
+    whisperHelper?.clearTranscription()
     Log.d("#transcribe", "Recording stopped")
   }
 
   override fun onDestroy() {
     super.onDestroy()
     audioRecorder?.stopRecording()
-    whisperHelper.shutdown()
+    whisperHelper?.shutdown()
   }
 }
 
 @Composable
 fun MainScreen(
-  whisperHelper: WhisperHelper,
+  whisperHelper: WhisperHelper?,
+  whisperOnnxHelper: WhisperOnnxKotlinHelper?,
   audioFilePath: String,
   onStartRecording: () -> Unit,
   onStopRecording: () -> Unit,
@@ -173,14 +198,21 @@ fun MainScreen(
   var transcription by remember { mutableStateOf("") }
   var isProcessing by remember { mutableStateOf(false) }
 
-  // Update the transcription state when whisperHelper provides new results
-  whisperHelper.onTranscriptionUpdate = {
+  // Update the transcription state when helper provides new results
+  whisperHelper?.onTranscriptionUpdate = {
+    Log.d("#transcribe", "UI update with transcription: $it")
+    transcription = it
+  }
+  whisperOnnxHelper?.onTranscriptionUpdate = {
     Log.d("#transcribe", "UI update with transcription: $it")
     transcription = it
   }
 
   // Update processing state
-  whisperHelper.onProcessingStateChange = {
+  whisperHelper?.onProcessingStateChange = {
+    isProcessing = it
+  }
+  whisperOnnxHelper?.onProcessingStateChange = {
     isProcessing = it
   }
 
@@ -270,7 +302,11 @@ fun MainScreen(
       onClick = {
         Thread {
           try {
-            val result = whisperHelper.transcribe(audioFilePath)
+            val result = when {
+              whisperOnnxHelper != null -> whisperOnnxHelper.transcribe(audioFilePath)
+              whisperHelper != null -> whisperHelper.transcribe(audioFilePath)
+              else -> "Error: No helper available"
+            }
             transcription = result
             Log.d("#transcribe", "Test transcription: $result")
           } catch (e: Exception) {

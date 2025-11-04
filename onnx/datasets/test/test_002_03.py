@@ -139,7 +139,7 @@ def test_baqara_first_3_seconds():
             segment_name = os.path.basename(segment_file)
             words = expected_text.split()
             first_two_words = " ".join(words[:2]) if len(words) >= 2 else expected_text
-            print(f"\n[Segment {i}/{len(segment_files)}] {segment_name}")
+            print(f"\n[{i:02d}/{len(segment_files)}] {segment_name}")
             print(f"Expected (first 2 words): {first_two_words}")
 
             # Extract first 3 seconds mel

@@ -172,7 +172,7 @@ def test_baqara():
 
         for i, (segment_file, expected_text) in enumerate(zip(segment_files, expected_texts), 1):
             segment_name = os.path.basename(segment_file)
-            print(f"\n[Segment {i}/{len(segment_files)}] {segment_name}")
+            print(f"\n[{i:02d}/{len(segment_files)}] {segment_name}")
             print(f"Expected: {expected_text}")
 
             # Extract mel features and convert to Whisper format (batch, n_mels, time)

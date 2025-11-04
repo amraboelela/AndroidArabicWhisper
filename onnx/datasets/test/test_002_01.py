@@ -138,7 +138,7 @@ def test_baqara_first_second():
         for i, (segment_file, expected_text) in enumerate(zip(segment_files, expected_texts), 1):
             segment_name = os.path.basename(segment_file)
             first_word = expected_text.split()[0] if expected_text.split() else ""
-            print(f"\n[Segment {i}/{len(segment_files)}] {segment_name}")
+            print(f"\n[{i:02d}/{len(segment_files)}] {segment_name}")
             print(f"Expected (first word): {first_word}")
 
             # Extract only first-second mel
