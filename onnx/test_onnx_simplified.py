@@ -135,11 +135,12 @@ def main():
 
     # Test with audio files
     test_files = [
-        "datasets/base/audio/002-04-02.wav",
-        "datasets/base/audio/002-04-03.wav",
-        "datasets/base/audio/002-04-04.wav",
-        "datasets/base/audio/002-04-05.wav",
-        "datasets/base/audio/002-04-06.wav",
+        "../app/src/main/assets/001.wav",
+        "datasets/base/audio/002-01-01.wav",
+        "datasets/base/audio/002-01-02.wav",
+        "datasets/base/audio/002-01-03.wav",
+        "datasets/base/audio/002-01-04.wav",
+        "datasets/base/audio/002-01-05.wav",
     ]
 
     print("\n" + "="*70)

@@ -47,7 +47,9 @@ class WhisperOnnxKotlinHelper(private val context: Context) {
   init {
     initializeOnnx()
     loadTokenizer()
-    Log.d("#whisper-onnx", "📱 WhisperOnnxKotlinHelper initialized (pure Kotlin with FFT)")
+    // Load native library for C++ preprocessing
+    System.loadLibrary("whisper_jni")
+    Log.d("#whisper-onnx", "📱 WhisperOnnxKotlinHelper initialized (C++ preprocessing + Kotlin ONNX)")
   }
 
   private fun initializeOnnx() {
@@ -169,30 +171,39 @@ class WhisperOnnxKotlinHelper(private val context: Context) {
   }
 
   private fun transcribeAudio(audioBytes: ByteArray): String {
-    // Convert audio bytes to float array
-    val audioFloats = FloatArray(audioBytes.size / 2) { i ->
-      val sample = ((audioBytes[i * 2 + 1].toInt() shl 8) or (audioBytes[i * 2].toInt() and 0xFF)).toShort()
-      sample / 32768.0f
-    }
+    Log.d("#whisper-onnx", "🎯 transcribeAudio() called with ${audioBytes.size} bytes")
 
-    // Extract mel spectrogram features (pure Kotlin)
-    val melFeatures = extractMelFeatures(audioFloats)
+    try {
+      // Convert audio bytes to float array
+      val audioFloats = FloatArray(audioBytes.size / 2) { i ->
+        val sample = ((audioBytes[i * 2 + 1].toInt() shl 8) or (audioBytes[i * 2].toInt() and 0xFF)).toShort()
+        sample / 32768.0f
+      }
+      Log.d("#whisper-onnx", "✅ Converted to ${audioFloats.size} float samples")
 
-    // Run encoder
-    val encoderInputName = encoderSession!!.inputNames.iterator().next()
-    val encoderInput = OnnxTensor.createTensor(env, arrayOf(melFeatures))
-    val encoderOutputs = encoderSession!!.run(mapOf(encoderInputName to encoderInput))
-    val encoderHiddenStates = encoderOutputs[0].value as Array<Array<FloatArray>>
+      // Extract mel spectrogram features (C++ native)
+      Log.d("#whisper-onnx", "🔧 Calling extractMelFeatures()...")
+      val melFeatures = extractMelFeatures(audioFloats)
+      Log.d("#whisper-onnx", "✅ Got mel features: ${melFeatures.size} x ${melFeatures[0].size}")
 
-    // Run decoder with autoregressive generation
-    val decoderStartTokenId = 50258L  // <|startoftranscript|>
-    val langTokenId = 50272L           // <|ar|>
-    val taskTokenId = 50359L           // <|transcribe|>
-    val noTimestampsTokenId = 50363L   // <|notimestamps|>
-    val eosTokenId = 50257L            // <|endoftext|>
+      // Run encoder
+      Log.d("#whisper-onnx", "🔧 Running ONNX encoder...")
+      val encoderInputName = encoderSession!!.inputNames.iterator().next()
+      val encoderInput = OnnxTensor.createTensor(env, arrayOf(melFeatures))
+      val encoderOutputs = encoderSession!!.run(mapOf(encoderInputName to encoderInput))
+      val encoderHiddenStates = encoderOutputs[0].value as Array<Array<FloatArray>>
+      Log.d("#whisper-onnx", "✅ Encoder output shape: ${encoderHiddenStates.size} x ${encoderHiddenStates[0].size} x ${encoderHiddenStates[0][0].size}")
 
-    val generatedTokens = mutableListOf(decoderStartTokenId, langTokenId, taskTokenId, noTimestampsTokenId)
-    val maxLength = 200
+      // Run decoder with autoregressive generation
+      Log.d("#whisper-onnx", "🔧 Running ONNX decoder...")
+      val decoderStartTokenId = 50258L  // <|startoftranscript|>
+      val langTokenId = 50272L           // <|ar|>
+      val taskTokenId = 50359L           // <|transcribe|>
+      val noTimestampsTokenId = 50363L   // <|notimestamps|>
+      val eosTokenId = 50257L            // <|endoftext|>
+
+      val generatedTokens = mutableListOf(decoderStartTokenId, langTokenId, taskTokenId, noTimestampsTokenId)
+      val maxLength = 200
 
     for (step in 0 until maxLength) {
       // Prepare decoder inputs
@@ -212,7 +223,10 @@ class WhisperOnnxKotlinHelper(private val context: Context) {
       val lastLogits = logits[0].last()
       val nextToken = lastLogits.indices.maxByOrNull { lastLogits[it] }?.toLong() ?: eosTokenId
 
-      if (nextToken == eosTokenId) break
+      if (nextToken == eosTokenId) {
+        Log.d("#whisper-onnx", "🛑 EOS token reached at step $step")
+        break
+      }
 
       generatedTokens.add(nextToken)
 
@@ -221,59 +235,61 @@ class WhisperOnnxKotlinHelper(private val context: Context) {
       decoderOutputs.close()
     }
 
+    Log.d("#whisper-onnx", "✅ Decoder generated ${generatedTokens.size} tokens")
+    Log.d("#whisper-onnx", "Generated tokens: $generatedTokens")
+
     encoderInput.close()
     encoderOutputs.close()
 
     // Decode tokens to text
-    return decodeTokens(generatedTokens.map { it.toInt() })
+    Log.d("#whisper-onnx", "🔧 Decoding ${generatedTokens.size} tokens to text...")
+    val result = decodeTokens(generatedTokens.map { it.toInt() })
+    Log.d("#whisper-onnx", "✅ Final transcription: '$result'")
+    return result
+    } catch (e: Exception) {
+      Log.e("#whisper-onnx", "❌ transcribeAudio() failed: ${e.message}", e)
+      e.printStackTrace()
+      return ""
+    }
   }
 
   /**
-   * Pure Kotlin mel spectrogram extraction
-   * Based on Whisper's preprocessing pipeline
+   * Extract mel spectrogram features using C++ native implementation
+   * This matches the Python faster-whisper preprocessing exactly
    */
   private fun extractMelFeatures(audio: FloatArray): Array<FloatArray> {
-    Log.d("#whisper-onnx", "Extracting mel features from ${audio.size} samples")
+    Log.d("#whisper-onnx", "Using C++ native preprocessing for ${audio.size} samples")
 
-    // Pad or truncate to N_SAMPLES
-    val paddedAudio = FloatArray(N_SAMPLES)
-    val copyLength = min(audio.size, N_SAMPLES)
-    audio.copyInto(paddedAudio, 0, 0, copyLength)
+    try {
+      // Pad or truncate to N_SAMPLES (30 seconds at 16kHz)
+      val paddedAudio = FloatArray(N_SAMPLES)
+      val copyLength = min(audio.size, N_SAMPLES)
+      audio.copyInto(paddedAudio, 0, 0, copyLength)
 
-    Log.d("#whisper-onnx", "Padded audio to ${paddedAudio.size} samples")
+      Log.d("#whisper-onnx", "Padded audio to ${paddedAudio.size} samples")
 
-    // Compute STFT with standard formula, then drop last frame like Whisper does
-    val nFrames = N_SAMPLES / HOP_LENGTH  // 1500 frames expected
-    val stft = computeSTFT(paddedAudio, N_FFT, HOP_LENGTH, nFrames)
+      // Use native C++ preprocessing (whisper_audio.cpp)
+      val melFeatures = extractMelFeaturesNative(paddedAudio)
 
-    Log.d("#whisper-onnx", "STFT shape: ${stft.size} x ${stft[0].size}")
+      Log.d("#whisper-onnx", "Native C++ mel features shape: ${melFeatures.size} x ${melFeatures[0].size}")
 
-    // Apply mel filterbank
-    val melSpectrogram = applyMelFilterbank(stft)
+      // Log statistics for comparison with Python
+      val min = melFeatures.flatMap { it.toList() }.minOrNull() ?: 0f
+      val max = melFeatures.flatMap { it.toList() }.maxOrNull() ?: 0f
+      val mean = melFeatures.flatMap { it.toList() }.average().toFloat()
+      val std = sqrt(melFeatures.flatMap { it.toList() }.map { (it - mean) * (it - mean) }.average()).toFloat()
+      Log.d("#whisper-onnx", "Mel stats: min=${"%.6f".format(min)}, max=${"%.6f".format(max)}, mean=${"%.6f".format(mean)}, std=${"%.6f".format(std)}")
+      Log.d("#whisper-onnx", "Mel[0] first 10: ${melFeatures[0].take(10).joinToString { "%.6f".format(it) }}")
+      Log.d("#whisper-onnx", "Mel[40] first 10: ${melFeatures[40].take(10).joinToString { "%.6f".format(it) }}")
 
-    Log.d("#whisper-onnx", "Mel spectrogram shape: ${melSpectrogram.size} x ${melSpectrogram[0].size}")
-
-    // Convert to log scale - use actual frame count from STFT
-    val actualFrames = stft[0].size
-    val logMelSpec = Array(N_MELS) { FloatArray(actualFrames) }
-    for (i in 0 until N_MELS) {
-      for (j in 0 until actualFrames) {
-        logMelSpec[i][j] = ln(max(melSpectrogram[i][j], 1e-10f))
-      }
+      return melFeatures
+    } catch (e: UnsatisfiedLinkError) {
+      Log.e("#whisper-onnx", "Native library not loaded: ${e.message}", e)
+      throw RuntimeException("Failed to load native preprocessing library", e)
+    } catch (e: Exception) {
+      Log.e("#whisper-onnx", "C++ preprocessing failed: ${e.message}", e)
+      throw RuntimeException("C++ preprocessing failed", e)
     }
-
-    // Normalize (optional, Whisper does this)
-    val mean = logMelSpec.flatMap { it.toList() }.average().toFloat()
-    val std = sqrt(logMelSpec.flatMap { it.toList() }.map { (it - mean) * (it - mean) }.average()).toFloat()
-
-    for (i in 0 until N_MELS) {
-      for (j in 0 until actualFrames) {
-        logMelSpec[i][j] = (logMelSpec[i][j] - mean) / (std + 1e-5f)
-      }
-    }
-
-    Log.d("#whisper-onnx", "Mel features shape: ${logMelSpec.size} x ${logMelSpec[0].size}")
-    return logMelSpec
   }
 
   /**
@@ -403,40 +419,117 @@ class WhisperOnnxKotlinHelper(private val context: Context) {
     return melSpec
   }
 
+  // GPT-2 BPE byte decoder (from transformers library)
+  private val byteDecoder by lazy {
+    val bs = mutableListOf<Int>()
+    bs.addAll(('!'.code..'~'.code))
+    bs.addAll(('¡'.code..'¬'.code))
+    bs.addAll(('®'.code..'ÿ'.code))
+
+    val cs = bs.toMutableList()
+    var n = 0
+    for (b in 0..255) {
+      if (b !in bs) {
+        bs.add(b)
+        cs.add(256 + n)
+        n++
+      }
+    }
+
+    cs.map { it.toChar() }.zip(bs).toMap()
+  }
+
   private fun decodeTokens(tokens: List<Int>): String {
-    // Simple decoder - maps token IDs back to text
-    // Skip special tokens
+    Log.d("#whisper-onnx", "🔧 decodeTokens() called with ${tokens.size} total tokens")
+    Log.d("#whisper-onnx", "All tokens: $tokens")
+
+    // Skip special tokens (>= 50257)
     val textTokens = tokens.filter { it < 50257 }
+
+    Log.d("#whisper-onnx", "After filtering special tokens: ${textTokens.size} text tokens")
+    Log.d("#whisper-onnx", "Text tokens: ${textTokens.take(20)}")
+
+    if (textTokens.isEmpty()) {
+      Log.w("#whisper-onnx", "⚠️ No text tokens found! Only special tokens were generated.")
+      return ""
+    }
 
     val reverseVocab = vocab.entries.associate { it.value to it.key }
 
-    val words = textTokens.mapNotNull { reverseVocab[it] }
-    val text = words.joinToString("").replace("Ġ", " ").trim()
+    // Get BPE token strings
+    val tokenStrings = textTokens.mapNotNull {
+      val str = reverseVocab[it]
+      if (str == null) {
+        Log.w("#whisper-onnx", "⚠️ Token $it not found in vocab")
+      }
+      str
+    }
 
-    return text
+    Log.d("#whisper-onnx", "Mapped to ${tokenStrings.size} BPE strings")
+    Log.d("#whisper-onnx", "First 10 BPE strings: ${tokenStrings.take(10)}")
+
+    // Join all tokens
+    val joined = tokenStrings.joinToString("")
+    Log.d("#whisper-onnx", "Joined BPE string (first 100 chars): ${joined.take(100)}")
+
+    try {
+      // Decode using GPT-2 BPE byte decoder
+      val byteList = mutableListOf<Byte>()
+      for (char in joined) {
+        val byteVal = byteDecoder[char]
+        if (byteVal != null) {
+          byteList.add(byteVal.toByte())
+        } else {
+          Log.w("#whisper-onnx", "Unknown char in BPE: '${char}' (U+${char.code.toString(16)})")
+        }
+      }
+
+      val decoded = String(byteList.toByteArray(), Charsets.UTF_8)
+        .replace("Ġ", " ")  // GPT-2 uses Ġ for space
+        .trim()
+
+      Log.d("#whisper-onnx", "✅ Decoded text (${decoded.length} chars): '$decoded'")
+
+      return decoded
+    } catch (e: Exception) {
+      Log.e("#whisper-onnx", "❌ Token decoding error: ${e.message}", e)
+      return joined.replace("Ġ", " ").trim()
+    }
   }
 
   /**
    * Transcribe audio from a WAV file
    */
   fun transcribe(audioFilePath: String): String {
+    Log.d("#whisper-onnx", "========================================")
+    Log.d("#whisper-onnx", "🎤 transcribe() called")
+    Log.d("#whisper-onnx", "📁 File: $audioFilePath")
+
     try {
       // Read WAV file
       val file = File(audioFilePath)
       if (!file.exists()) {
+        Log.e("#whisper-onnx", "❌ File not found: $audioFilePath")
         return "Error: File not found"
       }
+
+      Log.d("#whisper-onnx", "✅ File exists, size: ${file.length()} bytes")
 
       // Read all bytes and skip WAV header (44 bytes)
       val allBytes = file.readBytes()
       val audioBytes = allBytes.copyOfRange(44, allBytes.size)
 
-      Log.d("#whisper-onnx", "Transcribing file: $audioFilePath (${audioBytes.size} bytes)")
+      Log.d("#whisper-onnx", "✅ Read WAV file: ${audioBytes.size} bytes (after skipping 44-byte header)")
 
       // Transcribe the audio
-      return transcribeAudio(audioBytes)
+      Log.d("#whisper-onnx", "🔧 Calling transcribeAudio()...")
+      val result = transcribeAudio(audioBytes)
+      Log.d("#whisper-onnx", "🏁 transcribe() returning: '$result'")
+      Log.d("#whisper-onnx", "========================================")
+      return result
     } catch (e: Exception) {
-      Log.e("#whisper-onnx", "Transcription error", e)
+      Log.e("#whisper-onnx", "❌ transcribe() failed: ${e.message}", e)
+      e.printStackTrace()
       return "Error: ${e.message}"
     }
   }
@@ -455,4 +548,7 @@ class WhisperOnnxKotlinHelper(private val context: Context) {
     decoderSession?.close()
     env?.close()
   }
+
+  // Native method for C++ mel spectrogram extraction using whisper_audio.cpp
+  private external fun extractMelFeaturesNative(audioData: FloatArray): Array<FloatArray>
 }

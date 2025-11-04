@@ -276,7 +276,21 @@ std::vector<std::vector<float>> AudioProcessor::extract_mel_spectrogram(const st
 //   std::cout << "]" << std::endl;
 //   std::cout << std::fixed; // Reset to fixed notation
 
-  return mel_spec;
+  // Apply log transform
+  auto log_mel_spec = apply_log_transform(mel_spec);
+
+  // Apply Whisper normalization: (log_mel - mean) / std
+  // Whisper uses global statistics from training data
+  const float WHISPER_MEL_MEAN = -4.2677393f;  // Global mean from Whisper training
+  const float WHISPER_MEL_STD = 4.5689974f;    // Global std from Whisper training
+
+  for (auto& mel_band : log_mel_spec) {
+    for (float& value : mel_band) {
+      value = (value - WHISPER_MEL_MEAN) / WHISPER_MEL_STD;
+    }
+  }
+
+  return log_mel_spec;
 }
 
 std::vector<std::vector<float>> AudioProcessor::apply_log_transform(const std::vector<std::vector<float>>& mel_spectrogram) {

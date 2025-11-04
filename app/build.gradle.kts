@@ -39,12 +39,12 @@ android {
     compose = true
     viewBinding = true
   }
-  // Disable native build since we're using pure Kotlin ONNX implementation
-  // externalNativeBuild {
-  //   cmake {
-  //     path = file("src/main/cpp/CMakeLists.txt")
-  //   }
-  // }
+  // Native build for C++ preprocessing
+  externalNativeBuild {
+    cmake {
+      path = file("src/main/cpp/CMakeLists.txt")
+    }
+  }
 }
 
 dependencies {
