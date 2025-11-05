@@ -160,3 +160,4 @@ set(CTRANSLATE2_ROOT "/Users/amraboelela/develop/android/CTranslate2")
 - When training model on new data, use very low Learning Rate (1e-5), Early stop when loss plateaus (change < 0.001)
 - When training model on new data, use very low Learning Rate (1e-5), Early stop when loss plateaus (change < 0.001), use max number of epochs = 5
 - never kill the adb process
+- do not read the whole onnx/vocabulary.json file it is too long

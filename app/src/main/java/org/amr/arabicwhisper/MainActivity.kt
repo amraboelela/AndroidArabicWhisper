@@ -41,9 +41,6 @@ import java.io.File
 import android.content.res.AssetManager
 
 class MainActivity : ComponentActivity() {
-  // Switch between CTranslate2 and ONNX implementations
-  private val useOnnx = true
-  private var whisperHelper: WhisperHelper? = null
   private var whisperOnnxHelper: WhisperOnnxKotlinHelper? = null
   private var audioRecorder: AudioRecorder? = null
   private var accumulatedTranscription = StringBuilder()
@@ -64,19 +61,9 @@ class MainActivity : ComponentActivity() {
     // Check and request audio recording permission
     checkAudioPermission()
 
-    // Initialize Whisper model (CTranslate2 or ONNX)
-    if (useOnnx) {
-      Log.d("#transcribe", "Using ONNX implementation (pure Kotlin with FFT)")
-      whisperOnnxHelper = WhisperOnnxKotlinHelper(this)
-    } else {
-      Log.d("#transcribe", "Using CTranslate2 implementation")
-      val modelDir = File(this.filesDir, "whisper_ct2")
-      if (!modelDir.exists()) {
-        modelDir.mkdirs()
-      }
-      copyModelFromAssets(assets, modelDir)
-      whisperHelper = WhisperHelper(this)
-    }
+    // Initialize Whisper ONNX model
+    Log.d("#transcribe", "Using ONNX implementation (pure Kotlin)")
+    whisperOnnxHelper = WhisperOnnxKotlinHelper(this)
 
     // Copy audio test files to internal storage
     copyAudioFromAssets(assets, this.filesDir)
@@ -91,8 +78,7 @@ class MainActivity : ComponentActivity() {
           color = MaterialTheme.colorScheme.background
         ) {
           MainScreen(
-            whisperHelper = if (useOnnx) null else whisperHelper,
-            whisperOnnxHelper = if (useOnnx) whisperOnnxHelper else null,
+            whisperOnnxHelper = whisperOnnxHelper,
             audioFilePath = audioFilePath,
             onStartRecording = { startRecording() },
             onStopRecording = { stopRecording() },
@@ -128,40 +114,20 @@ class MainActivity : ComponentActivity() {
     }
 
     // Clear state before starting new recording
-    if (useOnnx) {
-      whisperOnnxHelper?.clearTranscription()
-    } else {
-      whisperHelper?.clearTranscription()
-    }
     accumulatedTranscription.clear()
     Log.d("#transcribe", "Starting new recording, state cleared")
 
     audioRecorder = AudioRecorder { audioData ->
-      // Call transcribeStream with the appropriate helper
-      if (useOnnx) {
-        whisperOnnxHelper?.transcribeStream(audioData) { result ->
-          runOnUiThread {
-            if (result.isNotEmpty()) {
-              Log.d("#transcribe", "ONNX: New chunk transcribed: $result")
-              if (accumulatedTranscription.isNotEmpty()) {
-                accumulatedTranscription.append(" ")
-              }
-              accumulatedTranscription.append(result)
-              whisperOnnxHelper?.onTranscriptionUpdate?.invoke(accumulatedTranscription.toString())
+      // Call transcribeStream with ONNX helper
+      whisperOnnxHelper?.transcribeStream(audioData) { result ->
+        runOnUiThread {
+          if (result.isNotEmpty()) {
+            Log.d("#transcribe", "ONNX: New chunk transcribed: $result")
+            if (accumulatedTranscription.isNotEmpty()) {
+              accumulatedTranscription.append(" ")
             }
-          }
-        }
-      } else {
-        whisperHelper?.transcribeStream(audioData) { result ->
-          runOnUiThread {
-            if (result.isNotEmpty()) {
-              Log.d("#transcribe", "CT2: New chunk transcribed: $result")
-              if (accumulatedTranscription.isNotEmpty()) {
-                accumulatedTranscription.append(" ")
-              }
-              accumulatedTranscription.append(result)
-              whisperHelper?.onTranscriptionUpdate?.invoke(accumulatedTranscription.toString())
-            }
+            accumulatedTranscription.append(result)
+            whisperOnnxHelper?.onTranscriptionUpdate?.invoke(accumulatedTranscription.toString())
           }
         }
       }
@@ -174,20 +140,17 @@ class MainActivity : ComponentActivity() {
   private fun stopRecording() {
     audioRecorder?.stopRecording()
     audioRecorder = null
-    whisperHelper?.clearTranscription()
     Log.d("#transcribe", "Recording stopped")
   }
 
   override fun onDestroy() {
     super.onDestroy()
     audioRecorder?.stopRecording()
-    whisperHelper?.shutdown()
   }
 }
 
 @Composable
 fun MainScreen(
-  whisperHelper: WhisperHelper?,
   whisperOnnxHelper: WhisperOnnxKotlinHelper?,
   audioFilePath: String,
   onStartRecording: () -> Unit,
@@ -199,19 +162,12 @@ fun MainScreen(
   var isProcessing by remember { mutableStateOf(false) }
 
   // Update the transcription state when helper provides new results
-  whisperHelper?.onTranscriptionUpdate = {
-    Log.d("#transcribe", "UI update with transcription: $it")
-    transcription = it
-  }
   whisperOnnxHelper?.onTranscriptionUpdate = {
     Log.d("#transcribe", "UI update with transcription: $it")
     transcription = it
   }
 
   // Update processing state
-  whisperHelper?.onProcessingStateChange = {
-    isProcessing = it
-  }
   whisperOnnxHelper?.onProcessingStateChange = {
     isProcessing = it
   }
@@ -302,11 +258,7 @@ fun MainScreen(
       onClick = {
         Thread {
           try {
-            val result = when {
-              whisperOnnxHelper != null -> whisperOnnxHelper.transcribe(audioFilePath)
-              whisperHelper != null -> whisperHelper.transcribe(audioFilePath)
-              else -> "Error: No helper available"
-            }
+            val result = whisperOnnxHelper?.transcribe(audioFilePath) ?: "Error: No helper available"
             transcription = result
             Log.d("#transcribe", "Test transcription: $result")
           } catch (e: Exception) {
@@ -329,24 +281,6 @@ fun MainScreen(
 fun MainScreenPreview() {
   ArabicWhisperTheme {
     Text("Preview")
-  }
-}
-
-fun copyModelFromAssets(assetManager: AssetManager, destDir: File) {
-  try {
-    val files = assetManager.list("whisper_ct2") ?: return
-    for (fileName in files) {
-      val outFile = File(destDir, fileName)
-      if (!outFile.exists()) {
-        assetManager.open("whisper_ct2/$fileName").use { input ->
-          outFile.outputStream().use { output ->
-            input.copyTo(output)
-          }
-        }
-      }
-    }
-  } catch (e: Exception) {
-    e.printStackTrace()
   }
 }
 

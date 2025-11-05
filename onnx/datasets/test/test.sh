@@ -6,7 +6,7 @@
 # Get dataset name parameter (defaults to base)
 DATASET=${1:-base}
 
-LOG_FILE="../${DATASET}/log/log_test.txt"
+LOG_FILE="log_test.txt"
 
 echo "============================================================" | tee "$LOG_FILE"
 echo "RUNNING ALL TEST SCRIPTS" | tee -a "$LOG_FILE"
@@ -33,7 +33,7 @@ run_test_suite() {
 
     if ./"$script" >> "$LOG_FILE" 2>&1; then
         # Extract overall accuracy from the suite's log
-        local suite_log="${script/test_/../${DATASET}/log/log_test_}"
+        local suite_log="${script/test_/log_test_}"
         suite_log="${suite_log/.sh/.txt}"
         local accuracy=$(grep "Overall Accuracy:" "$suite_log" | tail -1 | grep -o "([0-9.]*%)" | tr -d "()")
 

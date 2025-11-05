@@ -38,7 +38,13 @@ def extract_mel_features(audio_path, n_mels=80):
     mel_features = mel_spec.squeeze(0).transpose(0, 1)
 
     # Normalize (same as training)
-    mel_features = (mel_features - mel_features.mean()) / (mel_features.std() + 1e-5)
+    # Global Whisper normalization (more robust than per-sample)
+
+    WHISPER_MEL_MEAN = -4.2677393
+
+    WHISPER_MEL_STD = 4.5689974
+
+    mel_features = (mel_features - WHISPER_MEL_MEAN) / WHISPER_MEL_STD
     return mel_features
 
 

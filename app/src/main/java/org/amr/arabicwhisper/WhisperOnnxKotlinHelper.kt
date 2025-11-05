@@ -45,23 +45,25 @@ class WhisperOnnxKotlinHelper(private val context: Context) {
   private val MEL_FILTERS by lazy { createMelFilterbank() }
 
   init {
+    Log.d("#whisper-onnx", "init")
     initializeOnnx()
     loadTokenizer()
     Log.d("#whisper-onnx", "📱 WhisperOnnxKotlinHelper initialized (Kotlin preprocessing + Kotlin ONNX)")
   }
 
   private fun initializeOnnx() {
+    //Log.d("#whisper-onnx", "initializeOnnx")
     try {
       env = OrtEnvironment.getEnvironment()
-
+      //Log.d("#whisper-onnx", "initializeOnnx after OrtEnvironment.getEnvironment()")
       // Copy ONNX models from assets to internal storage if needed
-      val modelDir = File(context.filesDir, "whisper_onnx")
+      val modelDir = File(context.filesDir, "whisper_onnx_custom")
       if (!modelDir.exists()) {
         modelDir.mkdirs()
-        copyAssetFile("whisper_onnx/encoder_model.onnx", File(modelDir, "encoder_model.onnx"))
-        copyAssetFile("whisper_onnx/decoder_model.onnx", File(modelDir, "decoder_model.onnx"))
+        copyAssetFile("whisper_onnx_custom/encoder_model.onnx", File(modelDir, "encoder_model.onnx"))
+        copyAssetFile("whisper_onnx_custom/decoder_model.onnx", File(modelDir, "decoder_model.onnx"))
       }
-
+      //Log.d("#whisper-onnx", "initializeOnnx before val encoderPath = File")
       val encoderPath = File(modelDir, "encoder_model.onnx").absolutePath
       val decoderPath = File(modelDir, "decoder_model.onnx").absolutePath
 
@@ -69,20 +71,38 @@ class WhisperOnnxKotlinHelper(private val context: Context) {
       sessionOptions.setIntraOpNumThreads(4)
       sessionOptions.setInterOpNumThreads(4)
 
-      // Try to enable NNAPI (Android Neural Networks API) for GPU/NPU acceleration
-      Log.d("#whisper-onnx", "🔧 Attempting to enable NNAPI acceleration...")
+      // Use NNAPI execution with quantized models for best performance
+      // NNAPI is designed to work well with INT8/FP16 quantization on mobile hardware
+      Log.d("#whisper-onnx", "📱 Android API Level: ${android.os.Build.VERSION.SDK_INT}")
+      Log.d("#whisper-onnx", "📱 Device: ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}")
+      Log.d("#whisper-onnx", "🔧 Attempting to enable NNAPI for quantized models...")
+
+      var nnApiEnabled = false
       try {
         sessionOptions.addNnapi()
-        Log.d("#whisper-onnx", "✅ NNAPI (GPU/NPU acceleration) ENABLED")
+        nnApiEnabled = true
+        Log.d("#whisper-nnapi", "✅ NNAPI configured successfully")
       } catch (e: Exception) {
-        Log.w("#whisper-onnx", "⚠️ NNAPI not available, using CPU only: ${e.message}")
-        e.printStackTrace()
+        Log.e("#whisper-nnapi", "❌ Failed to enable NNAPI: ${e.message}")
       }
 
       Log.d("#whisper-onnx", "📦 Loading encoder model from: $encoderPath")
-      encoderSession = env?.createSession(encoderPath, sessionOptions)
+      try {
+        encoderSession = env?.createSession(encoderPath, sessionOptions)
+        Log.d("#whisper-onnx", if (nnApiEnabled) "✅ Encoder loaded with NNAPI" else "✅ Encoder loaded with CPU")
+      } catch (e: Exception) {
+        Log.e("#whisper-onnx", "❌ Failed to load encoder: ${e.message}", e)
+        throw e
+      }
+
       Log.d("#whisper-onnx", "📦 Loading decoder model from: $decoderPath")
-      decoderSession = env?.createSession(decoderPath, sessionOptions)
+      try {
+        decoderSession = env?.createSession(decoderPath, sessionOptions)
+        Log.d("#whisper-onnx", if (nnApiEnabled) "✅ Decoder loaded with NNAPI" else "✅ Decoder loaded with CPU")
+      } catch (e: Exception) {
+        Log.e("#whisper-onnx", "❌ Failed to load decoder: ${e.message}", e)
+        throw e
+      }
 
       Log.d("#whisper-onnx", "✅ ONNX models loaded successfully")
     } catch (e: Exception) {
@@ -102,18 +122,18 @@ class WhisperOnnxKotlinHelper(private val context: Context) {
   private fun loadTokenizer() {
     try {
       // Load vocab.json
-      val vocabJson = context.assets.open("whisper_onnx/vocab.json").bufferedReader().readText()
+      val vocabJson = context.assets.open("whisper_onnx_custom/vocab.json").bufferedReader().readText()
       vocab = Json.parseToJsonElement(vocabJson).jsonObject.mapValues { it.value.jsonPrimitive.int }
 
       // Load merges.txt
-      val mergesText = context.assets.open("whisper_onnx/merges.txt").bufferedReader().readLines()
+      val mergesText = context.assets.open("whisper_onnx_custom/merges.txt").bufferedReader().readLines()
       merges = mergesText.drop(1).map { line ->
         val parts = line.split(" ")
         Pair(parts[0], parts[1])
       }
 
       // Load added_tokens.json
-      val addedTokensJson = context.assets.open("whisper_onnx/added_tokens.json").bufferedReader().readText()
+      val addedTokensJson = context.assets.open("whisper_onnx_custom/added_tokens.json").bufferedReader().readText()
       addedTokens = Json.parseToJsonElement(addedTokensJson).jsonObject.mapValues { it.value.jsonPrimitive.int }
 
       Log.d("#whisper-onnx", "✅ Tokenizer loaded: ${vocab.size} vocab, ${merges.size} merges")
@@ -209,13 +229,12 @@ class WhisperOnnxKotlinHelper(private val context: Context) {
       // Run decoder with autoregressive generation
       Log.d("#whisper-onnx", "🔧 Running ONNX decoder...")
       val decoderStart = System.currentTimeMillis()
-      val decoderStartTokenId = 50258L  // <|startoftranscript|>
-      val langTokenId = 50272L           // <|ar|>
-      val taskTokenId = 50359L           // <|transcribe|>
-      val noTimestampsTokenId = 50363L   // <|notimestamps|>
-      val eosTokenId = 50257L            // <|endoftext|>
 
-      val generatedTokens = mutableListOf(decoderStartTokenId, langTokenId, taskTokenId, noTimestampsTokenId)
+      // Custom model uses simple tokenizer (not Whisper's special tokens)
+      val sosTokenId = 1L    // <s> - start of sequence
+      val eosTokenId = 2L    // </s> - end of sequence
+
+      val generatedTokens = mutableListOf(sosTokenId)  // Start with <s>
       val maxLength = 200
 
     for (step in 0 until maxLength) {
@@ -313,9 +332,10 @@ class WhisperOnnxKotlinHelper(private val context: Context) {
       val logTime = System.currentTimeMillis() - logStart
       Log.d("#whisper-onnx", "✅ Log-mel shape: ${logMelSpec.size} x ${logMelSpec[0].size} (${logTime}ms)")
 
-      // Step 4: Apply Whisper normalization (subtract mean, divide by std)
+      // Step 4: Apply Whisper global normalization
       // These are the global statistics from Whisper training data
-      Log.d("#whisper-onnx", "🔧 Applying Whisper normalization...")
+      // Now also used by our custom model for better robustness
+      Log.d("#whisper-onnx", "🔧 Applying Whisper global normalization...")
       val normStart = System.currentTimeMillis()
       val WHISPER_MEL_MEAN = -4.2677393f
       val WHISPER_MEL_STD = 4.5689974f
@@ -326,7 +346,7 @@ class WhisperOnnxKotlinHelper(private val context: Context) {
         }
       }
       val normTime = System.currentTimeMillis() - normStart
-      Log.d("#whisper-onnx", "✅ Normalization complete (${normTime}ms)")
+      Log.d("#whisper-onnx", "✅ Global normalization complete (${normTime}ms)")
 
       // Log statistics for verification
       val min = normalizedMel.flatMap { it.toList() }.minOrNull() ?: 0f
@@ -509,10 +529,10 @@ class WhisperOnnxKotlinHelper(private val context: Context) {
   private fun decodeTokens(tokens: List<Int>): String {
     Log.d("#whisper-onnx", "🔧 Decoding ${tokens.size} total tokens...")
 
-    // Skip special tokens (>= 50257)
-    val textTokens = tokens.filter { it < 50257 }
+    // Skip special tokens: 0=<unk>, 1=<s>, 2=</s>
+    val textTokens = tokens.filter { it > 2 }
 
-    Log.d("#whisper-onnx", "Text tokens after filtering: ${textTokens.size}")
+    Log.d("#whisper-onnx", "Text tokens after filtering special tokens: ${textTokens.size}")
 
     if (textTokens.isEmpty()) {
       Log.w("#whisper-onnx", "⚠️ No text tokens found! Only special tokens were generated.")
@@ -521,7 +541,7 @@ class WhisperOnnxKotlinHelper(private val context: Context) {
 
     val reverseVocab = vocab.entries.associate { it.value to it.key }
 
-    // Get BPE token strings
+    // Get token strings
     val tokenStrings = textTokens.mapNotNull {
       val str = reverseVocab[it]
       if (str == null) {
@@ -530,36 +550,119 @@ class WhisperOnnxKotlinHelper(private val context: Context) {
       str
     }
 
-    // Join all tokens
-    val joined = tokenStrings.joinToString("")
+    Log.d("#whisper-onnx", "Token strings: ${tokenStrings.joinToString(", ") { "'$it'" }}")
 
-    try {
-      // Decode using GPT-2 BPE byte decoder
-      val byteList = mutableListOf<Byte>()
-      for (char in joined) {
-        val byteVal = byteDecoder[char]
-        if (byteVal != null) {
-          byteList.add(byteVal.toByte())
-        } else {
-          Log.w("#whisper-onnx", "Unknown char in BPE: '${char}' (U+${char.code.toString(16)})")
-        }
-      }
+    // Custom Arabic vocabulary uses direct text, not BPE byte encoding
+    // Just join tokens with spaces
+    val decoded = tokenStrings.joinToString(" ").trim()
 
-      val decoded = String(byteList.toByteArray(), Charsets.UTF_8)
-        .replace("Ġ", " ")  // GPT-2 uses Ġ for space
-        .trim()
+    Log.d("#whisper-onnx", "✅ Decoded text (${decoded.length} chars): '$decoded'")
 
-      Log.d("#whisper-onnx", "✅ Decoded text (${decoded.length} chars): '$decoded'")
-
-      return decoded
-    } catch (e: Exception) {
-      Log.e("#whisper-onnx", "❌ Token decoding error: ${e.message}", e)
-      return joined.replace("Ġ", " ").trim()
-    }
+    return decoded
   }
 
   /**
-   * Transcribe audio from a WAV file
+   * Detect silent regions in audio using energy-based threshold
+   * Returns list of (start_sample, end_sample) pairs for silent regions
+   */
+  private fun detectSilence(
+    audioFloats: FloatArray,
+    sampleRate: Int = SAMPLE_RATE,
+    thresholdDb: Float = -30f,
+    minSilenceFrames: Int = 1
+  ): List<Pair<Int, Int>> {
+    val hopLength = sampleRate / 20  // 20 frames per second
+    val frameEnergies = mutableListOf<Float>()
+
+    // Calculate energy for each frame
+    var i = 0
+    while (i < audioFloats.size) {
+      val frameEnd = min(i + hopLength, audioFloats.size)
+      val frame = audioFloats.sliceArray(i until frameEnd)
+
+      val energy = frame.map { it * it }.average().toFloat()
+      val energyDb = 10f * log10(energy + 1e-10f)
+      frameEnergies.add(energyDb)
+
+      i += hopLength
+    }
+
+    // Find silent frames
+    val silentFrames = frameEnergies.indices.filter { frameEnergies[it] < thresholdDb }
+
+    // Group consecutive silent frames into regions
+    val silentRegions = mutableListOf<Pair<Int, Int>>()
+    if (silentFrames.isNotEmpty()) {
+      var start = silentFrames[0]
+      var prev = silentFrames[0]
+
+      for (frame in silentFrames.drop(1)) {
+        if (frame != prev + 1) {
+          // End of current silent region
+          if (prev - start + 1 >= minSilenceFrames) {
+            silentRegions.add(Pair(start * hopLength, prev * hopLength))
+          }
+          start = frame
+        }
+        prev = frame
+      }
+
+      // Add last region
+      if (prev - start + 1 >= minSilenceFrames) {
+        silentRegions.add(Pair(start * hopLength, prev * hopLength))
+      }
+    }
+
+    return silentRegions
+  }
+
+  /**
+   * Segment audio based on silence detection
+   * Returns list of audio segments as FloatArray
+   */
+  private fun segmentAudio(
+    audioFloats: FloatArray,
+    minSegmentDuration: Float = 0.5f  // Minimum 0.5 seconds
+  ): List<FloatArray> {
+    Log.d("#whisper-onnx", "🔪 Segmenting audio: ${audioFloats.size} samples (${audioFloats.size / SAMPLE_RATE.toFloat()}s)")
+
+    val silentRegions = detectSilence(audioFloats)
+    Log.d("#whisper-onnx", "   Found ${silentRegions.size} silent regions")
+
+    val segments = mutableListOf<FloatArray>()
+    var currentStart = 0
+
+    for ((silenceStart, silenceEnd) in silentRegions) {
+      if (silenceStart > currentStart) {
+        // Add segment before this silence
+        val segment = audioFloats.sliceArray(currentStart until silenceStart)
+        val duration = segment.size / SAMPLE_RATE.toFloat()
+
+        if (duration >= minSegmentDuration) {
+          segments.add(segment)
+          Log.d("#whisper-onnx", "   Segment ${segments.size}: ${duration}s (${segment.size} samples)")
+        }
+      }
+      currentStart = silenceEnd
+    }
+
+    // Add remaining audio after last silence
+    if (currentStart < audioFloats.size) {
+      val segment = audioFloats.sliceArray(currentStart until audioFloats.size)
+      val duration = segment.size / SAMPLE_RATE.toFloat()
+
+      if (duration >= minSegmentDuration) {
+        segments.add(segment)
+        Log.d("#whisper-onnx", "   Segment ${segments.size}: ${duration}s (${segment.size} samples)")
+      }
+    }
+
+    Log.d("#whisper-onnx", "✅ Created ${segments.size} segments")
+    return segments
+  }
+
+  /**
+   * Transcribe audio from a WAV file with segmentation
    */
   fun transcribe(audioFilePath: String): String {
     Log.d("#whisper-onnx", "========================================")
@@ -582,12 +685,46 @@ class WhisperOnnxKotlinHelper(private val context: Context) {
 
       Log.d("#whisper-onnx", "✅ Read WAV file: ${audioBytes.size} bytes (after skipping 44-byte header)")
 
-      // Transcribe the audio
-      Log.d("#whisper-onnx", "🔧 Calling transcribeAudio()...")
-      val result = transcribeAudio(audioBytes)
-      Log.d("#whisper-onnx", "🏁 transcribe() returning: '$result'")
+      // Convert to float array
+      val audioFloats = FloatArray(audioBytes.size / 2) { i ->
+        val sample = ((audioBytes[i * 2 + 1].toInt() shl 8) or (audioBytes[i * 2].toInt() and 0xFF)).toShort()
+        sample / 32768.0f
+      }
+
+      // Segment the audio
+      val segments = segmentAudio(audioFloats)
+
+      if (segments.isEmpty()) {
+        Log.w("#whisper-onnx", "⚠️ No segments found (audio might be too short or all silence)")
+        return ""
+      }
+
+      // Transcribe each segment
+      val transcriptions = mutableListOf<String>()
+      for ((index, segment) in segments.withIndex()) {
+        Log.d("#whisper-onnx", "")
+        Log.d("#whisper-onnx", "🔧 Transcribing segment ${index + 1}/${segments.size}...")
+
+        // Convert segment back to bytes for transcribeAudio
+        val segmentBytes = ByteArray(segment.size * 2)
+        for (i in segment.indices) {
+          val sample = (segment[i] * 32768.0f).toInt().coerceIn(-32768, 32767).toShort()
+          segmentBytes[i * 2] = (sample.toInt() and 0xFF).toByte()
+          segmentBytes[i * 2 + 1] = (sample.toInt() shr 8).toByte()
+        }
+
+        val segmentResult = transcribeAudio(segmentBytes)
+        if (segmentResult.isNotEmpty()) {
+          transcriptions.add(segmentResult)
+          Log.d("#whisper-onnx", "   ✅ Segment ${index + 1}: '$segmentResult'")
+        }
+      }
+
+      val finalResult = transcriptions.joinToString(" ")
+      Log.d("#whisper-onnx", "")
+      Log.d("#whisper-onnx", "🏁 Final transcription (${segments.size} segments): '$finalResult'")
       Log.d("#whisper-onnx", "========================================")
-      return result
+      return finalResult
     } catch (e: Exception) {
       Log.e("#whisper-onnx", "❌ transcribe() failed: ${e.message}", e)
       e.printStackTrace()

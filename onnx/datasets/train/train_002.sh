@@ -12,7 +12,7 @@
 # Get dataset name parameter (defaults to base)
 DATASET=${1:-base}
 
-LOG_FILE="../${DATASET}/log/log_train_002.txt"
+LOG_FILE="log_train_002.txt"
 
 echo "============================================================" | tee "$LOG_FILE"
 echo "RUNNING AL-BAQARA (002) TRAINING SCRIPTS (CURRICULUM LEARNING)" | tee -a "$LOG_FILE"
