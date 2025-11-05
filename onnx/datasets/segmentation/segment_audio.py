@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
 Split audio file based on silence detection (-30dB threshold)
-Usage: python3 segment_audio.py 002-04
-       python3 segment_audio.py 001
+Usage: python3 segment_audio.py <dataset_name> <segment_name>
+       python3 segment_audio.py Quran-A 002-04
+       python3 segment_audio.py Quran-A 001
 Output segments named like 002-04-01.wav, 002-04-02.wav, ...
 """
 
@@ -89,24 +90,25 @@ def segment_audio_simple(audio_path, output_dir):
 
 
 def main():
-    # Get segment name from command line
-    if len(sys.argv) < 2:
-        print("Usage: python3 segment_audio.py <segment_name>")
+    # Get dataset name and segment name from command line
+    if len(sys.argv) < 3:
+        print("Usage: python3 segment_audio.py <dataset_name> <segment_name>")
         print("Examples:")
-        print("  python3 segment_audio.py 002-04")
-        print("  python3 segment_audio.py 001")
+        print("  python3 segment_audio.py Quran-A 002-04")
+        print("  python3 segment_audio.py Quran-A 001")
         sys.exit(1)
 
-    segment_name = sys.argv[1]
+    dataset_name = sys.argv[1]
+    segment_name = sys.argv[2]
 
     # Extract prefix (e.g., "002-04" -> "002", "001" -> "001")
     segment_prefix = segment_name.split('-')[0]
 
     # Determine output directory based on prefix
-    output_dir = f"../base/audio/{segment_prefix}"
+    output_dir = f"../{dataset_name}/audio/{segment_prefix}"
 
-    # Audio path from ~/audio/Quran-A/
-    audio_path = os.path.expanduser(f"~/audio/Quran-A/{segment_name}.mp3")
+    # Audio path from ~/audio/{dataset_name}/
+    audio_path = os.path.expanduser(f"~/audio/{dataset_name}/{segment_name}.mp3")
 
     if not os.path.exists(audio_path):
         print(f"❌ Audio file not found: {audio_path}")

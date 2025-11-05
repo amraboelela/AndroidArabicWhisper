@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """
-Train encoder-decoder model on Al-Baqara first 4 seconds → first 3 words
+Universal training script for encoder-decoder model
+Usage: python3 train.py <segment> [dataset_name]
+Examples:
+  python3 train.py 001 base       # Train on Al-Fatiha (001)
+  python3 train.py 002-01 base    # Train on Al-Baqara part 1
+  python3 train.py 002-04 base    # Train on Al-Baqara part 4
 """
 import json
 import torch
@@ -32,18 +37,19 @@ print(f"Device: {device}")
 # ==============================================================
 # Audio feature extraction
 # ==============================================================
-def extract_first_4_seconds_mel(audio_path, n_mels=80, target_seconds=4.0):
-    """Extract mel features from only the first 4 seconds of the audio"""
+def extract_mel_features(audio_path, n_mels=80, target_seconds=None):
+    """Extract mel features from audio, optionally trimming to target_seconds"""
     waveform, sample_rate = torchaudio.load(audio_path)
 
     # Convert stereo to mono
     if waveform.shape[0] > 1:
         waveform = waveform.mean(dim=0, keepdim=True)
 
-    # Trim to first N seconds
-    num_samples = int(sample_rate * target_seconds)
-    if waveform.shape[1] > num_samples:
-        waveform = waveform[:, :num_samples]
+    # Trim to target seconds if specified
+    if target_seconds is not None:
+        num_samples = int(sample_rate * target_seconds)
+        if waveform.shape[1] > num_samples:
+            waveform = waveform[:, :num_samples]
 
     # Whisper parameters (100 fps: 16000 / 160 = 100)
     n_fft = 400
@@ -60,13 +66,12 @@ def extract_first_4_seconds_mel(audio_path, n_mels=80, target_seconds=4.0):
     mel_spec = mel_transform(waveform)
     mel_spec = torch.log(mel_spec + 1e-9)
     mel_features = mel_spec.squeeze(0).transpose(0, 1)
-    # Global Whisper normalization (more robust than per-sample)
 
-    WHISPER_MEL_MEAN = -4.2677393
+    # Per-segment normalization
+    mel_mean = mel_features.mean()
+    mel_std = mel_features.std()
+    mel_features = (mel_features - mel_mean) / (mel_std + 1e-8)
 
-    WHISPER_MEL_STD = 4.5689974
-
-    mel_features = (mel_features - WHISPER_MEL_MEAN) / WHISPER_MEL_STD
     return mel_features, sample_rate
 
 # ==============================================================
@@ -80,7 +85,15 @@ def tokenize_text(text, vocab):
 # ==============================================================
 # Training
 # ==============================================================
-def train_first_4_seconds(model, segment_files, transcriptions, vocab, dataset_name, num_epochs=5, learning_rate=1e-5):
+def train_model(model, segment_files, transcriptions, vocab, segment_name,
+                target_seconds=None, target_words=None, num_epochs=100, learning_rate=1e-5):
+    """
+    Universal training function
+
+    Args:
+        target_seconds: Number of seconds to use from audio (None = full audio)
+        target_words: Number of words to predict (None = all words)
+    """
     model = model.to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=0.01)
     criterion = nn.CrossEntropyLoss(ignore_index=-100, label_smoothing=0.1)
@@ -91,6 +104,11 @@ def train_first_4_seconds(model, segment_files, transcriptions, vocab, dataset_n
     best_loss = float('inf')
     prev_loss = float('inf')
     start_time = time.time()
+
+    # Build description
+    audio_desc = f"first {target_seconds}s" if target_seconds else "full"
+    text_desc = f"first {target_words} words" if target_words else "full"
+    checkpoint_name = f"checkpoint_best_{segment_name}.pt"
 
     for epoch in range(num_epochs):
         model.train()
@@ -103,13 +121,20 @@ def train_first_4_seconds(model, segment_files, transcriptions, vocab, dataset_n
             seg_file = segment_files[i]
             text = transcriptions[i]
 
-            # Train on FIRST 4 SECONDS -> first 3 words
-            audio_features, sample_rate = extract_first_4_seconds_mel(seg_file)
-            words = text.split()
-            first_three_words = " ".join(words[:3]) if len(words) >= 3 else text
-            if not first_three_words:
+            # Extract audio features
+            audio_features, sample_rate = extract_mel_features(seg_file, target_seconds=target_seconds)
+
+            # Extract target text
+            if target_words:
+                words = text.split()
+                target_text = " ".join(words[:target_words]) if len(words) >= target_words else text
+            else:
+                target_text = text
+
+            if not target_text:
                 continue
-            text_tokens = tokenize_text(first_three_words, vocab)
+
+            text_tokens = tokenize_text(target_text, vocab)
             audio_batch = audio_features.transpose(0, 1).unsqueeze(0).to(device)
 
             full_sequence = [1] + text_tokens + [2]  # <s> + tokens + </s>
@@ -136,7 +161,7 @@ def train_first_4_seconds(model, segment_files, transcriptions, vocab, dataset_n
                 "model": model.state_dict(),
                 "optimizer": optimizer.state_dict(),
                 "epoch": epoch
-            }, "checkpoint_best_first_4_seconds.pt")
+            }, checkpoint_name)
             best_marker = " ⭐ NEW BEST!"
         else:
             best_marker = ""
@@ -157,34 +182,67 @@ def train_first_4_seconds(model, segment_files, transcriptions, vocab, dataset_n
 
         # Sample generation
         model.eval()
-        test_audio, sample_rate = extract_first_4_seconds_mel(segment_files[0])
+        test_audio, sample_rate = extract_mel_features(segment_files[0], target_seconds=target_seconds)
         test_audio = test_audio.transpose(0, 1).unsqueeze(0).to(device)
-        words = transcriptions[0].split()
-        first_three_words = " ".join(words[:3]) if len(words) >= 3 else transcriptions[0]
+
+        # Get expected text
+        if target_words:
+            words = transcriptions[0].split()
+            expected_text = " ".join(words[:target_words]) if len(words) >= target_words else transcriptions[0]
+        else:
+            expected_text = transcriptions[0]
+
+        # Calculate audio duration for generation
+        waveform, sr = torchaudio.load(segment_files[0])
+        audio_duration = target_seconds if target_seconds else (waveform.shape[1] / sr)
+
         with torch.no_grad():
-            generated = model.generate(test_audio, max_new_tokens=30, audio_duration_seconds=4.0)
+            max_tokens = (target_words * 10) if target_words else 50
+            generated = model.generate(test_audio, max_new_tokens=max_tokens, audio_duration_seconds=audio_duration)
             generated_ids = generated[0].tolist()
             if generated_ids and generated_ids[0] == 1:
                 generated_ids = generated_ids[1:]
             if 2 in generated_ids:
                 generated_ids = generated_ids[:generated_ids.index(2)]
             generated_words = [vocab[idx] for idx in generated_ids if idx < len(vocab)]
-            # Only show first 3 words since we're testing first 4 seconds
-            display_words = generated_words[:3] if len(generated_words) >= 3 else generated_words
+
+            # Show only target words if specified
+            if target_words:
+                display_words = generated_words[:target_words] if len(generated_words) >= target_words else generated_words
+            else:
+                display_words = generated_words
+
             print(f"  🔹 Generated: {' '.join(display_words)}")
-            print(f"  🔸 Expected: {first_three_words}")
+            print(f"  🔸 Expected: {expected_text}")
         model.train()
 
     total_time = time.time() - start_time
     print(f"Training complete in {total_time:.1f}s | Best loss: {best_loss:.4f}")
+
+    # Load best checkpoint
+    if os.path.exists(checkpoint_name):
+        print(f"\n✓ Loading best checkpoint from {checkpoint_name}...")
+        checkpoint = torch.load(checkpoint_name, map_location=device)
+        model.load_state_dict(checkpoint["model"])
+        print(f"✓ Loaded best model from epoch {checkpoint['epoch'] + 1}")
+
     return model
 
 # ==============================================================
 # Main
 # ==============================================================
 def main():
-    import sys
-    dataset_name = sys.argv[1] if len(sys.argv) > 1 else "base"
+    if len(sys.argv) < 2:
+        print("Usage: python3 train.py <segment> [dataset_name]")
+        print("Examples:")
+        print("  python3 train.py 001 base")
+        print("  python3 train.py 002-01 base")
+        print("  python3 train.py 002-04 base")
+        sys.exit(1)
+
+    segment_name = sys.argv[1]  # e.g., "001", "002-01", "002-04"
+    dataset_name = sys.argv[2] if len(sys.argv) > 2 else "base"
+
     datasets_dir = f"../{dataset_name}/audio"
     vocab_path = "../../vocabulary.json"
     model_path = "../../models/encoder_decoder_model.pt"
@@ -194,80 +252,82 @@ def main():
         vocab = json.load(f)
     print(f"Vocabulary size: {len(vocab)}")
 
-    # Load Al-Baqara segments
-    all_transcriptions = []
-    all_segment_files = []
+    # Parse segment name to determine surah number
+    surah_num = segment_name.split('-')[0]  # "001" or "002"
 
-    # Load Al-Baqara part 1 (002-01)
-    baqara_01_text_path = f"../{dataset_name}/text/002-01.txt"
-    with open(baqara_01_text_path, "r", encoding="utf-8") as f:
-        baqara_01_transcriptions = [line.strip() for line in f if line.strip()]
-    baqara_01_segments = sorted(glob.glob(os.path.join(datasets_dir, "002", "002-01-*.wav")))
-    print(f"Loaded {len(baqara_01_transcriptions)} Al-Baqara part 1 transcriptions, {len(baqara_01_segments)} segments")
+    # Load transcriptions and segments
+    text_path = f"../{dataset_name}/text/{segment_name}.txt"
+    if not os.path.exists(text_path):
+        print(f"❌ Error: Text file not found: {text_path}")
+        sys.exit(1)
 
-    # Load Al-Baqara part 2 (002-02)
-    baqara_02_text_path = f"../{dataset_name}/text/002-02.txt"
-    with open(baqara_02_text_path, "r", encoding="utf-8") as f:
-        baqara_02_transcriptions = [line.strip() for line in f if line.strip()]
-    baqara_02_segments = sorted(glob.glob(os.path.join(datasets_dir, "002", "002-02-*.wav")))
-    print(f"Loaded {len(baqara_02_transcriptions)} Al-Baqara part 2 transcriptions, {len(baqara_02_segments)} segments")
+    with open(text_path, "r", encoding="utf-8") as f:
+        transcriptions = [line.strip() for line in f if line.strip()]
 
-    # Load Al-Baqara part 3 (002-03)
-    baqara_03_text_path = f"../{dataset_name}/text/002-03.txt"
-    with open(baqara_03_text_path, "r", encoding="utf-8") as f:
-        baqara_03_transcriptions = [line.strip() for line in f if line.strip()]
-    baqara_03_segments = sorted(glob.glob(os.path.join(datasets_dir, "002", "002-03-*.wav")))
-    print(f"Loaded {len(baqara_03_transcriptions)} Al-Baqara part 3 transcriptions, {len(baqara_03_segments)} segments")
+    segment_files = sorted(glob.glob(os.path.join(datasets_dir, surah_num, f"{segment_name}-*.wav")))
 
-    # Combine all Baqara datasets
-    all_transcriptions = baqara_01_transcriptions + baqara_02_transcriptions + baqara_03_transcriptions
-    all_segment_files = baqara_01_segments + baqara_02_segments + baqara_03_segments
-    print(f"\n✓ Total Al-Baqara: {len(all_transcriptions)} transcriptions, {len(all_segment_files)} segments")
-    print("Training on: Al-Baqara first 4 seconds → first 3 words")
+    if not segment_files:
+        print(f"❌ Error: No audio segments found in {datasets_dir}/{surah_num}/{segment_name}-*.wav")
+        sys.exit(1)
 
-    # Create smaller 128-dimension encoder-decoder
+    print(f"Loaded {len(transcriptions)} transcriptions, {len(segment_files)} audio segments")
+
+    if len(transcriptions) != len(segment_files):
+        print(f"⚠️  Warning: Mismatch between transcriptions ({len(transcriptions)}) and segments ({len(segment_files)})")
+
+    # Determine training configuration based on segment name
+    # For Al-Fatiha (001) or full Baqara segments, train on full audio/text
+    # For specific parts, can adjust target_seconds and target_words as needed
+    target_seconds = None  # Full audio by default
+    target_words = None    # Full transcription by default
+
+    # You can customize this based on segment patterns if needed
+    # For example:
+    # if segment_name == "002-04":
+    #     target_seconds = 4.0
+    #     target_words = 3
+
+    print(f"\n✓ Training on segment: {segment_name}")
+    print(f"   Audio: {'full' if not target_seconds else f'first {target_seconds}s'}")
+    print(f"   Text: {'full' if not target_words else f'first {target_words} words'}")
+
+    # Create model
     model = EncoderDecoderTransformer(
         vocab_size=len(vocab),
-        d_model=128,           # Smaller dimension
+        d_model=128,
         n_encoder_layers=4,
         n_decoder_layers=4,
-        n_heads=4,             # 128/4 = 32 dim per head
-        d_ff=512,              # 4x d_model
+        n_heads=4,
+        d_ff=512,
         dropout=0.1
     )
 
     # Load existing model and continue training
     import shutil
     if os.path.exists(model_path):
-        backup_path = model_path.replace(".pt", "_backup_first_4_seconds.pt")
+        backup_path = model_path.replace(".pt", f"_backup_{segment_name}.pt")
         shutil.copy2(model_path, backup_path)
         print(f"✓ Backup created: {backup_path}")
 
         print(f"Loading existing model from {model_path}...")
         model.load_state_dict(torch.load(model_path, map_location=device))
-        print("✓ Model loaded successfully! Training on first 4 seconds.")
+        print(f"✓ Model loaded successfully! Continuing training on {segment_name}.")
     else:
-        print("No existing model found. Starting with fresh weights for first 4 seconds training.")
+        print(f"No existing model found. Starting with fresh weights for {segment_name} training.")
 
     # Train
-    print(f"\nStarting training for up to 5 epochs on {len(all_segment_files)} segments (first 4 seconds → first 3 words)...\n")
-    model = train_first_4_seconds(
+    print(f"\nStarting training for up to 100 epochs on {len(segment_files)} segments...\n")
+    model = train_model(
         model,
-        all_segment_files,
-        all_transcriptions,
+        segment_files,
+        transcriptions,
         vocab,
-        dataset_name,
-        num_epochs=5,
+        segment_name,
+        target_seconds=target_seconds,
+        target_words=target_words,
+        num_epochs=100,
         learning_rate=1e-5
     )
-
-    # Load the best checkpoint before saving final model
-    checkpoint_path = "checkpoint_best_first_4_seconds.pt"
-    if os.path.exists(checkpoint_path):
-        print(f"\nLoading best checkpoint from {checkpoint_path}...")
-        checkpoint = torch.load(checkpoint_path, map_location=device)
-        model.load_state_dict(checkpoint["model"])
-        print(f"✓ Loaded best model from epoch {checkpoint['epoch'] + 1}")
 
     # Save final model
     torch.save(model.state_dict(), model_path)

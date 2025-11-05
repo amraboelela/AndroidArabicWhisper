@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
 Normalize Arabic text by removing tashkeel and normalizing hamza variants
-Usage: python3 normalize_text.py 002-04
-       python3 normalize_text.py 001
+Usage: python3 normalize_text.py <dataset_name> <segment_name>
+       python3 normalize_text.py Quran-A 002-04
+       python3 normalize_text.py Quran-A 001
 """
 import re
 import sys
@@ -44,19 +45,20 @@ def normalize_arabic(text):
     return text
 
 def main():
-    # Get segment name from command line
-    if len(sys.argv) < 2:
-        print("Usage: python3 normalize_text.py <segment_name>")
+    # Get dataset name and segment name from command line
+    if len(sys.argv) < 3:
+        print("Usage: python3 normalize_text.py <dataset_name> <segment_name>")
         print("Examples:")
-        print("  python3 normalize_text.py 002-04")
-        print("  python3 normalize_text.py 001")
+        print("  python3 normalize_text.py Quran-A 002-04")
+        print("  python3 normalize_text.py Quran-A 001")
         sys.exit(1)
 
-    segment_name = sys.argv[1]
+    dataset_name = sys.argv[1]
+    segment_name = sys.argv[2]
 
     # Determine file paths
-    input_file = f"../base/text/{segment_name}.txt"
-    output_file = f"../base/text/{segment_name}-norm.txt"
+    input_file = f"../{dataset_name}/text/{segment_name}.txt"
+    output_file = f"../{dataset_name}/text/{segment_name}.txt"  # Overwrite the same file
 
     if not os.path.exists(input_file):
         print(f"❌ Input file not found: {input_file}")

@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
 Transcribe audio segments using openai/whisper-base model
-Usage: python3 transcribe_segments.py 002-04
-       python3 transcribe_segments.py 001
+Usage: python3 transcribe_segments.py <dataset_name> <segment_name>
+       python3 transcribe_segments.py Quran-A 002-04
+       python3 transcribe_segments.py Quran-A 001
 """
 import glob
 import os
@@ -12,15 +13,16 @@ import torchaudio
 from transformers import WhisperProcessor, WhisperForConditionalGeneration
 
 def main():
-    # Get segment prefix from command line
-    if len(sys.argv) < 2:
-        print("Usage: python3 transcribe_segments.py <segment_prefix>")
+    # Get dataset name and segment prefix from command line
+    if len(sys.argv) < 3:
+        print("Usage: python3 transcribe_segments.py <dataset_name> <segment_prefix>")
         print("Examples:")
-        print("  python3 transcribe_segments.py 002-04")
-        print("  python3 transcribe_segments.py 001")
+        print("  python3 transcribe_segments.py Quran-A 002-04")
+        print("  python3 transcribe_segments.py Quran-A 001")
         sys.exit(1)
 
-    segment_prefix = sys.argv[1]
+    dataset_name = sys.argv[1]
+    segment_prefix = sys.argv[2]
 
     # Setup paths (script is in segmentation folder)
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -28,8 +30,8 @@ def main():
     # Extract audio subdirectory (e.g., "002-04" -> "002", "001" -> "001")
     audio_subdir = segment_prefix.split('-')[0]
 
-    audio_dir = os.path.join(script_dir, "../base/audio", audio_subdir)
-    output_file = os.path.join(script_dir, "../base/text", f"{segment_prefix}.txt")
+    audio_dir = os.path.join(script_dir, f"../{dataset_name}/audio", audio_subdir)
+    output_file = os.path.join(script_dir, f"../{dataset_name}/text", f"{segment_prefix}.txt")
 
     print(f"Script directory: {script_dir}")
     print(f"Audio directory: {audio_dir}")
