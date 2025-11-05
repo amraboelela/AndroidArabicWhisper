@@ -183,21 +183,21 @@ def main():
     baqara_01_text_path = f"../{dataset_name}/text/002-01.txt"
     with open(baqara_01_text_path, "r", encoding="utf-8") as f:
         baqara_01_transcriptions = [line.strip() for line in f if line.strip()]
-    baqara_01_segments = sorted(glob.glob(os.path.join(datasets_dir, "002-01-*.wav")))
+    baqara_01_segments = sorted(glob.glob(os.path.join(datasets_dir, "002", "002-01-*.wav")))
     print(f"Loaded {len(baqara_01_transcriptions)} Al-Baqara part 1 transcriptions, {len(baqara_01_segments)} segments")
 
     # Load Al-Baqara part 2 (002-02)
     baqara_02_text_path = f"../{dataset_name}/text/002-02.txt"
     with open(baqara_02_text_path, "r", encoding="utf-8") as f:
         baqara_02_transcriptions = [line.strip() for line in f if line.strip()]
-    baqara_02_segments = sorted(glob.glob(os.path.join(datasets_dir, "002-02-*.wav")))
+    baqara_02_segments = sorted(glob.glob(os.path.join(datasets_dir, "002", "002-02-*.wav")))
     print(f"Loaded {len(baqara_02_transcriptions)} Al-Baqara part 2 transcriptions, {len(baqara_02_segments)} segments")
 
     # Load Al-Baqara part 3 (002-03)
     baqara_03_text_path = f"../{dataset_name}/text/002-03.txt"
     with open(baqara_03_text_path, "r", encoding="utf-8") as f:
         baqara_03_transcriptions = [line.strip() for line in f if line.strip()]
-    baqara_03_segments = sorted(glob.glob(os.path.join(datasets_dir, "002-03-*.wav")))
+    baqara_03_segments = sorted(glob.glob(os.path.join(datasets_dir, "002", "002-03-*.wav")))
     print(f"Loaded {len(baqara_03_transcriptions)} Al-Baqara part 3 transcriptions, {len(baqara_03_segments)} segments")
 
     # Combine all Baqara datasets

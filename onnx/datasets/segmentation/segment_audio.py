@@ -1,16 +1,19 @@
 #!/usr/bin/env python3
 """
-Split an existing audio file based on silence detection (-30dB threshold)
-Output segments named like 002-01-001.wav, 002-01-002.wav, ...
+Split audio file based on silence detection (-30dB threshold)
+Usage: python3 segment_audio.py 002-04
+       python3 segment_audio.py 001
+Output segments named like 002-04-01.wav, 002-04-02.wav, ...
 """
 
 import numpy as np
 import torchaudio
 import torch
 import os
+import sys
 
 
-def detect_silence(audio, sample_rate, threshold_db=-30, min_silence_frames=10):
+def detect_silence(audio, sample_rate, threshold_db=-30, min_silence_frames=11):
     """Detect silent regions in audio"""
     if audio.shape[0] > 1:
         audio = audio.mean(dim=0, keepdim=True)  # convert to mono
@@ -86,8 +89,28 @@ def segment_audio_simple(audio_path, output_dir):
 
 
 def main():
-    audio_path = "/Users/amraboelela/develop/android/AndroidArabicWhisper/app/src/main/assets/002-01.wav"
-    output_dir = "segments"
+    # Get segment name from command line
+    if len(sys.argv) < 2:
+        print("Usage: python3 segment_audio.py <segment_name>")
+        print("Examples:")
+        print("  python3 segment_audio.py 002-04")
+        print("  python3 segment_audio.py 001")
+        sys.exit(1)
+
+    segment_name = sys.argv[1]
+
+    # Extract prefix (e.g., "002-04" -> "002", "001" -> "001")
+    segment_prefix = segment_name.split('-')[0]
+
+    # Determine output directory based on prefix
+    output_dir = f"../base/audio/{segment_prefix}"
+
+    # Audio path from ~/audio/Quran-A/
+    audio_path = os.path.expanduser(f"~/audio/Quran-A/{segment_name}.mp3")
+
+    if not os.path.exists(audio_path):
+        print(f"❌ Audio file not found: {audio_path}")
+        sys.exit(1)
 
     os.makedirs(output_dir, exist_ok=True)
     segment_audio_simple(audio_path, output_dir)

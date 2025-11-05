@@ -92,17 +92,17 @@ def test_baqara():
         {
             "name": "Al-Baqara Part 1 (002-01)",
             "text_path": f"../{dataset_name}/text/002-01.txt",
-            "pattern": "002-01-*.wav"
+            "pattern": "002/002-01-*.wav"
         },
         {
             "name": "Al-Baqara Part 2 (002-02)",
             "text_path": f"../{dataset_name}/text/002-02.txt",
-            "pattern": "002-02-*.wav"
+            "pattern": "002/002-02-*.wav"
         },
         {
             "name": "Al-Baqara Part 3 (002-03)",
             "text_path": f"../{dataset_name}/text/002-03.txt",
-            "pattern": "002-03-*.wav"
+            "pattern": "002/002-03-*.wav"
         }
     ]
 

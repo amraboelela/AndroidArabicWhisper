@@ -92,7 +92,7 @@ def test_fatiha():
         {
             "name": "Al-Fatiha (001)",
             "text_path": f"../{dataset_name}/text/001.txt",
-            "pattern": "001-*.wav"
+            "pattern": "001/001-*.wav"
         }
     ]
 

@@ -3,8 +3,8 @@
 # Run training scripts for Al-Fatiha (001) and log results to log_train_001.txt
 #
 # Training scripts (curriculum learning order):
-# 1. train_001_1.py - Al-Fatiha (001) first 1 second → first word
-# 2. train_001_3.py - Al-Fatiha (001) first 3 seconds → first 2 words
+# 1. train_001_01.py - Al-Fatiha (001) first 1 second → first word
+# 2. train_001_03.py - Al-Fatiha (001) first 3 seconds → first 2 words
 # 3. train_001.py - Al-Fatiha (001) full segments → full transcriptions
 #
 
@@ -70,8 +70,8 @@ run_training() {
 
 # Run all training scripts for 001 in curriculum learning order
 # Run all training scripts for 001 in curriculum learning order
-run_training "train_001_1.py" "$DATASET" || exit 1
-run_training "train_001_3.py" "$DATASET" || exit 1
+run_training "train_001_01.py" "$DATASET" || exit 1
+run_training "train_001_03.py" "$DATASET" || exit 1
 run_training "train_001.py" "$DATASET" || exit 1
 
 # Summary

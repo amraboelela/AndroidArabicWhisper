@@ -4,8 +4,8 @@
 #
 # Test scripts:
 # 1. test_001.py - Al-Fatiha (001) full segments
-# 2. test_001_1.py - Al-Fatiha (001) first 1 second
-# 3. test_001_3.py - Al-Fatiha (001) first 3 seconds
+# 2. test_001_01.py - Al-Fatiha (001) first 1 second
+# 3. test_001_03.py - Al-Fatiha (001) first 3 seconds
 #
 
 # Get dataset name parameter (defaults to base)
@@ -64,8 +64,8 @@ run_test() {
 
 # Run all test scripts for 001
 run_test "test_001.py"
-run_test "test_001_1.py"
-run_test "test_001_3.py"
+run_test "test_001_01.py"
+run_test "test_001_03.py"
 
 # Summary
 echo "============================================================" | tee -a "$LOG_FILE"

@@ -3,9 +3,9 @@
 # Run training scripts for Al-Baqara (002) and log results to log_train_002.txt
 #
 # Training scripts (curriculum learning order):
-# 1. train_002_1.py - Al-Baqara (002) first 1 second → first word
-# 2. train_002_3.py - Al-Baqara (002) first 3 seconds → first 2 words
-# 3. train_002_4.py - Al-Baqara (002) first 4 seconds → first 3 words
+# 1. train_002_01.py - Al-Baqara (002) first 1 second → first word
+# 2. train_002_03.py - Al-Baqara (002) first 3 seconds → first 2 words
+# 3. train_002_04.py - Al-Baqara (002) first 4 seconds → first 3 words
 # 4. train_002.py - Al-Baqara (002) full segments → full transcriptions
 #
 
@@ -70,9 +70,9 @@ run_training() {
 }
 
 # Run all training scripts for 002 in curriculum learning order
-run_training "train_002_1.py" "$DATASET" || exit 1
-run_training "train_002_3.py" "$DATASET" || exit 1
-run_training "train_002_4.py" "$DATASET" || exit 1
+run_training "train_002_01.py" "$DATASET" || exit 1
+run_training "train_002_03.py" "$DATASET" || exit 1
+run_training "train_002_04.py" "$DATASET" || exit 1
 run_training "train_002.py" "$DATASET" || exit 1
 
 # Summary

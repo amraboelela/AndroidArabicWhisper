@@ -4,9 +4,9 @@
 #
 # Test scripts:
 # 1. test_002.py - Al-Baqara (002) full segments
-# 2. test_002_1.py - Al-Baqara (002) first 1 second
-# 3. test_002_3.py - Al-Baqara (002) first 3 seconds
-# 4. test_002_4.py - Al-Baqara (002) first 4 seconds
+# 2. test_002_01.py - Al-Baqara (002) first 1 second
+# 3. test_002_03.py - Al-Baqara (002) first 3 seconds
+# 4. test_002_04.py - Al-Baqara (002) first 4 seconds
 #
 
 # Get dataset name parameter (defaults to base)
@@ -65,9 +65,9 @@ run_test() {
 
 # Run all test scripts for 002
 run_test "test_002.py"
-run_test "test_002_1.py"
-run_test "test_002_3.py"
-run_test "test_002_4.py"
+run_test "test_002_01.py"
+run_test "test_002_03.py"
+run_test "test_002_04.py"
 
 # Summary
 echo "============================================================" | tee -a "$LOG_FILE"

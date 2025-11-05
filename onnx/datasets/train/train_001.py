@@ -179,7 +179,7 @@ def main():
     fatiha_text_path = f"../{dataset_name}/text/001.txt"
     with open(fatiha_text_path, "r", encoding="utf-8") as f:
         all_transcriptions = [line.strip() for line in f if line.strip()]
-    all_segment_files = sorted(glob.glob(os.path.join(datasets_dir, "001-*.wav")))
+    all_segment_files = sorted(glob.glob(os.path.join(datasets_dir, "001", "001-*.wav")))
     print(f"Loaded {len(all_transcriptions)} Al-Fatiha transcriptions, {len(all_segment_files)} segments")
     print("Training on: Al-Fatiha full segments → full transcriptions")
 
