@@ -116,6 +116,7 @@ def train_segment_curriculum(model, segment_file, transcription, vocab, word_cou
 
     best_loss = float('inf')
     prev_loss = float('inf')
+    prev_checkpoint_loss = float('inf')  # Track loss at every 10th epoch
     patience_counter = 0
     min_delta = 1e-3
     patience = 3
@@ -159,10 +160,16 @@ def train_segment_curriculum(model, segment_file, transcription, vocab, word_cou
         elapsed = time.time() - start_time
         current_lr = optimizer.param_groups[0]['lr']
 
-        if epoch % 10 == 0 or epoch == num_epochs - 1:
+        if (epoch + 1) % 10 == 0 or epoch == num_epochs - 1:
             print(f"  Epoch {epoch+1}/{num_epochs} | Loss={avg_loss:.4f} | LR={current_lr:.6f} | Time={elapsed:.1f}s{best_marker}")
 
-        # Early stopping check
+            # Check if loss increased since last checkpoint (every 10 epochs)
+            if prev_checkpoint_loss != float('inf') and avg_loss > prev_checkpoint_loss:
+                print(f"  ⚠️  Early stopping: loss increased from {prev_checkpoint_loss:.4f} to {avg_loss:.4f}")
+                break
+            prev_checkpoint_loss = avg_loss
+
+        # Early stopping check (every epoch)
         loss_change = prev_loss - avg_loss
         if loss_change < min_delta:  # Includes small improvement, no change, or getting worse
             patience_counter += 1
@@ -302,7 +309,7 @@ def train_stage(model, segment_files, transcriptions, vocab, surah_part,
         scheduler.step()
 
         # Sample generation every 5 epochs
-        if epoch % 5 == 0 or epoch == num_epochs - 1:
+        if (epoch + 1) % 5 == 0 or epoch == num_epochs - 1:
             model.eval()
             test_audio, sample_rate = extract_mel_features(segment_files[0], target_seconds=target_seconds)
             test_audio = test_audio.transpose(0, 1).unsqueeze(0).to(device)
@@ -337,8 +344,8 @@ def train_stage(model, segment_files, transcriptions, vocab, surah_part,
                 else:
                     display_words = generated_words
 
-                print(f"  🔹 Generated: {' '.join(display_words)}")
                 print(f"  🔸 Expected: {expected_text}")
+                print(f"  🔹 Generated: {' '.join(display_words)}")
             model.train()
 
     total_time = time.time() - start_time
@@ -369,7 +376,7 @@ def main():
 
     datasets_dir = f"../datasets/{dataset_name}/audio"
     vocab_path = "../models/vocabulary.json"
-    model_path = "../models/encoder_decoder_model.pt"
+    model_path = "../models/muhaffez_whisper.pt"
 
     print(f"\n{'='*60}")
     print(f"CURRICULUM LEARNING - SURAH PART: {surah_part}")

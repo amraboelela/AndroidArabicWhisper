@@ -103,6 +103,7 @@ def train_model(model, segment_files, transcriptions, vocab, surah_part,
 
     best_loss = float('inf')
     prev_loss = float('inf')
+    prev_checkpoint_loss = float('inf')  # Track loss at every 10th epoch
     patience_counter = 0  # Track consecutive epochs with low loss change
     min_delta = 1e-3  # Minimum change to consider as improvement
     patience = 3  # Number of epochs to wait before stopping
@@ -173,6 +174,13 @@ def train_model(model, segment_files, transcriptions, vocab, surah_part,
         current_lr = optimizer.param_groups[0]['lr']
         print(f"Epoch {epoch+1}/{num_epochs} | Loss={avg_loss:.4f} | LR={current_lr:.6f} | Time={elapsed:.1f}s{best_marker}")
 
+        # Check if loss increased at checkpoint epochs (every 10 epochs)
+        if (epoch + 1) % 10 == 0:
+            if prev_checkpoint_loss != float('inf') and avg_loss > prev_checkpoint_loss:
+                print(f"⚠️  Early stopping: loss increased from {prev_checkpoint_loss:.4f} to {avg_loss:.4f}")
+                break
+            prev_checkpoint_loss = avg_loss
+
         # Early stopping check
         loss_change = prev_loss - avg_loss
         if loss_change < min_delta:  # Includes small improvement, no change, or getting worse
@@ -188,41 +196,42 @@ def train_model(model, segment_files, transcriptions, vocab, surah_part,
         # Step the learning rate scheduler
         scheduler.step()
 
-        # Sample generation
-        model.eval()
-        test_audio, sample_rate = extract_mel_features(segment_files[0], target_seconds=target_seconds)
-        test_audio = test_audio.transpose(0, 1).unsqueeze(0).to(device)
+        # Sample generation every 5 epochs
+        if (epoch + 1) % 5 == 0 or epoch == num_epochs - 1:
+            model.eval()
+            test_audio, sample_rate = extract_mel_features(segment_files[0], target_seconds=target_seconds)
+            test_audio = test_audio.transpose(0, 1).unsqueeze(0).to(device)
 
-        # Get expected text
-        if target_words:
-            words = transcriptions[0].split()
-            expected_text = " ".join(words[:target_words]) if len(words) >= target_words else transcriptions[0]
-        else:
-            expected_text = transcriptions[0]
-
-        # Calculate audio duration for generation
-        waveform, sr = torchaudio.load(segment_files[0])
-        audio_duration = target_seconds if target_seconds else (waveform.shape[1] / sr)
-
-        with torch.no_grad():
-            max_tokens = (target_words * 10) if target_words else 50
-            generated = model.generate(test_audio, max_new_tokens=max_tokens, audio_duration_seconds=audio_duration)
-            generated_ids = generated[0].tolist()
-            if generated_ids and generated_ids[0] == 1:
-                generated_ids = generated_ids[1:]
-            if 2 in generated_ids:
-                generated_ids = generated_ids[:generated_ids.index(2)]
-            generated_words = [vocab[idx] for idx in generated_ids if idx < len(vocab)]
-
-            # Show only target words if specified
+            # Get expected text
             if target_words:
-                display_words = generated_words[:target_words] if len(generated_words) >= target_words else generated_words
+                words = transcriptions[0].split()
+                expected_text = " ".join(words[:target_words]) if len(words) >= target_words else transcriptions[0]
             else:
-                display_words = generated_words
+                expected_text = transcriptions[0]
 
-            print(f"  🔹 Generated: {' '.join(display_words)}")
-            print(f"  🔸 Expected: {expected_text}")
-        model.train()
+            # Calculate audio duration for generation
+            waveform, sr = torchaudio.load(segment_files[0])
+            audio_duration = target_seconds if target_seconds else (waveform.shape[1] / sr)
+
+            with torch.no_grad():
+                max_tokens = (target_words * 10) if target_words else 50
+                generated = model.generate(test_audio, max_new_tokens=max_tokens, audio_duration_seconds=audio_duration)
+                generated_ids = generated[0].tolist()
+                if generated_ids and generated_ids[0] == 1:
+                    generated_ids = generated_ids[1:]
+                if 2 in generated_ids:
+                    generated_ids = generated_ids[:generated_ids.index(2)]
+                generated_words = [vocab[idx] for idx in generated_ids if idx < len(vocab)]
+
+                # Show only target words if specified
+                if target_words:
+                    display_words = generated_words[:target_words] if len(generated_words) >= target_words else generated_words
+                else:
+                    display_words = generated_words
+
+                print(f"  🔸 Expected: {expected_text}")
+                print(f"  🔹 Generated: {' '.join(display_words)}")
+            model.train()
 
     total_time = time.time() - start_time
     print(f"Training complete in {total_time:.1f}s | Best loss: {best_loss:.4f}")
@@ -253,7 +262,7 @@ def main():
 
     datasets_dir = f"../datasets/{dataset_name}/audio"
     vocab_path = "../models/vocabulary.json"
-    model_path = "../models/encoder_decoder_model.pt"
+    model_path = "../models/muhaffez_whisper.pt"
 
     # Load vocab
     with open(vocab_path, "r", encoding="utf-8") as f:

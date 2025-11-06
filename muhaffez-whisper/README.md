@@ -1,4 +1,4 @@
-# Custom Whisper - Arabic Quranic Audio Transcription
+# Muhaffez Whisper - Arabic Quranic Audio Transcription
 
 This directory contains an encoder-decoder transformer model for Arabic Quranic audio transcription, optimized for Quranic recitation.
 
@@ -20,7 +20,7 @@ This directory contains an encoder-decoder transformer model for Arabic Quranic 
 ## Directory Structure
 
 ```
-custom-whisper/
+muhaffez-whisper/
 ├── datasets/           # Training datasets
 │   ├── Quran-A/       # Dataset with audio and text
 │   │   ├── audio/     # Segmented audio files (.wav)
@@ -28,7 +28,7 @@ custom-whisper/
 │   ├── quran-simple-min.txt
 │   └── quran-simple-norm.txt
 ├── models/            # Trained models and vocabulary
-│   ├── encoder_decoder_model.pt
+│   ├── muhaffez_whisper.pt
 │   └── vocabulary.json
 ├── train/             # Training scripts
 │   ├── train_full.py
@@ -107,12 +107,11 @@ For each segment:
 ## Model Files
 
 ### Trained Models
-- `models/encoder_decoder_model.pt` - Main trained model
+- `models/muhaffez_whisper.pt` - Main trained model
 - `models/vocabulary.json` - Arabic word vocabulary
 
 ### Training Artifacts
-- `models/encoder_decoder_model_backup_*.pt` - Backup models
-- `models/encoder_decoder_model_stage*.pt` - Curriculum stage checkpoints
+- `models/muhaffez_whisper_backup_*.pt` - Backup models
 - `checkpoint_*.pt` - Training checkpoints
 
 ## Usage Examples

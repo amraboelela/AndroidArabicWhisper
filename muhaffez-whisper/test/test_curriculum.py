@@ -208,7 +208,7 @@ def main():
     # File paths
     datasets_dir = f"../datasets/{dataset_name}/audio"
     vocab_path = "../models/vocabulary.json"
-    model_path = "../models/encoder_decoder_model.pt"
+    model_path = "../models/muhaffez_whisper.pt"
 
     # Parse surah part name
     surah_num = surah_part.split('-')[0]

@@ -62,13 +62,16 @@ This script runs both test_full.py and test_curriculum.py for the specified data
 
 **Usage:**
 ```bash
-./test.sh <dataset_name>                    # Test all surahs in the dataset
+./test.sh [dataset_name]                    # Test all datasets OR all surahs in specified dataset
 ./test.sh <dataset_name> <surah>            # Test all parts of specific surah (e.g., 002)
 ./test.sh <dataset_name> <surah_part>       # Test specific surah part (e.g., 002-04)
 ```
 
 **Examples:**
 ```bash
+# Test all available datasets
+./test.sh
+
 # Test all surah parts in Quran-A dataset
 ./test.sh Quran-A
 
@@ -80,11 +83,28 @@ This script runs both test_full.py and test_curriculum.py for the specified data
 ./test.sh Quran-A 002-04
 ```
 
+The script automatically detects what you want:
+- **No parameters**: Tests on all datasets in ../datasets/
+- **Dataset only**: Tests on all text files in the dataset
+- **3-digit number (e.g., 002)**: Tests on all parts of that surah
+- **Specific part (e.g., 002-04)**: Tests only on that part
+
+### Logging
+
+Log files are created per dataset and surah with automatic day rotation:
+- **Format**: `log_{dataset}_{surah}.txt`
+- **Examples**:
+  - `log_Quran-A_001.txt` - Testing for surah 001
+  - `log_Quran-A_002.txt` - Testing for surah 002
+- **Day Rotation**: Backups saved as `.1` (Monday) through `.7` (Sunday)
+  - Previous logs moved to `log_Quran-A_002.txt.{day}` before creating new log
+  - Provides 7-day rolling history per surah
+- **Content**: All output from both curriculum and full testing for all parts of that surah
+
 **Output:**
 - Detailed logs for each test suite
 - Summary with total runs, passed/failed counts
 - Execution time for each suite
-- Logs saved to `log_test.txt`
 
 ## Test Workflow
 
@@ -124,16 +144,16 @@ Arabic text is normalized by removing diacritics before comparison to focus on w
 
 Before testing, ensure you have:
 
-1. **Model file:** `../models/encoder_decoder_model.pt`
+1. **Model file:** `../models/muhaffez_whisper.pt`
 2. **Vocabulary:** `../models/vocabulary.json`
 3. **Text files:** `../datasets/<dataset_name>/text/<surah_part>.txt`
 4. **Audio files:** `../datasets/<dataset_name>/audio/<surah_num>/<surah_part>-*.wav`
 
 Example structure:
 ```
-custom-whisper/
+muhaffez-whisper/
 ├── models/
-│   ├── encoder_decoder_model.pt
+│   ├── muhaffez_whisper.pt
 │   └── vocabulary.json
 ├── datasets/
 │   └── Quran-A/

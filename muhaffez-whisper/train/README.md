@@ -29,12 +29,15 @@ This will train on each segment (002-04-01.wav, 002-04-02.wav, etc.) progressive
 The master training script runs both curriculum and full segments training:
 
 ```bash
-# Usage: ./train.sh <dataset_name> [surah_or_part]
+# Usage: ./train.sh [dataset_name] [surah_or_part]
 ```
 
 **Examples:**
 
 ```bash
+# Train all available datasets
+./train.sh
+
 # Train on entire dataset (all surah parts)
 ./train.sh Quran-A
 
@@ -49,9 +52,22 @@ The master training script runs both curriculum and full segments training:
 ```
 
 The script automatically detects what you want:
-- **No second parameter**: Trains on all text files in the dataset
+- **No parameters**: Trains on all datasets in ../datasets/
+- **Dataset only**: Trains on all text files in the dataset
 - **3-digit number (e.g., 002)**: Trains on all parts of that surah
 - **Specific part (e.g., 002-04)**: Trains only on that part
+
+### Logging
+
+Log files are created per dataset and surah with automatic day rotation:
+- **Format**: `log_train_{dataset}_{surah}.txt`
+- **Examples**:
+  - `log_train_Quran-A_001.txt` - Training for surah 001
+  - `log_train_Quran-A_002.txt` - Training for surah 002
+- **Day Rotation**: Backups saved as `.1` (Monday) through `.7` (Sunday)
+  - Previous logs moved to `log_train_Quran-A_002.txt.{day}` before creating new log
+  - Provides 7-day rolling history per surah
+- **Content**: All output from both curriculum and full training for all parts of that surah
 
 ## Files
 
