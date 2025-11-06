@@ -98,6 +98,74 @@ def tokenize_text(text, vocab):
     return [word_to_idx.get(word, 0) for word in words]  # 0 = unknown
 
 # ==============================================================
+# Comprehensive accuracy calculation for all segments
+# ==============================================================
+def calculate_comprehensive_accuracy(model, segment_files, transcriptions, vocab, target_seconds, target_words, device):
+    """Calculate accuracy across all segments"""
+    model.eval()
+    total_correct = 0
+    total_expected = 0
+    segment_accuracies = []
+
+    with torch.no_grad():
+        for seg_file, transcription in zip(segment_files, transcriptions):
+            # Extract audio features
+            audio_features, sample_rate = extract_mel_features(seg_file, target_seconds=target_seconds)
+            audio_batch = audio_features.transpose(0, 1).unsqueeze(0).to(device)
+
+            # Get expected text
+            expected_words = transcription.split()[:target_words] if target_words else transcription.split()
+            expected_text = " ".join(expected_words)
+
+            if not expected_text:
+                continue
+
+            # Generate
+            max_tokens = (target_words * 10) if target_words else 50
+            generated = model.generate(audio_batch, max_new_tokens=max_tokens, audio_duration_seconds=target_seconds)
+            generated_ids = generated[0].tolist()
+
+            # Clean up generated IDs
+            if generated_ids and generated_ids[0] == 1:
+                generated_ids = generated_ids[1:]
+            if 2 in generated_ids:
+                generated_ids = generated_ids[:generated_ids.index(2)]
+
+            generated_words = [vocab[idx] for idx in generated_ids if idx < len(vocab)]
+
+            # Calculate confidence and filter low confidence words
+            if len(generated_ids) > 0:
+                encoder_output = model.encode(audio_batch)
+                text_ids = torch.tensor([[1] + generated_ids[:len(generated_words)]], dtype=torch.long, device=device)
+                logits = model.decode(text_ids, encoder_output)
+                probs = torch.softmax(logits, dim=-1)
+
+                # Get confident words only (>= 20% threshold)
+                confident_words = []
+                for i, token_id in enumerate(generated_ids[:len(generated_words)]):
+                    if i < logits.shape[1] - 1:
+                        token_prob = probs[0, i, token_id].item()
+                        if token_prob >= 0.2:  # 20% threshold
+                            confident_words.append(generated_words[i])
+
+                # Count correct confident words
+                correct = sum(1 for i, word in enumerate(confident_words) if i < len(expected_words) and word == expected_words[i])
+            else:
+                correct = 0
+
+            # Calculate segment accuracy
+            segment_acc = (correct / len(expected_words) * 100) if expected_words else 0
+            segment_accuracies.append(segment_acc)
+            total_correct += correct
+            total_expected += len(expected_words)
+
+    # Calculate overall accuracy
+    overall_accuracy = (total_correct / total_expected * 100) if total_expected > 0 else 0
+    avg_segment_accuracy = sum(segment_accuracies) / len(segment_accuracies) if segment_accuracies else 0
+
+    return overall_accuracy, avg_segment_accuracy, segment_accuracies
+
+# ==============================================================
 # Training for curriculum stage (all segments at specific chunk count)
 # ==============================================================
 def train_curriculum_stage(model, segment_files, transcriptions, vocab, surah_part,
@@ -114,22 +182,13 @@ def train_curriculum_stage(model, segment_files, transcriptions, vocab, surah_pa
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=0.01)
     criterion = nn.CrossEntropyLoss(ignore_index=-100, label_smoothing=0.1)
 
-    # Learning rate scheduler - reduce LR only when loss stops improving (no improvement or negative improvement)
-    # threshold=0.0 with default 'rel' mode means: improvement is current_loss < best_loss
-    # So LR reduces only when current_loss >= best_loss (loss doesn't improve or gets worse)
-    # Small positive improvements won't trigger LR reduction
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode='min', factor=0.5, patience=5, min_lr=1e-7,
-        threshold=0.0
-    )
-
     best_loss = float('inf')
     best_model_state = None  # Track best model state
     prev_loss = float('inf')
     prev_checkpoint_loss = float('inf')  # Track loss at every 10th epoch
     patience_counter = 0
     min_delta = 1e-3
-    patience = 3
+    patience = 3  # Increased patience to allow more training time
     start_time = time.time()
 
     for epoch in range(num_epochs):
@@ -190,8 +249,10 @@ def train_curriculum_stage(model, segment_files, transcriptions, vocab, surah_pa
         elapsed = time.time() - start_time
         current_lr = optimizer.param_groups[0]['lr']
 
-        if (epoch + 1) % 10 == 0 or epoch == num_epochs - 1:
-            print(f"  Epoch {epoch+1}/{num_epochs} | Loss={avg_loss:.4f} | LR={current_lr:.6f} | Time={elapsed:.1f}s{best_marker}")
+        if epoch == 0 or (epoch + 1) % 10 == 0 or epoch == num_epochs - 1:
+            # Format LR: use scientific notation if very small
+            lr_str = f"{current_lr:.1e}" if current_lr < 1e-6 else f"{current_lr:.6f}"
+            print(f"  Epoch {epoch+1}/{num_epochs} | Loss={avg_loss:.4f} | LR={lr_str} | Time={elapsed:.1f}s{best_marker}")
 
             # Check if loss increased since last checkpoint (every 10 epochs)
             if prev_checkpoint_loss != float('inf') and avg_loss > prev_checkpoint_loss:
@@ -212,10 +273,8 @@ def train_curriculum_stage(model, segment_files, transcriptions, vocab, surah_pa
         if prev_loss != float('inf') and avg_loss > prev_loss:
             for param_group in optimizer.param_groups:
                 old_lr = param_group['lr']
-                new_lr = max(old_lr * 0.9, 1e-7)  # Reduce by 10%, but not below 1e-7
+                new_lr = max(old_lr * 0.5, 1e-7)  # Reduce by 50%, but not below 1e-7
                 param_group['lr'] = new_lr
-                if new_lr != old_lr:
-                    print(f"  ⚠️  Loss increased: reducing LR from {old_lr:.6f} to {new_lr:.6f}")
 
         prev_loss = avg_loss
 
@@ -551,9 +610,16 @@ def main():
             learning_rate=1e-5
         )
 
-        # Sample generation for this stage
+        # Calculate comprehensive accuracy for this stage on all segments
         model.eval()
-        # Pick a random segment from this stage
+        overall_acc, avg_acc, seg_accuracies = calculate_comprehensive_accuracy(
+            model, stage_segment_files, stage_transcriptions, vocab,
+            target_seconds, target_words, device
+        )
+
+        print(f"  Accuracy: {overall_acc:.0f}%")
+
+        # Show one sample for visualization
         test_idx = random.randint(0, len(stage_segment_files) - 1)
         test_audio_features, sample_rate = extract_mel_features(stage_segment_files[test_idx], target_seconds=target_seconds)
         test_audio_batch = test_audio_features.transpose(0, 1).unsqueeze(0).to(device)
@@ -578,10 +644,10 @@ def main():
             if len(generated_ids[:target_words]) == 0:
                 # No tokens generated
                 display_text = ""
-                accuracy = 0
-                print(f"  🔸 Expected: {expected_text}")
-                print(f"  🔹 Generated: {display_text}")
-                print(f"     Accuracy: {accuracy:.0f}%\n")
+                print(f"  🔸 Sample Expected: {expected_text}")
+                print(f"  🔹 Sample Generated: {display_text}")
+                print(f"     Sample Confidence: N/A\n")
+                model.train()
                 continue
 
             encoder_output = model.encode(test_audio_batch)
@@ -604,7 +670,7 @@ def main():
             accuracy = (correct_words / len(expected_words) * 100) if expected_words else 0
 
             # Build display text and confidence text
-            confidence_threshold = 0.3  # 30% threshold
+            confidence_threshold = 0.2  # 20% threshold
             if len(display_words) == len(token_confidences):
                 # Show words (mark low confidence with brackets, hide 0% or very low confidence)
                 display_text_parts = []
@@ -637,10 +703,9 @@ def main():
                 # Original accuracy calculation if confidences don't match
                 accuracy = (correct_words / len(expected_words) * 100) if expected_words else 0
 
-            print(f"  🔸 Expected: {expected_text}")
-            print(f"  🔹 Generated: {display_text}")
-            print(f"     Confidence: {confidence_text}")
-            print(f"     Accuracy: {accuracy:.0f}%\n")
+            print(f"  🔸 Sample Expected: {expected_text}")
+            print(f"  🔹 Sample Generated: {display_text}")
+            print(f"     Sample Confidence: {confidence_text}\n")
         model.train()
 
     # Save best model (restored from best checkpoint in train_segment_curriculum)
@@ -656,13 +721,20 @@ def main():
     print(f"Best model saved to: {model_path}")
     print(f"{'='*60}\n")
 
-    # Load the saved model for sample generation
-    print("Loading saved model for verification...")
+    # Load the saved model for final evaluation
+    print("Loading saved model for final evaluation...")
     model.load_state_dict(torch.load(model_path, map_location=device))
     model.eval()
 
-    # Sample generation at the end
-    # Use the first segment for testing
+    # Calculate comprehensive accuracy on all segments (full audio)
+    print(f"\n📊 Final Evaluation (full audio):")
+    overall_acc, avg_acc, seg_accuracies = calculate_comprehensive_accuracy(
+        model, segment_files, transcriptions, vocab,
+        target_seconds=None, target_words=None, device=device
+    )
+    print(f"   Accuracy: {overall_acc:.0f}%\n")
+
+    # Sample generation at the end (first segment for consistency)
     test_audio_features, sample_rate = extract_mel_features(segment_files[0])
     test_audio_batch = test_audio_features.transpose(0, 1).unsqueeze(0).to(device)
 
@@ -708,7 +780,7 @@ def main():
             for i, (word, conf) in enumerate(zip(generated_words, token_confidences)):
                 if conf < 0.01:  # Hide words with < 1% confidence (rounds to 0%)
                     continue
-                elif conf >= 0.3:  # 30% threshold
+                elif conf >= 0.2:  # 20% threshold
                     filtered_words.append(word)
                     filtered_confidences.append(f'{conf:.0%}')
                     total_confident_words += 1
@@ -737,7 +809,6 @@ def main():
         print(f"🔸 Expected: {expected_text}")
         print(f"🔹 Generated: {display_text}")
         print(f"   Confidence: {confidence_text}")
-        print(f"   Accuracy: {accuracy:.0f}%")
 
 
 if __name__ == "__main__":
