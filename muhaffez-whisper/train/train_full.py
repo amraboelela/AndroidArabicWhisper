@@ -7,8 +7,13 @@ Examples:
   python3 train_full.py Quran-A 002-01    # Train on Al-Baqara part 1
   python3 train_full.py Quran-A 002-04    # Train on Al-Baqara part 4
 """
+import sys
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning)
+
+# Force unbuffered output for real-time logging
+sys.stdout.reconfigure(line_buffering=True)
+sys.stderr.reconfigure(line_buffering=True)
 
 import json
 import torch
@@ -18,7 +23,6 @@ import glob
 import os
 import random
 import time
-import sys
 sys.path.append("..")
 from custom_scripts.encoder_decoder_transformer import EncoderDecoderTransformer
 
@@ -48,6 +52,13 @@ def extract_mel_features(audio_path, n_mels=80, target_seconds=None):
     if waveform.shape[0] > 1:
         waveform = waveform.mean(dim=0, keepdim=True)
 
+    # Resample to 16kHz (Whisper standard)
+    target_sample_rate = 16000
+    if sample_rate != target_sample_rate:
+        resampler = torchaudio.transforms.Resample(orig_freq=sample_rate, new_freq=target_sample_rate)
+        waveform = resampler(waveform)
+        sample_rate = target_sample_rate
+
     # Trim to target seconds if specified
     if target_seconds is not None:
         num_samples = int(sample_rate * target_seconds)
@@ -71,9 +82,7 @@ def extract_mel_features(audio_path, n_mels=80, target_seconds=None):
     mel_features = mel_spec.squeeze(0).transpose(0, 1)
 
     # Per-segment normalization
-    mel_mean = mel_features.mean()
-    mel_std = mel_features.std()
-    mel_features = (mel_features - mel_mean) / (mel_std + 1e-8)
+    mel_features = (mel_features - mel_features.mean()) / (mel_features.std() + 1e-5)
 
     return mel_features, sample_rate
 
@@ -96,7 +105,7 @@ def calculate_comprehensive_accuracy(model, segment_files, transcriptions, vocab
     segment_accuracies = []
 
     with torch.no_grad():
-        for seg_file, transcription in zip(segment_files, transcriptions):
+        for idx, (seg_file, transcription) in enumerate(zip(segment_files, transcriptions)):
             # Extract audio features
             audio_features, sample_rate = extract_mel_features(seg_file, target_seconds=target_seconds)
             audio_batch = audio_features.transpose(0, 1).unsqueeze(0).to(device)
@@ -108,12 +117,17 @@ def calculate_comprehensive_accuracy(model, segment_files, transcriptions, vocab
             if not expected_text:
                 continue
 
-            # Generate
-            max_tokens = (target_words * 10) if target_words else 50
+            # Generate with timeout protection
+            max_tokens = min((target_words * 10) if target_words else 50, 100)  # Cap at 100 tokens
             waveform, sr = torchaudio.load(seg_file)
             audio_duration = target_seconds if target_seconds else (waveform.shape[1] / sr)
-            generated = model.generate(audio_batch, max_new_tokens=max_tokens, audio_duration_seconds=audio_duration)
-            generated_ids = generated[0].tolist()
+
+            try:
+                generated = model.generate(audio_batch, max_new_tokens=max_tokens, audio_duration_seconds=audio_duration)
+                generated_ids = generated[0].tolist()
+            except Exception as e:
+                print(f"    Warning: Generation failed for segment {idx}: {e}", flush=True)
+                continue
 
             # Clean up generated IDs
             if generated_ids and generated_ids[0] == 1:
@@ -159,7 +173,7 @@ def calculate_comprehensive_accuracy(model, segment_files, transcriptions, vocab
 # Training
 # ==============================================================
 def train_model(model, segment_files, transcriptions, vocab, surah_part,
-                target_seconds=None, target_words=None, num_epochs=100, learning_rate=1e-5):
+                target_seconds=None, target_words=None, num_epochs=500, learning_rate=1e-5):
     """
     Universal training function
 
@@ -172,17 +186,14 @@ def train_model(model, segment_files, transcriptions, vocab, surah_part,
     criterion = nn.CrossEntropyLoss(ignore_index=-100, label_smoothing=0.1)
 
     best_loss = float('inf')
+    best_epoch = -1
     prev_loss = float('inf')
-    prev_checkpoint_loss = float('inf')  # Track loss at every 10th epoch
-    patience_counter = 0  # Track consecutive epochs with low loss change
-    min_delta = 1e-3  # Minimum change to consider as improvement
-    patience = 3  # Increased patience to allow more training time
     start_time = time.time()
 
     # Build description
     audio_desc = f"first {target_seconds}s" if target_seconds else "full"
     text_desc = f"first {target_words} words" if target_words else "full"
-    checkpoint_name = f"checkpoint_best_{surah_part}.pt"
+    checkpoint_name = "checkpoint_best.pt"
 
     for epoch in range(num_epochs):
         model.train()
@@ -231,6 +242,7 @@ def train_model(model, segment_files, transcriptions, vocab, surah_part,
         # Save best
         if avg_loss < best_loss:
             best_loss = avg_loss
+            best_epoch = epoch + 1
             torch.save({
                 "model": model.state_dict(),
                 "optimizer": optimizer.state_dict(),
@@ -245,37 +257,40 @@ def train_model(model, segment_files, transcriptions, vocab, surah_part,
 
         # Print epoch 1, every 10 epochs, or on last epoch
         if epoch == 0 or (epoch + 1) % 10 == 0 or epoch == num_epochs - 1:
-            # Format LR: use scientific notation if very small
-            lr_str = f"{current_lr:.1e}" if current_lr < 1e-6 else f"{current_lr:.6f}"
+            # Format LR: always use scientific notation for consistency
+            lr_str = f"{current_lr:.1e}"
             print(f"Epoch {epoch+1}/{num_epochs} | Loss={avg_loss:.4f} | LR={lr_str} | Time={elapsed:.1f}s{best_marker}")
 
-        # Check if loss increased at checkpoint epochs (every 10 epochs)
-        if (epoch + 1) % 10 == 0:
-            if prev_checkpoint_loss != float('inf') and avg_loss > prev_checkpoint_loss:
-                print(f"⚠️  Early stopping: loss increased from {prev_checkpoint_loss:.4f} to {avg_loss:.4f}")
-                break
-            prev_checkpoint_loss = avg_loss
+        # Calculate accuracy every 50 epochs and check for early stopping
+        if (epoch + 1) % 50 == 0:
+            # Load best checkpoint for accuracy evaluation
+            if os.path.exists(checkpoint_name):
+                checkpoint = torch.load(checkpoint_name, map_location=device)
+                model.load_state_dict(checkpoint["model"])
 
-        # Early stopping check
-        loss_change = prev_loss - avg_loss
-        if loss_change < min_delta:  # Includes small improvement, no change, or getting worse
-            patience_counter += 1
-            if patience_counter >= patience:
-                print(f"⚠️  Early stopping: loss not improving for {patience} consecutive epochs")
+            # Calculate accuracy
+            overall_acc, avg_acc, seg_accuracies = calculate_comprehensive_accuracy(
+                model, segment_files, transcriptions, vocab,
+                target_seconds, target_words, device
+            )
+            print(f"  Accuracy at epoch {epoch+1}: {overall_acc:.1f}%")
+
+            # Early stopping if accuracy > 90%
+            if overall_acc > 90.0:
+                print(f"✓ Early stopping: accuracy {overall_acc:.1f}% exceeds 90% threshold")
                 break
-        else:
-            patience_counter = 0  # Reset counter if loss change is significant
-        # Reduce learning rate if loss increased
+
+        # Reduce learning rate if loss increases (gets worse)
         if prev_loss != float('inf') and avg_loss > prev_loss:
             for param_group in optimizer.param_groups:
                 old_lr = param_group['lr']
-                new_lr = max(old_lr * 0.5, 1e-7)  # Reduce by 50%, but not below 1e-7
+                new_lr = max(old_lr * 0.5, 1e-9)  # Reduce by 50%, but not below 1e-9
                 param_group['lr'] = new_lr
 
         prev_loss = avg_loss
 
     total_time = time.time() - start_time
-    print(f"Training complete in {total_time:.1f}s | Best loss: {best_loss:.4f}")
+    print(f"Training complete in {total_time:.1f}s | Best loss: {best_loss:.4f} at epoch {best_epoch}")
 
     # Load best checkpoint
     if os.path.exists(checkpoint_name):
@@ -492,7 +507,7 @@ def main():
         surah_part,
         target_seconds=target_seconds,
         target_words=target_words,
-        num_epochs=100,
+        num_epochs=500,
         learning_rate=1e-5
     )
 
