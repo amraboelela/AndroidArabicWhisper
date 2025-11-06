@@ -114,8 +114,14 @@ def train_curriculum_stage(model, segment_files, transcriptions, vocab, surah_pa
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=0.01)
     criterion = nn.CrossEntropyLoss(ignore_index=-100, label_smoothing=0.1)
 
-    # Learning rate scheduler - reduce LR when loss plateaus
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5, min_lr=1e-7)
+    # Learning rate scheduler - reduce LR only when loss stops improving (no improvement or negative improvement)
+    # threshold=0.0 with default 'rel' mode means: improvement is current_loss < best_loss
+    # So LR reduces only when current_loss >= best_loss (loss doesn't improve or gets worse)
+    # Small positive improvements won't trigger LR reduction
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, mode='min', factor=0.5, patience=5, min_lr=1e-7,
+        threshold=0.0
+    )
 
     best_loss = float('inf')
     best_model_state = None  # Track best model state
@@ -202,10 +208,16 @@ def train_curriculum_stage(model, segment_files, transcriptions, vocab, surah_pa
                 break
         else:
             patience_counter = 0
-        prev_loss = avg_loss
+        # Reduce learning rate if loss increased
+        if prev_loss != float('inf') and avg_loss > prev_loss:
+            for param_group in optimizer.param_groups:
+                old_lr = param_group['lr']
+                new_lr = max(old_lr * 0.9, 1e-7)  # Reduce by 10%, but not below 1e-7
+                param_group['lr'] = new_lr
+                if new_lr != old_lr:
+                    print(f"  ⚠️  Loss increased: reducing LR from {old_lr:.6f} to {new_lr:.6f}")
 
-        # Step scheduler with current loss
-        scheduler.step(avg_loss)
+        prev_loss = avg_loss
 
     total_time = time.time() - start_time
     print(f"  ✓ Stage {stage_num} completed in {total_time:.1f}s | Best loss: {best_loss:.4f}")
@@ -233,9 +245,6 @@ def train_stage(model, segment_files, transcriptions, vocab, surah_part,
     model = model.to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=0.01)
     criterion = nn.CrossEntropyLoss(ignore_index=-100, label_smoothing=0.1)
-
-    # Learning rate scheduler - reduce LR when loss plateaus
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5, min_lr=1e-7)
 
     best_loss = float('inf')
     prev_loss = float('inf')
@@ -331,10 +340,17 @@ def train_stage(model, segment_files, transcriptions, vocab, surah_part,
                 break
         else:
             patience_counter = 0  # Reset counter if loss change is significant
-        prev_loss = avg_loss
 
-        # Step the learning rate scheduler
-        scheduler.step()
+        # Reduce learning rate if loss increased
+        if prev_loss != float('inf') and avg_loss > prev_loss:
+            for param_group in optimizer.param_groups:
+                old_lr = param_group['lr']
+                new_lr = max(old_lr * 0.5, 1e-7)  # Reduce by 50%, but not below min_lr
+                param_group['lr'] = new_lr
+                if new_lr != old_lr:
+                    print(f"⚠️  Loss increased: reducing LR from {old_lr:.6f} to {new_lr:.6f}")
+
+        prev_loss = avg_loss
 
         # Sample generation every 5 epochs
         if (epoch + 1) % 5 == 0 or epoch == num_epochs - 1:
