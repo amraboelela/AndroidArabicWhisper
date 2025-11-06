@@ -10,9 +10,13 @@
 
 # Summary log file setup (do this first, before any recursive calls)
 SUMMARY_LOG="log_test.txt"
-DAY_NUM=$(date +%u)  # Day of week (1=Monday, 7=Sunday)
-if [ -f "$SUMMARY_LOG" ]; then
-    mv "$SUMMARY_LOG" "log_test.txt.${DAY_NUM}"
+# Only backup on the first call (not on recursive calls)
+if [ -z "$TEST_SH_RECURSIVE" ]; then
+    export TEST_SH_RECURSIVE=1
+    DAY_NUM=$(date +%u)  # Day of week (1=Monday, 7=Sunday)
+    if [ -f "$SUMMARY_LOG" ]; then
+        mv "$SUMMARY_LOG" "log_test_${DAY_NUM}.txt"
+    fi
 fi
 
 # Get parameters
@@ -138,7 +142,7 @@ for SURAH_PART in "${SURAH_PARTS[@]}"; do
 
     # If log file exists, move it to day-specific backup
     if [ -f "$LOG_FILE" ]; then
-        mv "$LOG_FILE" "log_${DATASET}_${SURAH_NUM}.txt.${DAY_NUM}"
+        mv "$LOG_FILE" "log_${DATASET}_${SURAH_NUM}_${DAY_NUM}.txt"
     fi
 
     # Write header to log file
@@ -151,8 +155,8 @@ for SURAH_PART in "${SURAH_PARTS[@]}"; do
     MSG="Testing $DATASET $SURAH_PART..."
     echo "$MSG"
     echo "$MSG" >> "$SUMMARY_LOG"
-    run_test_suite "test_curriculum.py" "Curriculum" "$SURAH_PART" "$LOG_FILE" || exit 1
     run_test_suite "test_full.py" "Full" "$SURAH_PART" "$LOG_FILE" || exit 1
+    run_test_suite "test_curriculum.py" "Curriculum" "$SURAH_PART" "$LOG_FILE" || exit 1
 done
 
 # Summary

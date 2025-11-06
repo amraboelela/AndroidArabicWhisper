@@ -13,6 +13,9 @@ This script trains the model using curriculum learning on all segments in a sura
 - Stage 3: First 3.9s of each segment → first 3 words
 - ... and so on until full segment audio → full segment transcription
 """
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning)
+
 import json
 import torch
 import torch.nn as nn
@@ -95,26 +98,27 @@ def tokenize_text(text, vocab):
     return [word_to_idx.get(word, 0) for word in words]  # 0 = unknown
 
 # ==============================================================
-# Training for one segment with specific word count
+# Training for curriculum stage (all segments at specific chunk count)
 # ==============================================================
-def train_segment_curriculum(model, segment_file, transcription, vocab, word_count, target_seconds, num_epochs=100, learning_rate=1e-5):
+def train_curriculum_stage(model, segment_files, transcriptions, vocab, surah_part,
+                           stage_num, target_seconds, target_words, num_epochs=100, learning_rate=1e-5):
     """
-    Train model on a single segment for a specific number of words
+    Train model on all segments for a specific curriculum stage
 
     Args:
-        segment_file: Path to audio segment
-        transcription: Full transcription text
-        word_count: Number of words to train on (from beginning)
-        target_seconds: Audio duration to use
+        stage_num: The curriculum stage number (for logging)
+        target_seconds: Audio duration to use for this stage
+        target_words: Number of words to predict for this stage
     """
     model = model.to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=0.01)
     criterion = nn.CrossEntropyLoss(ignore_index=-100, label_smoothing=0.1)
 
-    # Learning rate scheduler
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.5)
+    # Learning rate scheduler - reduce LR when loss plateaus
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5, min_lr=1e-7)
 
     best_loss = float('inf')
+    best_model_state = None  # Track best model state
     prev_loss = float('inf')
     prev_checkpoint_loss = float('inf')  # Track loss at every 10th epoch
     patience_counter = 0
@@ -122,37 +126,57 @@ def train_segment_curriculum(model, segment_file, transcription, vocab, word_cou
     patience = 3
     start_time = time.time()
 
-    # Extract target text (first word_count words)
-    words = transcription.split()
-    target_text = " ".join(words[:word_count])
-
     for epoch in range(num_epochs):
         model.train()
+        total_loss = 0.0
+        total_iterations = 0
+        indices = list(range(len(segment_files)))
+        random.shuffle(indices)
 
-        # Extract audio features
-        audio_features, sample_rate = extract_mel_features(segment_file, target_seconds=target_seconds)
+        for i in indices:
+            seg_file = segment_files[i]
+            text = transcriptions[i]
 
-        # Tokenize target text
-        text_tokens = tokenize_text(target_text, vocab)
-        audio_batch = audio_features.transpose(0, 1).unsqueeze(0).to(device)
+            # Extract audio features
+            audio_features, sample_rate = extract_mel_features(seg_file, target_seconds=target_seconds)
 
-        full_sequence = [1] + text_tokens + [2]  # <s> + tokens + </s>
-        input_ids = torch.tensor([full_sequence[:-1]], dtype=torch.long, device=device)
-        labels = torch.tensor([full_sequence[1:]], dtype=torch.long, device=device)
+            # Extract target text (first target_words words)
+            words = text.split()
+            if len(words) < target_words:
+                continue  # Skip if not enough words
+            target_text = " ".join(words[:target_words])
 
-        logits = model(mel_features=audio_batch, text_ids=input_ids)
-        loss = criterion(logits.view(-1, logits.size(-1)), labels.view(-1))
+            if not target_text:
+                continue
 
-        optimizer.zero_grad()
-        loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-        optimizer.step()
+            text_tokens = tokenize_text(target_text, vocab)
+            audio_batch = audio_features.transpose(0, 1).unsqueeze(0).to(device)
 
-        avg_loss = loss.item()
+            full_sequence = [1] + text_tokens + [2]  # <s> + tokens + </s>
+            input_ids = torch.tensor([full_sequence[:-1]], dtype=torch.long, device=device)
+            labels = torch.tensor([full_sequence[1:]], dtype=torch.long, device=device)
+
+            logits = model(mel_features=audio_batch, text_ids=input_ids)
+            loss = criterion(logits.view(-1, logits.size(-1)), labels.view(-1))
+
+            optimizer.zero_grad()
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            optimizer.step()
+
+            total_loss += loss.item()
+            total_iterations += 1
+
+        if total_iterations == 0:
+            print(f"  ⚠️  Warning: No valid training samples in this stage. Skipping.")
+            break
+
+        avg_loss = total_loss / total_iterations
 
         # Save best
         if avg_loss < best_loss:
             best_loss = avg_loss
+            best_model_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
             best_marker = " ⭐"
         else:
             best_marker = ""
@@ -171,7 +195,7 @@ def train_segment_curriculum(model, segment_file, transcription, vocab, word_cou
 
         # Early stopping check (every epoch)
         loss_change = prev_loss - avg_loss
-        if loss_change < min_delta:  # Includes small improvement, no change, or getting worse
+        if loss_change < min_delta:
             patience_counter += 1
             if patience_counter >= patience:
                 print(f"  ⚠️  Early stopping: loss not improving for {patience} consecutive epochs")
@@ -180,11 +204,16 @@ def train_segment_curriculum(model, segment_file, transcription, vocab, word_cou
             patience_counter = 0
         prev_loss = avg_loss
 
-        # Step scheduler
-        scheduler.step()
+        # Step scheduler with current loss
+        scheduler.step(avg_loss)
 
     total_time = time.time() - start_time
-    print(f"  ✓ Completed in {total_time:.1f}s | Best loss: {best_loss:.4f}")
+    print(f"  ✓ Stage {stage_num} completed in {total_time:.1f}s | Best loss: {best_loss:.4f}")
+
+    # Restore best model state before returning
+    if best_model_state is not None:
+        model.load_state_dict(best_model_state)
+        print(f"  ✓ Restored best model state")
 
     return model
 
@@ -205,8 +234,8 @@ def train_stage(model, segment_files, transcriptions, vocab, surah_part,
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=0.01)
     criterion = nn.CrossEntropyLoss(ignore_index=-100, label_smoothing=0.1)
 
-    # Learning rate scheduler
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.5)
+    # Learning rate scheduler - reduce LR when loss plateaus
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5, min_lr=1e-7)
 
     best_loss = float('inf')
     prev_loss = float('inf')
@@ -297,7 +326,6 @@ def train_stage(model, segment_files, transcriptions, vocab, surah_part,
         loss_change = prev_loss - avg_loss
         if loss_change < min_delta:  # Includes small improvement, no change, or getting worse
             patience_counter += 1
-            print(f"⚠️  Low/negative loss change ({loss_change:.6f}) | Patience: {patience_counter}/{patience}")
             if patience_counter >= patience:
                 print(f"⚠️  Early stopping: loss not improving for {patience} consecutive epochs")
                 break
@@ -378,16 +406,16 @@ def main():
     vocab_path = "../models/vocabulary.json"
     model_path = "../models/muhaffez_whisper.pt"
 
-    print(f"\n{'='*60}")
-    print(f"CURRICULUM LEARNING - SURAH PART: {surah_part}")
-    print(f"Dataset: {dataset_name}")
-    print(f"Chunk size: {CHUNK_DURATION}s → {WORDS_PER_CHUNK} word(s)")
-    print(f"{'='*60}\n")
-
     # Load vocab
     with open(vocab_path, "r", encoding="utf-8") as f:
         vocab = json.load(f)
-    print(f"Vocabulary size: {len(vocab)}")
+
+    print(f"\n{'='*60}")
+    print(f"CURRICULUM LEARNING - SURAH PART: {surah_part}")
+    print(f"Dataset: {dataset_name}")
+    print(f"Vocabulary: {len(vocab)} words")
+    print(f"Chunk size: {CHUNK_DURATION}s → {WORDS_PER_CHUNK} word(s)")
+    print(f"{'='*60}\n")
 
     # Parse surah part name to determine surah number
     surah_num = surah_part.split('-')[0]  # "001" or "002"
@@ -423,28 +451,24 @@ def main():
         dropout=0.1
     )
 
-    # Load existing model if available
-    import shutil
+    # Load existing model if available (no backup - already done by train_full.py)
     if os.path.exists(model_path):
-        backup_path = model_path.replace(".pt", f"_backup_curriculum_{surah_part}.pt")
-        shutil.copy2(model_path, backup_path)
-        print(f"\n✓ Backup created: {backup_path}")
-
         print(f"Loading existing model from {model_path}...")
         model.load_state_dict(torch.load(model_path, map_location=device))
         print(f"✓ Model loaded successfully! Starting curriculum training on {surah_part}.")
     else:
         print(f"\nNo existing model found. Starting with fresh weights for curriculum training.")
 
-    # Train through curriculum: for each segment, train progressively on 1 word, 2 words, ..., all words
+    # Train through curriculum: train all segments at each stage
     total_start_time = time.time()
 
     print(f"\n{'='*60}")
     print(f"CURRICULUM TRAINING")
     print(f"{'='*60}\n")
 
-    # Train on each segment individually with curriculum approach
-    for seg_idx, (segment_file, transcription) in enumerate(zip(segment_files, transcriptions), 1):
+    # Calculate max chunks across all segments
+    segment_info = []
+    for segment_file, transcription in zip(segment_files, transcriptions):
         segment_name = os.path.basename(segment_file)
         words = transcription.split()
         num_words = len(words)
@@ -455,40 +479,155 @@ def main():
 
         # Calculate how many chunks fit in this audio
         num_chunks = int(audio_duration / CHUNK_DURATION)
-
-        # Don't exceed the number of words in the transcription
         max_chunks = min(num_chunks, num_words)
 
+        segment_info.append({
+            'file': segment_file,
+            'name': segment_name,
+            'transcription': transcription,
+            'audio_duration': audio_duration,
+            'num_words': num_words,
+            'max_chunks': max_chunks
+        })
+
+    # Find the maximum number of chunks across all segments
+    global_max_chunks = max(info['max_chunks'] for info in segment_info)
+
+    print(f"Total segments: {len(segment_info)}")
+    print(f"Maximum curriculum stages: {global_max_chunks - 1} (excluding full audio stage)")
+    print(f"Chunk size: {CHUNK_DURATION}s → {WORDS_PER_CHUNK} word(s)\n")
+
+    # Train stage by stage: all segments at 1 chunk, then all segments at 2 chunks, etc.
+    # Skip the last stage (full audio) as it's redundant with train_full.py
+    for chunk_count in range(1, global_max_chunks):
+        target_seconds = chunk_count * CHUNK_DURATION
+        target_words = chunk_count * WORDS_PER_CHUNK
+
         print(f"\n{'='*60}")
-        print(f"SEGMENT {seg_idx}/{len(segment_files)}: {segment_name}")
-        print(f"Transcription: {transcription}")
-        print(f"Audio duration: {audio_duration:.2f}s")
-        print(f"Chunks that fit: {num_chunks} (1.3s each)")
-        print(f"Words available: {num_words}")
-        print(f"Training chunks: {max_chunks}")
+        print(f"CURRICULUM STAGE {chunk_count}/{global_max_chunks - 1}")
+        print(f"Training all segments: {target_seconds:.1f}s → {target_words} word(s)")
         print(f"{'='*60}\n")
 
-        # Train progressively: 1 chunk, 2 chunks, ..., max_chunks
-        for chunk_count in range(1, max_chunks + 1):
-            target_seconds = chunk_count * CHUNK_DURATION
-            target_words = chunk_count * WORDS_PER_CHUNK
+        # Filter segments that have at least this many chunks
+        stage_segment_files = []
+        stage_transcriptions = []
+        for info in segment_info:
+            if chunk_count <= info['max_chunks']:
+                stage_segment_files.append(info['file'])
+                stage_transcriptions.append(info['transcription'])
 
-            print(f"\n--- Training on {chunk_count} chunk(s) = {target_seconds:.1f}s → {target_words} word(s) ---")
+        if not stage_segment_files:
+            print(f"  ⚠️  No segments available for this stage. Skipping.")
+            continue
 
-            model = train_segment_curriculum(
-                model,
-                segment_file,
-                transcription,
-                vocab,
-                target_words,
-                target_seconds,
-                num_epochs=100,
-                learning_rate=1e-5
-            )
+        print(f"  Training on {len(stage_segment_files)}/{len(segment_info)} segments")
 
-        print(f"\n✓ Completed curriculum training for {segment_name}\n")
+        model = train_curriculum_stage(
+            model,
+            stage_segment_files,
+            stage_transcriptions,
+            vocab,
+            surah_part,
+            chunk_count,
+            target_seconds,
+            target_words,
+            num_epochs=100,
+            learning_rate=1e-5
+        )
 
-    # Save final model
+        # Sample generation for this stage
+        model.eval()
+        # Pick a random segment from this stage
+        test_idx = random.randint(0, len(stage_segment_files) - 1)
+        test_audio_features, sample_rate = extract_mel_features(stage_segment_files[test_idx], target_seconds=target_seconds)
+        test_audio_batch = test_audio_features.transpose(0, 1).unsqueeze(0).to(device)
+
+        # Get expected text (first target_words words)
+        words = stage_transcriptions[test_idx].split()
+        expected_text = " ".join(words[:target_words]) if len(words) >= target_words else stage_transcriptions[test_idx]
+
+        with torch.no_grad():
+            max_tokens = target_words * 10
+            generated = model.generate(test_audio_batch, max_new_tokens=max_tokens, audio_duration_seconds=target_seconds)
+            generated_ids = generated[0].tolist()
+            if generated_ids and generated_ids[0] == 1:
+                generated_ids = generated_ids[1:]
+            if 2 in generated_ids:
+                generated_ids = generated_ids[:generated_ids.index(2)]
+            generated_words = [vocab[idx] for idx in generated_ids if idx < len(vocab)]
+            display_words = generated_words[:target_words] if len(generated_words) >= target_words else generated_words
+
+            # Calculate confidence for each token
+            # Re-run forward pass to get probabilities
+            if len(generated_ids[:target_words]) == 0:
+                # No tokens generated
+                display_text = ""
+                accuracy = 0
+                print(f"  🔸 Expected: {expected_text}")
+                print(f"  🔹 Generated: {display_text}")
+                print(f"     Accuracy: {accuracy:.0f}%\n")
+                continue
+
+            encoder_output = model.encode(test_audio_batch)
+            text_ids = torch.tensor([[1] + generated_ids[:target_words]], dtype=torch.long, device=device)
+            logits = model.decode(text_ids, encoder_output)
+            probs = torch.softmax(logits, dim=-1)
+
+            # Get probability of each generated token
+            min_confidence = 1.0
+            token_confidences = []
+            for i, token_id in enumerate(generated_ids[:len(display_words)]):  # Only check generated words
+                if i < logits.shape[1] - 1:  # -1 because we prepended <s>
+                    token_prob = probs[0, i, token_id].item()
+                    token_confidences.append(token_prob)
+                    min_confidence = min(min_confidence, token_prob)
+
+            # Calculate accuracy (percentage of correct words)
+            expected_words = expected_text.split()
+            correct_words = sum(1 for i, word in enumerate(display_words) if i < len(expected_words) and word == expected_words[i])
+            accuracy = (correct_words / len(expected_words) * 100) if expected_words else 0
+
+            # Build display text and confidence text
+            confidence_threshold = 0.3  # 30% threshold
+            if len(display_words) == len(token_confidences):
+                # Show words (mark low confidence with brackets, hide 0% or very low confidence)
+                display_text_parts = []
+                confidence_list = []
+                correct_confident_words = 0
+                total_confident_words = 0
+                for i, (word, conf) in enumerate(zip(display_words, token_confidences)):
+                    if conf < 0.01:  # Hide words with < 1% confidence (rounds to 0%)
+                        # Skip words with very low confidence
+                        continue
+                    elif conf >= confidence_threshold:
+                        display_text_parts.append(word)
+                        confidence_list.append(f"{conf:.0%}")
+                        # Count for accuracy only if confidence >= threshold
+                        total_confident_words += 1
+                        if i < len(expected_words) and word == expected_words[i]:
+                            correct_confident_words += 1
+                    else:
+                        display_text_parts.append(f"[{word}]")  # Mark low confidence with brackets
+                        confidence_list.append(f"{conf:.0%}")
+
+                display_text = ' '.join(display_text_parts) if display_text_parts else ""
+                confidence_text = ', '.join(confidence_list) if confidence_list else "N/A"
+
+                # Accuracy based only on confident predictions
+                accuracy = (correct_confident_words / total_confident_words * 100) if total_confident_words > 0 else 0
+            else:
+                display_text = ' '.join(display_words)
+                confidence_text = "N/A"
+                # Original accuracy calculation if confidences don't match
+                accuracy = (correct_words / len(expected_words) * 100) if expected_words else 0
+
+            print(f"  🔸 Expected: {expected_text}")
+            print(f"  🔹 Generated: {display_text}")
+            print(f"     Confidence: {confidence_text}")
+            print(f"     Accuracy: {accuracy:.0f}%\n")
+        model.train()
+
+    # Save best model (restored from best checkpoint in train_segment_curriculum)
     torch.save(model.state_dict(), model_path)
 
     total_time = time.time() - total_start_time
@@ -498,8 +637,91 @@ def main():
     print(f"\n{'='*60}")
     print(f"✓ CURRICULUM TRAINING COMPLETED!")
     print(f"Total time: {minutes}m {seconds}s")
-    print(f"Final model saved to: {model_path}")
+    print(f"Best model saved to: {model_path}")
     print(f"{'='*60}\n")
+
+    # Load the saved model for sample generation
+    print("Loading saved model for verification...")
+    model.load_state_dict(torch.load(model_path, map_location=device))
+    model.eval()
+
+    # Sample generation at the end
+    # Use the first segment for testing
+    test_audio_features, sample_rate = extract_mel_features(segment_files[0])
+    test_audio_batch = test_audio_features.transpose(0, 1).unsqueeze(0).to(device)
+
+    waveform, sr = torchaudio.load(segment_files[0])
+    audio_duration = waveform.shape[1] / sr
+
+    expected_text = transcriptions[0]
+
+    with torch.no_grad():
+        generated = model.generate(test_audio_batch, max_new_tokens=50, audio_duration_seconds=audio_duration)
+        generated_ids = generated[0].tolist()
+        if generated_ids and generated_ids[0] == 1:
+            generated_ids = generated_ids[1:]
+        if 2 in generated_ids:
+            generated_ids = generated_ids[:generated_ids.index(2)]
+        generated_words = [vocab[idx] for idx in generated_ids if idx < len(vocab)]
+
+        # Calculate confidence for each token
+        encoder_output = model.encode(test_audio_batch)
+        text_ids = torch.tensor([[1] + generated_ids], dtype=torch.long, device=device)
+        logits = model.decode(text_ids, encoder_output)
+        probs = torch.softmax(logits, dim=-1)
+
+        # Get probability of each generated token
+        token_confidences = []
+        for i, token_id in enumerate(generated_ids):
+            if i < logits.shape[1] - 1:  # -1 because we prepended <s>
+                token_prob = probs[0, i, token_id].item()
+                token_confidences.append(token_prob)
+
+        # Calculate accuracy (percentage of correct words)
+        expected_words = expected_text.split()
+        correct_words = sum(1 for i, word in enumerate(generated_words) if i < len(expected_words) and word == expected_words[i])
+        accuracy = (correct_words / len(expected_words) * 100) if expected_words else 0
+
+        # Filter out words with 0% confidence and calculate accuracy based on confident words
+        filtered_words = []
+        filtered_confidences = []
+        correct_confident_words = 0
+        total_confident_words = 0
+
+        if len(generated_words) == len(token_confidences):
+            for i, (word, conf) in enumerate(zip(generated_words, token_confidences)):
+                if conf < 0.01:  # Hide words with < 1% confidence (rounds to 0%)
+                    continue
+                elif conf >= 0.3:  # 30% threshold
+                    filtered_words.append(word)
+                    filtered_confidences.append(f'{conf:.0%}')
+                    total_confident_words += 1
+                    if i < len(expected_words) and word == expected_words[i]:
+                        correct_confident_words += 1
+                else:
+                    filtered_words.append(f"[{word}]")  # Mark low confidence with brackets
+                    filtered_confidences.append(f'{conf:.0%}')
+
+            # Accuracy based only on confident predictions
+            accuracy = (correct_confident_words / total_confident_words * 100) if total_confident_words > 0 else 0
+        else:
+            filtered_words = generated_words
+            filtered_confidences = [f'{c:.0%}' for c in token_confidences] if token_confidences else []
+            # Original accuracy calculation if confidences don't match
+            accuracy = (correct_words / len(expected_words) * 100) if expected_words else 0
+
+        # Build confidence text
+        if filtered_confidences:
+            confidence_text = ', '.join(filtered_confidences)
+        else:
+            confidence_text = "N/A"
+
+        display_text = ' '.join(filtered_words) if filtered_words else ""
+
+        print(f"🔸 Expected: {expected_text}")
+        print(f"🔹 Generated: {display_text}")
+        print(f"   Confidence: {confidence_text}")
+        print(f"   Accuracy: {accuracy:.0f}%")
 
 
 if __name__ == "__main__":

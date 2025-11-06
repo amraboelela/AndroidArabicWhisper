@@ -7,6 +7,9 @@ Examples:
   python3 train_full.py Quran-A 002-01    # Train on Al-Baqara part 1
   python3 train_full.py Quran-A 002-04    # Train on Al-Baqara part 4
 """
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning)
+
 import json
 import torch
 import torch.nn as nn
@@ -98,8 +101,8 @@ def train_model(model, segment_files, transcriptions, vocab, surah_part,
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=0.01)
     criterion = nn.CrossEntropyLoss(ignore_index=-100, label_smoothing=0.1)
 
-    # Learning rate scheduler - reduces LR by 0.5x after each epoch
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.5)
+    # Learning rate scheduler - reduce LR when loss plateaus
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5, min_lr=1e-7)
 
     best_loss = float('inf')
     prev_loss = float('inf')
@@ -172,7 +175,10 @@ def train_model(model, segment_files, transcriptions, vocab, surah_part,
 
         elapsed = time.time() - start_time
         current_lr = optimizer.param_groups[0]['lr']
-        print(f"Epoch {epoch+1}/{num_epochs} | Loss={avg_loss:.4f} | LR={current_lr:.6f} | Time={elapsed:.1f}s{best_marker}")
+
+        # Print every 10 epochs or on last epoch
+        if (epoch + 1) % 10 == 0 or epoch == num_epochs - 1:
+            print(f"Epoch {epoch+1}/{num_epochs} | Loss={avg_loss:.4f} | LR={current_lr:.6f} | Time={elapsed:.1f}s{best_marker}")
 
         # Check if loss increased at checkpoint epochs (every 10 epochs)
         if (epoch + 1) % 10 == 0:
@@ -185,7 +191,6 @@ def train_model(model, segment_files, transcriptions, vocab, surah_part,
         loss_change = prev_loss - avg_loss
         if loss_change < min_delta:  # Includes small improvement, no change, or getting worse
             patience_counter += 1
-            print(f"⚠️  Low/negative loss change ({loss_change:.6f}) | Patience: {patience_counter}/{patience}")
             if patience_counter >= patience:
                 print(f"⚠️  Early stopping: loss not improving for {patience} consecutive epochs")
                 break
@@ -193,45 +198,8 @@ def train_model(model, segment_files, transcriptions, vocab, surah_part,
             patience_counter = 0  # Reset counter if loss change is significant
         prev_loss = avg_loss
 
-        # Step the learning rate scheduler
-        scheduler.step()
-
-        # Sample generation every 5 epochs
-        if (epoch + 1) % 5 == 0 or epoch == num_epochs - 1:
-            model.eval()
-            test_audio, sample_rate = extract_mel_features(segment_files[0], target_seconds=target_seconds)
-            test_audio = test_audio.transpose(0, 1).unsqueeze(0).to(device)
-
-            # Get expected text
-            if target_words:
-                words = transcriptions[0].split()
-                expected_text = " ".join(words[:target_words]) if len(words) >= target_words else transcriptions[0]
-            else:
-                expected_text = transcriptions[0]
-
-            # Calculate audio duration for generation
-            waveform, sr = torchaudio.load(segment_files[0])
-            audio_duration = target_seconds if target_seconds else (waveform.shape[1] / sr)
-
-            with torch.no_grad():
-                max_tokens = (target_words * 10) if target_words else 50
-                generated = model.generate(test_audio, max_new_tokens=max_tokens, audio_duration_seconds=audio_duration)
-                generated_ids = generated[0].tolist()
-                if generated_ids and generated_ids[0] == 1:
-                    generated_ids = generated_ids[1:]
-                if 2 in generated_ids:
-                    generated_ids = generated_ids[:generated_ids.index(2)]
-                generated_words = [vocab[idx] for idx in generated_ids if idx < len(vocab)]
-
-                # Show only target words if specified
-                if target_words:
-                    display_words = generated_words[:target_words] if len(generated_words) >= target_words else generated_words
-                else:
-                    display_words = generated_words
-
-                print(f"  🔸 Expected: {expected_text}")
-                print(f"  🔹 Generated: {' '.join(display_words)}")
-            model.train()
+        # Step the learning rate scheduler with current loss
+        scheduler.step(avg_loss)
 
     total_time = time.time() - start_time
     print(f"Training complete in {total_time:.1f}s | Best loss: {best_loss:.4f}")
@@ -242,6 +210,99 @@ def train_model(model, segment_files, transcriptions, vocab, surah_part,
         checkpoint = torch.load(checkpoint_name, map_location=device)
         model.load_state_dict(checkpoint["model"])
         print(f"✓ Loaded best model from epoch {checkpoint['epoch'] + 1}")
+
+    # Sample generation at the end
+    model.eval()
+    test_audio, sample_rate = extract_mel_features(segment_files[0], target_seconds=target_seconds)
+    test_audio = test_audio.transpose(0, 1).unsqueeze(0).to(device)
+
+    # Get expected text
+    if target_words:
+        words = transcriptions[0].split()
+        expected_text = " ".join(words[:target_words]) if len(words) >= target_words else transcriptions[0]
+    else:
+        expected_text = transcriptions[0]
+
+    # Calculate audio duration for generation
+    waveform, sr = torchaudio.load(segment_files[0])
+    audio_duration = target_seconds if target_seconds else (waveform.shape[1] / sr)
+
+    with torch.no_grad():
+        max_tokens = (target_words * 10) if target_words else 50
+        generated = model.generate(test_audio, max_new_tokens=max_tokens, audio_duration_seconds=audio_duration)
+        generated_ids = generated[0].tolist()
+        if generated_ids and generated_ids[0] == 1:
+            generated_ids = generated_ids[1:]
+        if 2 in generated_ids:
+            generated_ids = generated_ids[:generated_ids.index(2)]
+        generated_words = [vocab[idx] for idx in generated_ids if idx < len(vocab)]
+
+        # Show only target words if specified
+        if target_words:
+            display_words = generated_words[:target_words] if len(generated_words) >= target_words else generated_words
+            num_tokens_to_check = target_words
+        else:
+            display_words = generated_words
+            num_tokens_to_check = len(generated_words)
+
+        # Calculate confidence for each token
+        encoder_output = model.encode(test_audio)
+        text_ids = torch.tensor([[1] + generated_ids[:num_tokens_to_check]], dtype=torch.long, device=device)
+        logits = model.decode(text_ids, encoder_output)
+        probs = torch.softmax(logits, dim=-1)
+
+        # Get probability of each generated token
+        token_confidences = []
+        for i, token_id in enumerate(generated_ids[:num_tokens_to_check]):
+            if i < logits.shape[1] - 1:  # -1 because we prepended <s>
+                token_prob = probs[0, i, token_id].item()
+                token_confidences.append(token_prob)
+
+        # Calculate accuracy (percentage of correct words)
+        expected_words = expected_text.split()
+        correct_words = sum(1 for i, word in enumerate(display_words) if i < len(expected_words) and word == expected_words[i])
+        accuracy = (correct_words / len(expected_words) * 100) if expected_words else 0
+
+        # Filter out words with 0% confidence and calculate accuracy based on confident words
+        filtered_words = []
+        filtered_confidences = []
+        correct_confident_words = 0
+        total_confident_words = 0
+
+        if len(display_words) == len(token_confidences):
+            for i, (word, conf) in enumerate(zip(display_words, token_confidences)):
+                if conf < 0.01:  # Hide words with < 1% confidence (rounds to 0%)
+                    continue
+                elif conf >= 0.3:  # 30% threshold
+                    filtered_words.append(word)
+                    filtered_confidences.append(f'{conf:.0%}')
+                    total_confident_words += 1
+                    if i < len(expected_words) and word == expected_words[i]:
+                        correct_confident_words += 1
+                else:
+                    filtered_words.append(f"[{word}]")  # Mark low confidence with brackets
+                    filtered_confidences.append(f'{conf:.0%}')
+
+            # Accuracy based only on confident predictions
+            accuracy = (correct_confident_words / total_confident_words * 100) if total_confident_words > 0 else 0
+        else:
+            filtered_words = display_words
+            filtered_confidences = [f'{c:.0%}' for c in token_confidences] if token_confidences else []
+            # Original accuracy calculation if confidences don't match
+            accuracy = (correct_words / len(expected_words) * 100) if expected_words else 0
+
+        # Build confidence text
+        if filtered_confidences:
+            confidence_text = ', '.join(filtered_confidences)
+        else:
+            confidence_text = "N/A"
+
+        display_text = ' '.join(filtered_words) if filtered_words else ""
+
+        print(f"🔸 Expected: {expected_text}")
+        print(f"🔹 Generated: {display_text}")
+        print(f"   Confidence: {confidence_text}")
+        print(f"   Accuracy: {accuracy:.0f}%")
 
     return model
 
@@ -267,7 +328,6 @@ def main():
     # Load vocab
     with open(vocab_path, "r", encoding="utf-8") as f:
         vocab = json.load(f)
-    print(f"Vocabulary size: {len(vocab)}")
 
     # Parse surah part name to determine surah number
     surah_num = surah_part.split('-')[0]  # "001" or "002"
@@ -319,12 +379,23 @@ def main():
         dropout=0.1
     )
 
-    # Load existing model and continue training
+    # Load existing model and continue training (backup created once per surah, not per part)
     import shutil
+    import time
+    surah_num = surah_part.split('-')[0]  # Get surah number (e.g., "001" or "002")
+    day_num = time.strftime("%u")  # Day of week (1=Monday, 7=Sunday)
+    backup_path = model_path.replace(".pt", f"_backup_{surah_num}.pt")
+    day_backup_path = model_path.replace(".pt", f"_backup_{surah_num}_{day_num}.pt")
+
     if os.path.exists(model_path):
-        backup_path = model_path.replace(".pt", f"_backup_{surah_part}.pt")
-        shutil.copy2(model_path, backup_path)
-        print(f"✓ Backup created: {backup_path}")
+        # Only create backup if it doesn't exist yet for this day (once per surah per day)
+        if not os.path.exists(backup_path) or not os.path.exists(day_backup_path):
+            # Move existing backup to day-specific backup
+            if os.path.exists(backup_path):
+                shutil.move(backup_path, day_backup_path)
+            # Create new backup
+            shutil.copy2(model_path, backup_path)
+            print(f"✓ Backup created: {backup_path}")
 
         print(f"Loading existing model from {model_path}...")
         model.load_state_dict(torch.load(model_path, map_location=device))
