@@ -283,8 +283,8 @@ def train_model(model, segment_files, transcriptions, vocab, surah_part,
                     filtered_words.append(f"[{word}]")  # Mark low confidence with brackets
                     filtered_confidences.append(f'{conf:.0%}')
 
-            # Accuracy based only on confident predictions
-            accuracy = (correct_confident_words / total_confident_words * 100) if total_confident_words > 0 else 0
+            # Accuracy: correct confident words out of total EXPECTED words
+            accuracy = (correct_confident_words / len(expected_words) * 100) if expected_words else 0
         else:
             filtered_words = display_words
             filtered_confidences = [f'{c:.0%}' for c in token_confidences] if token_confidences else []
