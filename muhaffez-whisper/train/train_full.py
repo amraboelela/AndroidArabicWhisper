@@ -280,13 +280,6 @@ def train_model(model, segment_files, transcriptions, vocab, surah_part,
                 print(f"✓ Early stopping: accuracy {overall_acc:.1f}% exceeds 90% threshold")
                 break
 
-        # Reduce learning rate if loss increases (gets worse)
-        if prev_loss != float('inf') and avg_loss > prev_loss:
-            for param_group in optimizer.param_groups:
-                old_lr = param_group['lr']
-                new_lr = max(old_lr * 0.5, 1e-9)  # Reduce by 50%, but not below 1e-9
-                param_group['lr'] = new_lr
-
         prev_loss = avg_loss
 
     total_time = time.time() - start_time
