@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
 Universal training script for encoder-decoder model
-Usage: python3 train.py <segment> [dataset_name]
+Usage: python3 train_full.py <dataset_name> <surah_part>
 Examples:
-  python3 train.py 001 base       # Train on Al-Fatiha (001)
-  python3 train.py 002-01 base    # Train on Al-Baqara part 1
-  python3 train.py 002-04 base    # Train on Al-Baqara part 4
+  python3 train_full.py Quran-A 001       # Train on Al-Fatiha (001)
+  python3 train_full.py Quran-A 002-01    # Train on Al-Baqara part 1
+  python3 train_full.py Quran-A 002-04    # Train on Al-Baqara part 4
 """
 import json
 import torch
@@ -16,8 +16,8 @@ import os
 import random
 import time
 import sys
-sys.path.append("../..")
-from encoder_decoder_transformer import EncoderDecoderTransformer
+sys.path.append("..")
+from custom_scripts.encoder_decoder_transformer import EncoderDecoderTransformer
 
 # ==============================================================
 # Device setup
@@ -85,7 +85,7 @@ def tokenize_text(text, vocab):
 # ==============================================================
 # Training
 # ==============================================================
-def train_model(model, segment_files, transcriptions, vocab, segment_name,
+def train_model(model, segment_files, transcriptions, vocab, surah_part,
                 target_seconds=None, target_words=None, num_epochs=100, learning_rate=1e-5):
     """
     Universal training function
@@ -103,12 +103,15 @@ def train_model(model, segment_files, transcriptions, vocab, segment_name,
 
     best_loss = float('inf')
     prev_loss = float('inf')
+    patience_counter = 0  # Track consecutive epochs with low loss change
+    min_delta = 1e-3  # Minimum change to consider as improvement
+    patience = 3  # Number of epochs to wait before stopping
     start_time = time.time()
 
     # Build description
     audio_desc = f"first {target_seconds}s" if target_seconds else "full"
     text_desc = f"first {target_words} words" if target_words else "full"
-    checkpoint_name = f"checkpoint_best_{segment_name}.pt"
+    checkpoint_name = f"checkpoint_best_{surah_part}.pt"
 
     for epoch in range(num_epochs):
         model.train()
@@ -172,9 +175,14 @@ def train_model(model, segment_files, transcriptions, vocab, segment_name,
 
         # Early stopping check
         loss_change = prev_loss - avg_loss
-        if loss_change < 0.001 and epoch > 0:
-            print(f"⚠️ Early stopping: loss change ({loss_change:.6f}) < 0.001")
-            break
+        if loss_change < min_delta:  # Includes small improvement, no change, or getting worse
+            patience_counter += 1
+            print(f"⚠️  Low/negative loss change ({loss_change:.6f}) | Patience: {patience_counter}/{patience}")
+            if patience_counter >= patience:
+                print(f"⚠️  Early stopping: loss not improving for {patience} consecutive epochs")
+                break
+        else:
+            patience_counter = 0  # Reset counter if loss change is significant
         prev_loss = avg_loss
 
         # Step the learning rate scheduler
@@ -232,31 +240,31 @@ def train_model(model, segment_files, transcriptions, vocab, segment_name,
 # Main
 # ==============================================================
 def main():
-    if len(sys.argv) < 2:
-        print("Usage: python3 train.py <segment> [dataset_name]")
+    if len(sys.argv) < 3:
+        print("Usage: python3 train_full.py <dataset_name> <surah_part>")
         print("Examples:")
-        print("  python3 train.py 001 base")
-        print("  python3 train.py 002-01 base")
-        print("  python3 train.py 002-04 base")
+        print("  python3 train_full.py Quran-A 001")
+        print("  python3 train_full.py Quran-A 002-01")
+        print("  python3 train_full.py Quran-A 002-04")
         sys.exit(1)
 
-    segment_name = sys.argv[1]  # e.g., "001", "002-01", "002-04"
-    dataset_name = sys.argv[2] if len(sys.argv) > 2 else "base"
+    dataset_name = sys.argv[1]  # e.g., "Quran-A"
+    surah_part = sys.argv[2]  # e.g., "001", "002-01", "002-04"
 
-    datasets_dir = f"../{dataset_name}/audio"
-    vocab_path = "../../vocabulary.json"
-    model_path = "../../models/encoder_decoder_model.pt"
+    datasets_dir = f"../datasets/{dataset_name}/audio"
+    vocab_path = "../models/vocabulary.json"
+    model_path = "../models/encoder_decoder_model.pt"
 
     # Load vocab
     with open(vocab_path, "r", encoding="utf-8") as f:
         vocab = json.load(f)
     print(f"Vocabulary size: {len(vocab)}")
 
-    # Parse segment name to determine surah number
-    surah_num = segment_name.split('-')[0]  # "001" or "002"
+    # Parse surah part name to determine surah number
+    surah_num = surah_part.split('-')[0]  # "001" or "002"
 
     # Load transcriptions and segments
-    text_path = f"../{dataset_name}/text/{segment_name}.txt"
+    text_path = f"../datasets/{dataset_name}/text/{surah_part}.txt"
     if not os.path.exists(text_path):
         print(f"❌ Error: Text file not found: {text_path}")
         sys.exit(1)
@@ -264,10 +272,10 @@ def main():
     with open(text_path, "r", encoding="utf-8") as f:
         transcriptions = [line.strip() for line in f if line.strip()]
 
-    segment_files = sorted(glob.glob(os.path.join(datasets_dir, surah_num, f"{segment_name}-*.wav")))
+    segment_files = sorted(glob.glob(os.path.join(datasets_dir, surah_num, f"{surah_part}-*.wav")))
 
     if not segment_files:
-        print(f"❌ Error: No audio segments found in {datasets_dir}/{surah_num}/{segment_name}-*.wav")
+        print(f"❌ Error: No audio segments found in {datasets_dir}/{surah_num}/{surah_part}-*.wav")
         sys.exit(1)
 
     print(f"Loaded {len(transcriptions)} transcriptions, {len(segment_files)} audio segments")
@@ -275,19 +283,19 @@ def main():
     if len(transcriptions) != len(segment_files):
         print(f"⚠️  Warning: Mismatch between transcriptions ({len(transcriptions)}) and segments ({len(segment_files)})")
 
-    # Determine training configuration based on segment name
+    # Determine training configuration based on surah part name
     # For Al-Fatiha (001) or full Baqara segments, train on full audio/text
     # For specific parts, can adjust target_seconds and target_words as needed
     target_seconds = None  # Full audio by default
     target_words = None    # Full transcription by default
 
-    # You can customize this based on segment patterns if needed
+    # You can customize this based on surah part patterns if needed
     # For example:
-    # if segment_name == "002-04":
+    # if surah_part == "002-04":
     #     target_seconds = 4.0
     #     target_words = 3
 
-    print(f"\n✓ Training on segment: {segment_name}")
+    print(f"\n✓ Training on surah part: {surah_part}")
     print(f"   Audio: {'full' if not target_seconds else f'first {target_seconds}s'}")
     print(f"   Text: {'full' if not target_words else f'first {target_words} words'}")
 
@@ -305,15 +313,15 @@ def main():
     # Load existing model and continue training
     import shutil
     if os.path.exists(model_path):
-        backup_path = model_path.replace(".pt", f"_backup_{segment_name}.pt")
+        backup_path = model_path.replace(".pt", f"_backup_{surah_part}.pt")
         shutil.copy2(model_path, backup_path)
         print(f"✓ Backup created: {backup_path}")
 
         print(f"Loading existing model from {model_path}...")
         model.load_state_dict(torch.load(model_path, map_location=device))
-        print(f"✓ Model loaded successfully! Continuing training on {segment_name}.")
+        print(f"✓ Model loaded successfully! Continuing training on {surah_part}.")
     else:
-        print(f"No existing model found. Starting with fresh weights for {segment_name} training.")
+        print(f"No existing model found. Starting with fresh weights for {surah_part} training.")
 
     # Train
     print(f"\nStarting training for up to 100 epochs on {len(segment_files)} segments...\n")
@@ -322,7 +330,7 @@ def main():
         segment_files,
         transcriptions,
         vocab,
-        segment_name,
+        surah_part,
         target_seconds=target_seconds,
         target_words=target_words,
         num_epochs=100,
