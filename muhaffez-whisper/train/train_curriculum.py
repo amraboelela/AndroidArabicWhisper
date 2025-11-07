@@ -305,7 +305,7 @@ def train_curriculum_stage(model, segment_files, transcriptions, vocab, surah_pa
                 # Print current epoch info with accuracy before stopping
                 lr_str = f"{current_lr:.1e}"
                 print(f"  Epoch {epoch+1}/{num_epochs} | Loss={avg_loss:.4f}{accuracy_str} | LR={lr_str} | Time={elapsed:.1f}s", flush=True)
-                print(f"  ✓ Early stopping: accuracy {overall_acc:.1f}% at epoch {epoch+1}", flush=True)
+                print(f"  ✓ Early stopping: accuracy {overall_acc:.1f}% at epoch {best_epoch}", flush=True)
                 # Keep best model loaded, don't restore
                 break
 
@@ -329,12 +329,7 @@ def train_curriculum_stage(model, segment_files, transcriptions, vocab, surah_pa
         prev_loss = avg_loss
 
     total_time = time.time() - start_time
-
-    # Show final accuracy instead of best loss
-    if best_accuracy > 0:
-        print(f"  ✓ Stage {stage_num} completed in {total_time:.1f}s | Accuracy {best_accuracy:.1f}% at epoch {best_epoch}")
-    else:
-        print(f"  ✓ Stage {stage_num} completed in {total_time:.1f}s")
+    print(f"  ✓ Stage {stage_num} completed in {total_time:.1f}s")
 
     # Restore best model state before returning (only if not already loaded from early stopping)
     if best_model_state is not None:
@@ -665,7 +660,7 @@ def main():
             print(f"  ⚠️  No segments available for this stage. Skipping.")
             continue
 
-        print(f"  Training on {len(stage_segment_files)}/{len(segment_info)} segments")
+        print(f"  Training on {len(stage_segment_files)}/{len(segment_info)} segments", flush=True)
 
         model = train_curriculum_stage(
             model,
@@ -687,7 +682,7 @@ def main():
             target_seconds, target_words, device
         )
 
-        print(f"  Accuracy: {overall_acc:.0f}%")
+        print(f"  Accuracy: {overall_acc:.0f}%", flush=True)
 
         # Show one sample for visualization
         test_idx = random.randint(0, len(stage_segment_files) - 1)
@@ -714,9 +709,9 @@ def main():
             if len(generated_ids[:target_words]) == 0:
                 # No tokens generated
                 display_text = ""
-                print(f"  🔸 Sample Expected: {expected_text}")
-                print(f"  🔹 Sample Generated: {display_text}")
-                print(f"     Sample Confidence: N/A\n")
+                print(f"  🔸 Sample Expected: {expected_text}", flush=True)
+                print(f"  🔹 Sample Generated: {display_text}", flush=True)
+                print(f"     Sample Confidence: N/A\n", flush=True)
                 model.train()
                 continue
 
@@ -773,9 +768,9 @@ def main():
                 # Original accuracy calculation if confidences don't match
                 accuracy = (correct_words / len(expected_words) * 100) if expected_words else 0
 
-            print(f"  🔸 Sample Expected: {expected_text}")
-            print(f"  🔹 Sample Generated: {display_text}")
-            print(f"     Sample Confidence: {confidence_text}\n")
+            print(f"  🔸 Sample Expected: {expected_text}", flush=True)
+            print(f"  🔹 Sample Generated: {display_text}", flush=True)
+            print(f"     Sample Confidence: {confidence_text}\n", flush=True)
         model.train()
 
     # Save best model (restored from best checkpoint in train_segment_curriculum)
@@ -802,7 +797,7 @@ def main():
         model, segment_files, transcriptions, vocab,
         target_seconds=None, target_words=None, device=device
     )
-    print(f"   Accuracy: {overall_acc:.0f}%\n")
+    print(f"   Accuracy: {overall_acc:.0f}%\n", flush=True)
 
     # Sample generation at the end (first segment for consistency)
     test_audio_features, sample_rate = extract_mel_features(segment_files[0])

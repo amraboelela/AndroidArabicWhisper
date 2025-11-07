@@ -301,7 +301,7 @@ def train_model(model, segment_files, transcriptions, vocab, surah_part,
                 # Print current epoch info with accuracy before stopping
                 lr_str = f"{current_lr:.1e}"
                 print(f"Epoch {epoch+1}/{num_epochs} | Loss={avg_loss:.4f}{accuracy_str} | LR={lr_str} | Time={elapsed:.1f}s")
-                print(f"✓ Early stopping: accuracy {overall_acc:.1f}% at epoch {epoch+1}", flush=True)
+                print(f"✓ Early stopping: accuracy {overall_acc:.1f}% at epoch {best_epoch}", flush=True)
                 # Keep best model loaded, don't restore
                 break
 
