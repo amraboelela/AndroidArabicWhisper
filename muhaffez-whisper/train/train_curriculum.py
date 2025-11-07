@@ -37,18 +37,10 @@ from custom_scripts.encoder_decoder_transformer import EncoderDecoderTransformer
 # ==============================================================
 if torch.backends.mps.is_available():
     device = torch.device("mps")
-    print("\n" + "="*60)
-    print("🚀 Using Metal GPU (Apple Silicon)")
 elif torch.cuda.is_available():
     device = torch.device("cuda")
-    print("\n" + "="*60)
-    print("🚀 Using CUDA GPU")
 else:
     device = torch.device("cpu")
-    print("\n" + "="*60)
-    print("⚠️  Using CPU (slower)")
-
-print(f"Device: {device}")
 
 # ==============================================================
 # Configuration
@@ -587,22 +579,24 @@ def collect_replay_samples(dataset_name, current_surah_part, datasets_dir, curre
     replay_segment_files = []
     replay_transcriptions = []
 
-    # Find all text files for previous surahs (lower surah numbers)
+    # Find all text files for previous surah parts (including previous parts from same surah)
     text_dir = f"../datasets/{dataset_name}/text"
     all_text_files = sorted(glob.glob(os.path.join(text_dir, "*.txt")))
 
     # Count previous surah parts and total available samples
+    # Only include parts that are < current_surah_part (not <=, we don't replay current)
     previous_surah_parts = []
     total_previous_samples = 0
     for text_file in all_text_files:
         basename = os.path.basename(text_file)
         surah_part = basename.replace('.txt', '')
-        surah_num = surah_part.split('-')[0]
-        if surah_num < current_surah_num:
+
+        # Compare surah parts properly: "002-01" < "002-02" is TRUE
+        if surah_part < current_surah_part:
             # Count samples in this surah part
             with open(text_file, "r", encoding="utf-8") as f:
                 num_samples = len([line for line in f if line.strip()])
-            previous_surah_parts.append((text_file, surah_part, surah_num))
+            previous_surah_parts.append((text_file, surah_part))
             total_previous_samples += num_samples
 
     if not previous_surah_parts:
@@ -614,10 +608,13 @@ def collect_replay_samples(dataset_name, current_surah_part, datasets_dir, curre
     # Distribute replay budget evenly across previous surahs
     samples_per_surah = max(1, total_replay_size // len(previous_surah_parts))
 
-    for text_file, surah_part, surah_num in previous_surah_parts:
+    for text_file, surah_part in previous_surah_parts:
         # Load transcriptions
         with open(text_file, "r", encoding="utf-8") as f:
             transcriptions = [line.strip() for line in f if line.strip()]
+
+        # Extract surah number for audio path
+        surah_num = surah_part.split('-')[0]
 
         # Load corresponding audio segments
         segment_files = sorted(glob.glob(os.path.join(datasets_dir, surah_num, f"{surah_part}-*.wav")))
@@ -656,27 +653,27 @@ def collect_full_length_replay_samples(dataset_name, current_surah_part, dataset
     Returns:
         (full_replay_segment_files, full_replay_transcriptions): Lists of full-length replay samples
     """
-    current_surah_num = current_surah_part.split('-')[0]
-
     full_replay_segment_files = []
     full_replay_transcriptions = []
 
-    # Find all text files for current and previous surahs
+    # Find all text files for current and previous surah parts
     text_dir = f"../datasets/{dataset_name}/text"
     all_text_files = sorted(glob.glob(os.path.join(text_dir, "*.txt")))
 
     # Count current and previous surah parts and total available samples
+    # Only include parts that are <= current_surah_part
     relevant_surah_parts = []
     total_available_samples = 0
     for text_file in all_text_files:
         basename = os.path.basename(text_file)
         surah_part = basename.replace('.txt', '')
-        surah_num = surah_part.split('-')[0]
-        if surah_num <= current_surah_num:
+
+        # Compare surah parts properly: "002-01" <= "002-01" but "002-02" > "002-01"
+        if surah_part <= current_surah_part:
             # Count samples in this surah part
             with open(text_file, "r", encoding="utf-8") as f:
                 num_samples = len([line for line in f if line.strip()])
-            relevant_surah_parts.append((text_file, surah_part, surah_num))
+            relevant_surah_parts.append((text_file, surah_part))
             total_available_samples += num_samples
 
     if not relevant_surah_parts:
@@ -688,10 +685,13 @@ def collect_full_length_replay_samples(dataset_name, current_surah_part, dataset
     # Distribute replay budget evenly
     samples_per_surah = max(1, total_full_replay_size // len(relevant_surah_parts))
 
-    for text_file, surah_part, surah_num in relevant_surah_parts:
+    for text_file, surah_part in relevant_surah_parts:
         # Load transcriptions
         with open(text_file, "r", encoding="utf-8") as f:
             transcriptions = [line.strip() for line in f if line.strip()]
+
+        # Extract surah number for audio path
+        surah_num = surah_part.split('-')[0]
 
         # Load corresponding audio segments
         segment_files = sorted(glob.glob(os.path.join(datasets_dir, surah_num, f"{surah_part}-*.wav")))
@@ -743,7 +743,7 @@ def main():
     print(f"Dataset: {dataset_name}")
     print(f"Vocabulary: {len(vocab)} words")
     print(f"Chunk size: {CHUNK_DURATION}s → {WORDS_PER_CHUNK} word(s)")
-    print(f"{'='*60}\n")
+    print(f"{'='*60}")
 
     # Parse surah part name to determine surah number
     surah_num = surah_part.split('-')[0]  # "001" or "002"

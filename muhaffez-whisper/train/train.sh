@@ -177,10 +177,22 @@ for SURAH_PART in "${SURAH_PARTS[@]}"; do
     fi
 
     echo ""
+
+    # Detect device info (only print once per surah)
+    {
+        echo "============================================================"
+        if command -v python3 &> /dev/null; then
+            python3 -c "import torch; print('🚀 Using Metal GPU (Apple Silicon)' if torch.backends.mps.is_available() else ('🚀 Using CUDA GPU' if torch.cuda.is_available() else '⚠️  Using CPU (slower)')); print(f'Device: {\"mps\" if torch.backends.mps.is_available() else (\"cuda\" if torch.cuda.is_available() else \"cpu\")}')" 2>/dev/null || echo "Device: unknown"
+        else
+            echo "Device: unknown"
+        fi
+        echo "============================================================"
+        echo ""
+    } | tee -a "$LOG_FILE"
+
     echo "════════════════════════════════════════════════════════════"
     echo "TRAINING SURAH PART: $SURAH_PART"
     echo "════════════════════════════════════════════════════════════"
-    echo ""
 
     # Track start time for this surah part
     SURAH_START_TIME=$(date +%s)
