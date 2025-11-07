@@ -210,7 +210,7 @@ def train_model(model, segment_files, transcriptions, vocab, surah_part,
     print(f"Initial accuracy: {overall_acc:.1f}%\n")
 
     # If already perfect, no need to train
-    if overall_acc > 95.0:
+    if overall_acc > 90.0:
         print(f"✓ Model already at {overall_acc:.1f}% accuracy. Skipping training.\n")
         return model
 
@@ -276,16 +276,9 @@ def train_model(model, segment_files, transcriptions, vocab, surah_part,
         elapsed = time.time() - start_time
         current_lr = optimizer.param_groups[0]['lr']
 
-        # Print epoch 1, every 10 epochs, or on last epoch
-        if epoch == 0 or (epoch + 1) % 10 == 0 or epoch == num_epochs - 1:
-            # Format LR: always use scientific notation for consistency
-            lr_str = f"{current_lr:.1e}"
-            print(f"Epoch {epoch+1}/{num_epochs} | Loss={avg_loss:.4f} | LR={lr_str} | Time={elapsed:.1f}s")
-
-        # Calculate accuracy every 10 epochs (skip epoch 1 since we showed initial)
-        # For large datasets (>20 segments), only calculate every 100 epochs to avoid slowdown
-        accuracy_interval = 100 if len(segment_files) > 20 else 10
-        if (epoch + 1) % accuracy_interval == 0:
+        # Calculate accuracy after epoch 1 and every 10 epochs for display and early stopping
+        accuracy_str = ""
+        if epoch == 0 or (epoch + 1) % 10 == 0:
             # Save current model state
             current_model_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
 
@@ -300,19 +293,26 @@ def train_model(model, segment_files, transcriptions, vocab, surah_part,
                 target_seconds, target_words, device
             )
 
-            # Only log every 50 epochs (or every 100 for large datasets)
-            log_interval = 100 if len(segment_files) > 20 else 50
-            if (epoch + 1) % log_interval == 0:
-                print(f"  Accuracy at epoch {epoch+1}: {overall_acc:.1f}%")
+            # Build accuracy string for display
+            accuracy_str = f" | Accuracy={overall_acc:.0f}%"
 
-            # Early stopping if accuracy > 95%
-            if overall_acc > 95.0:
+            # Early stopping if accuracy > 90%
+            if overall_acc > 90.0:
+                # Print current epoch info with accuracy before stopping
+                lr_str = f"{current_lr:.1e}"
+                print(f"Epoch {epoch+1}/{num_epochs} | Loss={avg_loss:.4f}{accuracy_str} | LR={lr_str} | Time={elapsed:.1f}s")
                 print(f"✓ Early stopping at epoch {epoch+1}: accuracy {overall_acc:.1f}%", flush=True)
                 # Keep best model loaded, don't restore
                 break
 
-            # Restore current model to continue training (only if not stopping)
+            # Restore current model to continue training
             model.load_state_dict({k: v.to(device) for k, v in current_model_state.items()})
+
+        # Print epoch 1, every 10 epochs, or on last epoch
+        if epoch == 0 or (epoch + 1) % 10 == 0 or epoch == num_epochs - 1:
+            # Format LR: always use scientific notation for consistency
+            lr_str = f"{current_lr:.1e}"
+            print(f"Epoch {epoch+1}/{num_epochs} | Loss={avg_loss:.4f}{accuracy_str} | LR={lr_str} | Time={elapsed:.1f}s")
 
         # Reduce learning rate by 10% if loss increased
         if avg_loss > prev_loss:
@@ -529,7 +529,9 @@ def main():
         print(f"No existing model found. Starting with fresh weights for {surah_part} training.")
 
     # Train
-    print(f"\nStarting training for up to 500 epochs on {len(segment_files)} segments...\n")
+    from datetime import datetime
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    print(f"\n[{timestamp}] Starting training for up to 500 epochs on {len(segment_files)} segments...\n")
     model = train_model(
         model,
         segment_files,
