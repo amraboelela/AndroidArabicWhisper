@@ -624,9 +624,7 @@ def main():
         print(f"No existing model found. Starting with fresh weights for {surah_part} training.")
 
     # Train
-    from datetime import datetime
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    print(f"\n[{timestamp}] Starting training for up to 500 epochs on {len(all_segment_files)} segments...\n")
+    print(f"\nStarting training for up to 500 epochs on {len(all_segment_files)} segments...\n")
     model = train_model(
         model,
         all_segment_files,

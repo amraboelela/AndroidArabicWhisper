@@ -834,11 +834,9 @@ def main():
         target_seconds = chunk_count * CHUNK_DURATION
         target_words = chunk_count * WORDS_PER_CHUNK
 
-        # Print timestamp and stage header
-        from datetime import datetime
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        # Print stage header
         print(f"\n{'='*60}")
-        print(f"[{timestamp}] CURRICULUM STAGE {chunk_count}/{global_max_chunks}")
+        print(f"CURRICULUM STAGE {chunk_count}/{global_max_chunks}")
         print(f"Training all segments: {target_seconds:.1f}s → {target_words} word(s)")
         print(f"{'='*60}\n")
 

@@ -178,7 +178,7 @@ for SURAH_PART in "${SURAH_PARTS[@]}"; do
 
     echo ""
 
-    # Detect device info (only print once per surah)
+    # Detect device info (only print once per surah) - write to surah log only, not main log
     {
         echo "============================================================"
         if command -v python3 &> /dev/null; then
@@ -188,7 +188,7 @@ for SURAH_PART in "${SURAH_PARTS[@]}"; do
         fi
         echo "============================================================"
         echo ""
-    } | tee -a "$LOG_FILE"
+    } >> "$LOG_FILE"
 
     echo "════════════════════════════════════════════════════════════"
     echo "TRAINING SURAH PART: $SURAH_PART"
