@@ -31,12 +31,15 @@ from custom_scripts.encoder_decoder_transformer import EncoderDecoderTransformer
 # ==============================================================
 if torch.backends.mps.is_available():
     device = torch.device("mps")
+    print("\n" + "="*60)
     print("🚀 Using Metal GPU (Apple Silicon)")
 elif torch.cuda.is_available():
     device = torch.device("cuda")
+    print("\n" + "="*60)
     print("🚀 Using CUDA GPU")
 else:
     device = torch.device("cpu")
+    print("\n" + "="*60)
     print("⚠️  Using CPU (slower)")
 
 print(f"Device: {device}")

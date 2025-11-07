@@ -37,12 +37,15 @@ from custom_scripts.encoder_decoder_transformer import EncoderDecoderTransformer
 # ==============================================================
 if torch.backends.mps.is_available():
     device = torch.device("mps")
+    print("\n" + "="*60)
     print("🚀 Using Metal GPU (Apple Silicon)")
 elif torch.cuda.is_available():
     device = torch.device("cuda")
+    print("\n" + "="*60)
     print("🚀 Using CUDA GPU")
 else:
     device = torch.device("cpu")
+    print("\n" + "="*60)
     print("⚠️  Using CPU (slower)")
 
 print(f"Device: {device}")
@@ -822,12 +825,12 @@ def main():
     global_max_chunks = max(info['max_chunks'] for info in segment_info)
 
     print(f"Total segments: {len(segment_info)}")
-    print(f"Maximum curriculum stages: {global_max_chunks - 1} (excluding full audio stage)")
+    print(f"Maximum curriculum stages: {global_max_chunks}")
     print(f"Chunk size: {CHUNK_DURATION}s → {WORDS_PER_CHUNK} word(s)\n")
 
     # Train stage by stage: all segments at 1 chunk, then all segments at 2 chunks, etc.
-    # Skip the last stage (full audio) as it's redundant with train_full.py
-    for chunk_count in range(1, global_max_chunks):
+    # Include the last stage (full audio) to complete the curriculum
+    for chunk_count in range(1, global_max_chunks + 1):
         target_seconds = chunk_count * CHUNK_DURATION
         target_words = chunk_count * WORDS_PER_CHUNK
 
@@ -835,17 +838,21 @@ def main():
         from datetime import datetime
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         print(f"\n{'='*60}")
-        print(f"[{timestamp}] CURRICULUM STAGE {chunk_count}/{global_max_chunks - 1}")
+        print(f"[{timestamp}] CURRICULUM STAGE {chunk_count}/{global_max_chunks}")
         print(f"Training all segments: {target_seconds:.1f}s → {target_words} word(s)")
         print(f"{'='*60}\n")
 
-        # Filter segments that have at least this many chunks
+        # Include ALL segments: chunk long ones, use full-length for short ones
         stage_segment_files = []
         stage_transcriptions = []
+        short_segment_indices = []  # Indices of segments shorter than current stage
+
         for info in segment_info:
-            if chunk_count <= info['max_chunks']:
-                stage_segment_files.append(info['file'])
-                stage_transcriptions.append(info['transcription'])
+            stage_segment_files.append(info['file'])
+            stage_transcriptions.append(info['transcription'])
+            # Mark segments that are shorter than current chunk_count as full-length
+            if chunk_count > info['max_chunks']:
+                short_segment_indices.append(len(stage_segment_files) - 1)
 
         if not stage_segment_files:
             print(f"  ⚠️  No segments available for this stage. Skipping.")
@@ -862,12 +869,22 @@ def main():
         all_stage_files = stage_segment_files + stage_full_replay_files
         all_stage_transcriptions = stage_transcriptions + stage_full_replay_transcriptions
 
-        # Mark which indices are full-length samples (so they don't get chunked)
-        # Full-length replay samples start after current stage segments
-        full_length_start = len(stage_segment_files)
-        full_length_indices = set(range(full_length_start, len(all_stage_files)))
+        # Mark which indices are full-length samples:
+        # 1. Short segments (shorter than current stage)
+        # 2. Replay buffer samples (start after all stage segments)
+        full_length_indices = set(short_segment_indices)
+        replay_buffer_start = len(stage_segment_files)
+        full_length_indices.update(range(replay_buffer_start, len(all_stage_files)))
 
-        print(f"  Training on {len(stage_segment_files)} new segments + {len(stage_full_replay_files)} replay buffer segments", flush=True)
+        # Count how many segments are being chunked vs full-length
+        num_chunked = len(stage_segment_files) - len(short_segment_indices)
+        num_short = len(short_segment_indices)
+
+        # Build training status message
+        if num_short > 0:
+            print(f"  Training on {num_chunked} chunked segments + {num_short} short segments (full) + {len(stage_full_replay_files)} replay buffer segments", flush=True)
+        else:
+            print(f"  Training on {num_chunked} chunked segments + {len(stage_full_replay_files)} replay buffer segments", flush=True)
 
         model = train_curriculum_stage(
             model,

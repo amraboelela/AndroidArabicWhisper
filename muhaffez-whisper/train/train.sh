@@ -100,26 +100,40 @@ run_training_suite() {
     if python3 -u "$script" "$DATASET" "$surah_part" >> "$log_file" 2>&1; then
         local suite_end=$(date +%s)
         local elapsed=$((suite_end - suite_start))
-        # Round to nearest minute with minimum of 1
-        local minutes=$(echo "scale=0; m = ($elapsed + 30) / 60; if (m < 1) 1 else m" | bc)
+
+        # Format time: show seconds if < 60s, otherwise minutes
+        if [ $elapsed -lt 60 ]; then
+            local time_str="${elapsed}s"
+        else
+            # Round to nearest minute with minimum of 1
+            local minutes=$(echo "scale=0; m = ($elapsed + 30) / 60; if (m < 1) 1 else m" | bc)
+            local time_str="${minutes}m"
+        fi
 
         # Extract accuracy from log file
         local accuracy=$(grep "FINAL_ACCURACY:" "$log_file" | tail -1 | sed 's/.*FINAL_ACCURACY: //')
 
         if [ -n "$accuracy" ]; then
-            echo "✓ $suite_name (${minutes}m) - Accuracy: $accuracy"
+            echo "✓ $suite_name ($time_str) - Accuracy: $accuracy"
             SUITE_ACCURACIES+=("$suite_name - $DATASET $surah_part: $accuracy")
         else
-            echo "✓ $suite_name (${minutes}m)"
+            echo "✓ $suite_name ($time_str)"
         fi
         PASSED=$((PASSED + 1))
     else
         local suite_end=$(date +%s)
         local elapsed=$((suite_end - suite_start))
-        # Round to nearest minute with minimum of 1
-        local minutes=$(echo "scale=0; m = ($elapsed + 30) / 60; if (m < 1) 1 else m" | bc)
 
-        echo "✗ $suite_name (${minutes}m) FAILED"
+        # Format time: show seconds if < 60s, otherwise minutes
+        if [ $elapsed -lt 60 ]; then
+            local time_str="${elapsed}s"
+        else
+            # Round to nearest minute with minimum of 1
+            local minutes=$(echo "scale=0; m = ($elapsed + 30) / 60; if (m < 1) 1 else m" | bc)
+            local time_str="${minutes}m"
+        fi
+
+        echo "✗ $suite_name ($time_str) FAILED"
         echo "   Check $log_file for details. Last 30 lines:"
         tail -30 "$log_file"
         FAILED=$((FAILED + 1))
@@ -178,18 +192,32 @@ for SURAH_PART in "${SURAH_PARTS[@]}"; do
     # Calculate total time for this surah part
     SURAH_END_TIME=$(date +%s)
     SURAH_ELAPSED=$((SURAH_END_TIME - SURAH_START_TIME))
-    # Round to nearest minute with minimum of 1
-    SURAH_MINUTES=$(echo "scale=0; m = ($SURAH_ELAPSED + 30) / 60; if (m < 1) 1 else m" | bc)
+
+    # Format time: show seconds if < 60s, otherwise minutes
+    if [ $SURAH_ELAPSED -lt 60 ]; then
+        SURAH_TIME_STR="${SURAH_ELAPSED}s"
+    else
+        # Round to nearest minute with minimum of 1
+        SURAH_MINUTES=$(echo "scale=0; m = ($SURAH_ELAPSED + 30) / 60; if (m < 1) 1 else m" | bc)
+        SURAH_TIME_STR="${SURAH_MINUTES}m"
+    fi
 
     # Append total training time to log file
-    echo "   Total training time: ${SURAH_MINUTES}m" >> "$LOG_FILE"
+    echo "   Total training time: ${SURAH_TIME_STR}" >> "$LOG_FILE"
 done
 
 # Summary
 END_TIME=$(date +%s)
 TOTAL_ELAPSED=$((END_TIME - START_TIME))
-# Round to nearest minute with minimum of 1
-TOTAL_MINUTES=$(echo "scale=0; m = ($TOTAL_ELAPSED + 30) / 60; if (m < 1) 1 else m" | bc)
+
+# Format time: show seconds if < 60s, otherwise minutes
+if [ $TOTAL_ELAPSED -lt 60 ]; then
+    TOTAL_TIME_STR="${TOTAL_ELAPSED}s"
+else
+    # Round to nearest minute with minimum of 1
+    TOTAL_MINUTES=$(echo "scale=0; m = ($TOTAL_ELAPSED + 30) / 60; if (m < 1) 1 else m" | bc)
+    TOTAL_TIME_STR="${TOTAL_MINUTES}m"
+fi
 
 echo ""
 echo "Training Summary:"
@@ -198,7 +226,7 @@ echo "  Surah parts: ${SURAH_PARTS[@]}"
 echo "  Total runs: $TOTAL training suites"
 echo "  Completed: $PASSED suites"
 echo "  Failed: $FAILED suites"
-echo "  Time: ${TOTAL_MINUTES}m"
+echo "  Time: ${TOTAL_TIME_STR}"
 
 # Display accuracies for each suite
 if [ ${#SUITE_ACCURACIES[@]} -gt 0 ]; then
