@@ -98,8 +98,8 @@ run_training_suite() {
     return 0
 }
 
-# Track which surahs we've backed up
-declare -A BACKED_UP_SURAHS
+# Track which surahs we've cleared logs for
+declare -A CLEARED_LOGS
 
 # Run both training suites for each surah part
 for SURAH_PART in "${SURAH_PARTS[@]}"; do
@@ -109,15 +109,10 @@ for SURAH_PART in "${SURAH_PARTS[@]}"; do
     # Set up log file for this dataset and surah
     LOG_FILE="log_${DATASET}_${SURAH_NUM}.txt"
 
-    # Create backup and clear log only once per surah (on first part)
-    if [ -z "${BACKED_UP_SURAHS[$SURAH_NUM]}" ]; then
-        if [ -f "$LOG_FILE" ]; then
-            cp "$LOG_FILE" "log_${DATASET}_${SURAH_NUM}_backup.txt"
-            echo "✓ Backup created: log_${DATASET}_${SURAH_NUM}_backup.txt"
-        fi
-        # Clear the log file to start fresh
+    # Clear the log file to start fresh (only once per surah)
+    if [ -z "${CLEARED_LOGS[$SURAH_NUM]}" ]; then
         > "$LOG_FILE"
-        BACKED_UP_SURAHS[$SURAH_NUM]=1
+        CLEARED_LOGS[$SURAH_NUM]=1
     fi
 
     echo ""
