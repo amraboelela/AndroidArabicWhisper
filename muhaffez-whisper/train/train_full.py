@@ -81,8 +81,11 @@ def extract_mel_features(audio_path, n_mels=80, target_seconds=None):
     mel_spec = torch.log(mel_spec + 1e-9)
     mel_features = mel_spec.squeeze(0).transpose(0, 1)
 
-    # Per-segment normalization
-    mel_features = (mel_features - mel_features.mean()) / (mel_features.std() + 1e-5)
+    # Global Whisper normalization
+    # These are the standard Whisper mel spectrogram statistics
+    mel_mean = -4.2677
+    mel_std = 4.5689
+    mel_features = (mel_features - mel_mean) / (mel_std + 1e-8)
 
     return mel_features, sample_rate
 
@@ -97,7 +100,7 @@ def tokenize_text(text, vocab):
 # ==============================================================
 # Comprehensive accuracy calculation for all segments
 # ==============================================================
-def calculate_comprehensive_accuracy(model, segment_files, transcriptions, vocab, target_seconds, target_words, device):
+def calculate_comprehensive_accuracy(model, segment_files, transcriptions, vocab, target_seconds, target_words, device, debug=False):
     """Calculate accuracy across all segments"""
     model.eval()
     total_correct = 0
@@ -123,7 +126,7 @@ def calculate_comprehensive_accuracy(model, segment_files, transcriptions, vocab
             audio_duration = target_seconds if target_seconds else (waveform.shape[1] / sr)
 
             try:
-                generated = model.generate(audio_batch, max_new_tokens=max_tokens, audio_duration_seconds=audio_duration)
+                generated = model.generate(audio_batch, max_new_tokens=max_tokens, audio_duration_seconds=audio_duration, use_sampling=False)
                 generated_ids = generated[0].tolist()
             except Exception as e:
                 print(f"    Warning: Generation failed for segment {idx}: {e}", flush=True)
@@ -163,6 +166,9 @@ def calculate_comprehensive_accuracy(model, segment_files, transcriptions, vocab
             total_correct += correct
             total_expected += len(expected_words)
 
+            if debug:
+                print(f"  Seg {idx}: expected={len(expected_words)} words, correct={correct}, acc={segment_acc:.1f}%")
+
     # Calculate overall accuracy
     overall_accuracy = (total_correct / total_expected * 100) if total_expected > 0 else 0
     avg_segment_accuracy = sum(segment_accuracies) / len(segment_accuracies) if segment_accuracies else 0
@@ -173,7 +179,7 @@ def calculate_comprehensive_accuracy(model, segment_files, transcriptions, vocab
 # Training
 # ==============================================================
 def train_model(model, segment_files, transcriptions, vocab, surah_part,
-                target_seconds=None, target_words=None, num_epochs=500, learning_rate=1e-5):
+                target_seconds=None, target_words=None, num_epochs=500, learning_rate=1e-3):
     """
     Universal training function
 
@@ -189,6 +195,19 @@ def train_model(model, segment_files, transcriptions, vocab, surah_part,
     best_epoch = -1
     prev_loss = float('inf')
     start_time = time.time()
+
+    # Calculate initial accuracy before training
+    model.eval()
+    overall_acc, avg_acc, seg_accuracies = calculate_comprehensive_accuracy(
+        model, segment_files, transcriptions, vocab,
+        target_seconds, target_words, device
+    )
+    print(f"Initial accuracy: {overall_acc:.1f}%\n")
+
+    # If already perfect, no need to train
+    if overall_acc > 95.0:
+        print(f"✓ Model already at {overall_acc:.1f}% accuracy (exceeds 95% threshold). Skipping training.\n")
+        return model
 
     # Build description
     audio_desc = f"first {target_seconds}s" if target_seconds else "full"
@@ -248,9 +267,6 @@ def train_model(model, segment_files, transcriptions, vocab, surah_part,
                 "optimizer": optimizer.state_dict(),
                 "epoch": epoch
             }, checkpoint_name)
-            best_marker = " ⭐ NEW BEST!"
-        else:
-            best_marker = ""
 
         elapsed = time.time() - start_time
         current_lr = optimizer.param_groups[0]['lr']
@@ -259,26 +275,43 @@ def train_model(model, segment_files, transcriptions, vocab, surah_part,
         if epoch == 0 or (epoch + 1) % 10 == 0 or epoch == num_epochs - 1:
             # Format LR: always use scientific notation for consistency
             lr_str = f"{current_lr:.1e}"
-            print(f"Epoch {epoch+1}/{num_epochs} | Loss={avg_loss:.4f} | LR={lr_str} | Time={elapsed:.1f}s{best_marker}")
+            print(f"Epoch {epoch+1}/{num_epochs} | Loss={avg_loss:.4f} | LR={lr_str} | Time={elapsed:.1f}s")
 
-        # Calculate accuracy every 50 epochs and check for early stopping
-        if (epoch + 1) % 50 == 0:
+        # Calculate accuracy every 10 epochs (skip epoch 1 since we showed initial)
+        if (epoch + 1) % 10 == 0:
+            # Save current model state
+            current_model_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
+
             # Load best checkpoint for accuracy evaluation
             if os.path.exists(checkpoint_name):
                 checkpoint = torch.load(checkpoint_name, map_location=device)
                 model.load_state_dict(checkpoint["model"])
 
-            # Calculate accuracy
+            # Calculate accuracy on best model
             overall_acc, avg_acc, seg_accuracies = calculate_comprehensive_accuracy(
                 model, segment_files, transcriptions, vocab,
                 target_seconds, target_words, device
             )
-            print(f"  Accuracy at epoch {epoch+1}: {overall_acc:.1f}%")
 
-            # Early stopping if accuracy > 90%
-            if overall_acc > 90.0:
-                print(f"✓ Early stopping: accuracy {overall_acc:.1f}% exceeds 90% threshold")
+            # Only log every 50 epochs
+            if (epoch + 1) % 50 == 0:
+                print(f"  Accuracy at epoch {epoch+1}: {overall_acc:.1f}%")
+
+            # Early stopping if accuracy > 95%
+            if overall_acc > 95.0:
+                print(f"✓ Early stopping: accuracy {overall_acc:.1f}% exceeds 95% threshold")
+                # Keep best model loaded, don't restore
                 break
+
+            # Restore current model to continue training (only if not stopping)
+            model.load_state_dict({k: v.to(device) for k, v in current_model_state.items()})
+
+        # Reduce learning rate by 10% if loss increased
+        if avg_loss > prev_loss:
+            for param_group in optimizer.param_groups:
+                old_lr = param_group['lr']
+                new_lr = max(old_lr * 0.9, 1e-7)  # Reduce by 10%, but not below 1e-7
+                param_group['lr'] = new_lr
 
         prev_loss = avg_loss
 
@@ -317,7 +350,7 @@ def train_model(model, segment_files, transcriptions, vocab, surah_part,
 
     with torch.no_grad():
         max_tokens = (target_words * 10) if target_words else 50
-        generated = model.generate(test_audio, max_new_tokens=max_tokens, audio_duration_seconds=audio_duration)
+        generated = model.generate(test_audio, max_new_tokens=max_tokens, audio_duration_seconds=audio_duration, use_sampling=False)
         generated_ids = generated[0].tolist()
         if generated_ids and generated_ids[0] == 1:
             generated_ids = generated_ids[1:]
@@ -491,7 +524,7 @@ def main():
         print(f"No existing model found. Starting with fresh weights for {surah_part} training.")
 
     # Train
-    print(f"\nStarting training for up to 100 epochs on {len(segment_files)} segments...\n")
+    print(f"\nStarting training for up to 500 epochs on {len(segment_files)} segments...\n")
     model = train_model(
         model,
         segment_files,
@@ -501,7 +534,7 @@ def main():
         target_seconds=target_seconds,
         target_words=target_words,
         num_epochs=500,
-        learning_rate=1e-5
+        learning_rate=1e-3
     )
 
     # Save final model

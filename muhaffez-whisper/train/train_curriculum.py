@@ -93,8 +93,11 @@ def extract_mel_features(audio_path, n_mels=80, target_seconds=None):
     mel_spec = torch.log(mel_spec + 1e-9)
     mel_features = mel_spec.squeeze(0).transpose(0, 1)
 
-    # Per-segment normalization
-    mel_features = (mel_features - mel_features.mean()) / (mel_features.std() + 1e-5)
+    # Global Whisper normalization
+    # These are the standard Whisper mel spectrogram statistics
+    mel_mean = -4.2677
+    mel_std = 4.5689
+    mel_features = (mel_features - mel_mean) / (mel_std + 1e-8)
 
     return mel_features, sample_rate
 
@@ -133,7 +136,7 @@ def calculate_comprehensive_accuracy(model, segment_files, transcriptions, vocab
             max_tokens = min((target_words * 10) if target_words else 50, 100)  # Cap at 100 tokens
 
             try:
-                generated = model.generate(audio_batch, max_new_tokens=max_tokens, audio_duration_seconds=target_seconds)
+                generated = model.generate(audio_batch, max_new_tokens=max_tokens, audio_duration_seconds=target_seconds, use_sampling=False)
                 generated_ids = generated[0].tolist()
             except Exception as e:
                 print(f"    Warning: Generation failed for segment {idx}: {e}", flush=True)
@@ -183,7 +186,7 @@ def calculate_comprehensive_accuracy(model, segment_files, transcriptions, vocab
 # Training for curriculum stage (all segments at specific chunk count)
 # ==============================================================
 def train_curriculum_stage(model, segment_files, transcriptions, vocab, surah_part,
-                           stage_num, target_seconds, target_words, num_epochs=500, learning_rate=1e-5):
+                           stage_num, target_seconds, target_words, num_epochs=500, learning_rate=1e-3):
     """
     Train model on all segments for a specific curriculum stage
 
@@ -199,10 +202,6 @@ def train_curriculum_stage(model, segment_files, transcriptions, vocab, surah_pa
     best_loss = float('inf')
     best_model_state = None  # Track best model state
     prev_loss = float('inf')
-    prev_checkpoint_loss = float('inf')  # Track loss at every 10th epoch
-    patience_counter = 0
-    min_delta = 1e-3
-    patience = 3  # Increased patience to allow more training time
     start_time = time.time()
 
     for epoch in range(num_epochs):
@@ -256,38 +255,47 @@ def train_curriculum_stage(model, segment_files, transcriptions, vocab, surah_pa
         if avg_loss < best_loss:
             best_loss = avg_loss
             best_model_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
-            best_marker = " ⭐"
-        else:
-            best_marker = ""
 
         elapsed = time.time() - start_time
         current_lr = optimizer.param_groups[0]['lr']
 
-        if epoch == 0 or (epoch + 1) % 10 == 0 or epoch == num_epochs - 1:
+        if epoch == 0 or (epoch + 1) % 50 == 0 or epoch == num_epochs - 1:
             # Format LR: always use scientific notation for consistency
             lr_str = f"{current_lr:.1e}"
-            print(f"  Epoch {epoch+1}/{num_epochs} | Loss={avg_loss:.4f} | LR={lr_str} | Time={elapsed:.1f}s{best_marker}")
+            print(f"  Epoch {epoch+1}/{num_epochs} | Loss={avg_loss:.4f} | LR={lr_str} | Time={elapsed:.1f}s")
 
-            # Check if loss increased since last checkpoint (every 10 epochs)
-            if prev_checkpoint_loss != float('inf') and avg_loss > prev_checkpoint_loss:
-                print(f"  ⚠️  Early stopping: loss increased from {prev_checkpoint_loss:.4f} to {avg_loss:.4f}")
-                break
-            prev_checkpoint_loss = avg_loss
+        # Calculate accuracy every 50 epochs
+        if (epoch + 1) % 50 == 0:
+            # Save current model state
+            current_model_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
 
-        # Early stopping check (every epoch)
-        loss_change = prev_loss - avg_loss
-        if loss_change < min_delta:
-            patience_counter += 1
-            if patience_counter >= patience:
-                print(f"  ⚠️  Early stopping: loss not improving for {patience} consecutive epochs")
+            # Load best model state for accuracy evaluation
+            if best_model_state is not None:
+                model.load_state_dict(best_model_state)
+
+            # Calculate accuracy
+            model.eval()
+            overall_acc, avg_acc, seg_accuracies = calculate_comprehensive_accuracy(
+                model, segment_files, transcriptions, vocab,
+                target_seconds, target_words, device
+            )
+            print(f"    Accuracy at epoch {epoch+1}: {overall_acc:.1f}%")
+
+            # Early stopping if accuracy > 95%
+            if overall_acc > 95.0:
+                print(f"  ✓ Early stopping: accuracy {overall_acc:.1f}% exceeds 95% threshold")
+                # Keep best model loaded, don't restore
                 break
-        else:
-            patience_counter = 0
-        # Reduce learning rate if loss increased
-        if prev_loss != float('inf') and avg_loss > prev_loss:
+
+            # Restore current model to continue training
+            model.load_state_dict({k: v.to(device) for k, v in current_model_state.items()})
+            model.train()
+
+        # Reduce learning rate by 10% if loss increased
+        if avg_loss > prev_loss:
             for param_group in optimizer.param_groups:
                 old_lr = param_group['lr']
-                new_lr = max(old_lr * 0.5, 1e-7)  # Reduce by 50%, but not below 1e-7
+                new_lr = max(old_lr * 0.9, 1e-7)  # Reduce by 10%, but not below 1e-7
                 param_group['lr'] = new_lr
 
         prev_loss = avg_loss
@@ -295,10 +303,23 @@ def train_curriculum_stage(model, segment_files, transcriptions, vocab, surah_pa
     total_time = time.time() - start_time
     print(f"  ✓ Stage {stage_num} completed in {total_time:.1f}s | Best loss: {best_loss:.4f}")
 
-    # Restore best model state before returning
+    # Restore best model state before returning (only if not already loaded from early stopping)
     if best_model_state is not None:
-        model.load_state_dict(best_model_state)
-        print(f"  ✓ Restored best model state")
+        # Check if we need to restore (we might have already loaded it during early stopping)
+        try:
+            current_state = model.state_dict()
+            # Only restore if current model is not the best model
+            needs_restore = any(
+                not torch.equal(current_state[k].cpu(), best_model_state[k])
+                for k in best_model_state.keys()
+            )
+            if needs_restore:
+                model.load_state_dict(best_model_state)
+                print(f"  ✓ Restored best model state")
+        except:
+            # If comparison fails, just restore to be safe
+            model.load_state_dict(best_model_state)
+            print(f"  ✓ Restored best model state")
 
     return model
 
@@ -446,7 +467,7 @@ def train_stage(model, segment_files, transcriptions, vocab, surah_part,
 
             with torch.no_grad():
                 max_tokens = (target_words * 10) if target_words else 50
-                generated = model.generate(test_audio, max_new_tokens=max_tokens, audio_duration_seconds=audio_duration)
+                generated = model.generate(test_audio, max_new_tokens=max_tokens, audio_duration_seconds=audio_duration, use_sampling=False)
                 generated_ids = generated[0].tolist()
                 if generated_ids and generated_ids[0] == 1:
                     generated_ids = generated_ids[1:]
@@ -620,7 +641,7 @@ def main():
             target_seconds,
             target_words,
             num_epochs=500,
-            learning_rate=1e-5
+            learning_rate=1e-3
         )
 
         # Calculate comprehensive accuracy for this stage on all segments
@@ -643,7 +664,7 @@ def main():
 
         with torch.no_grad():
             max_tokens = target_words * 10
-            generated = model.generate(test_audio_batch, max_new_tokens=max_tokens, audio_duration_seconds=target_seconds)
+            generated = model.generate(test_audio_batch, max_new_tokens=max_tokens, audio_duration_seconds=target_seconds, use_sampling=False)
             generated_ids = generated[0].tolist()
             if generated_ids and generated_ids[0] == 1:
                 generated_ids = generated_ids[1:]
@@ -757,7 +778,7 @@ def main():
     expected_text = transcriptions[0]
 
     with torch.no_grad():
-        generated = model.generate(test_audio_batch, max_new_tokens=50, audio_duration_seconds=audio_duration)
+        generated = model.generate(test_audio_batch, max_new_tokens=50, audio_duration_seconds=audio_duration, use_sampling=False)
         generated_ids = generated[0].tolist()
         if generated_ids and generated_ids[0] == 1:
             generated_ids = generated_ids[1:]
