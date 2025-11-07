@@ -507,20 +507,7 @@ def main():
         dropout=0.1
     )
 
-    # Load existing model and continue training (backup created only for full surahs, not parts)
-    import shutil
-
-    # Only create backup for full surahs (e.g., "001"), not surah parts (e.g., "002-04")
-    is_full_surah = '-' not in surah_part
-
-    if os.path.exists(model_path) and is_full_surah:
-        backup_path = model_path.replace(".pt", "_backup.pt")
-
-        # Only create backup if it doesn't exist yet
-        if not os.path.exists(backup_path):
-            shutil.copy2(model_path, backup_path)
-            print(f"✓ Backup created: {backup_path}")
-
+    # Load existing model and continue training
     if os.path.exists(model_path):
         print(f"Loading existing model from {model_path}...")
         model.load_state_dict(torch.load(model_path, map_location=device))

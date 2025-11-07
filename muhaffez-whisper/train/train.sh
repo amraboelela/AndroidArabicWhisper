@@ -101,6 +101,15 @@ run_training_suite() {
 # Track which surahs we've cleared logs for
 declare -A CLEARED_LOGS
 
+# Create model backup at the very beginning (once per training run)
+MODEL_PATH="../models/muhaffez_whisper.pt"
+BACKUP_PATH="../models/muhaffez_whisper_backup.pt"
+if [ -f "$MODEL_PATH" ] && [ ! -f "$BACKUP_PATH" ]; then
+    cp "$MODEL_PATH" "$BACKUP_PATH"
+    echo "✓ Model backup created: $BACKUP_PATH"
+    echo ""
+fi
+
 # Run both training suites for each surah part
 for SURAH_PART in "${SURAH_PARTS[@]}"; do
     # Extract surah number (e.g., "002" from "002-04")
