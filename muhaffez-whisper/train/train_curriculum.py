@@ -186,7 +186,8 @@ def calculate_comprehensive_accuracy(model, segment_files, transcriptions, vocab
 # Training for curriculum stage (all segments at specific chunk count)
 # ==============================================================
 def train_curriculum_stage(model, segment_files, transcriptions, vocab, surah_part,
-                           stage_num, target_seconds, target_words, num_epochs=500, learning_rate=1e-3):
+                           stage_num, target_seconds, target_words, num_epochs=500, learning_rate=1e-3,
+                           full_length_indices=None):
     """
     Train model on all segments for a specific curriculum stage
 
@@ -194,10 +195,16 @@ def train_curriculum_stage(model, segment_files, transcriptions, vocab, surah_pa
         stage_num: The curriculum stage number (for logging)
         target_seconds: Audio duration to use for this stage
         target_words: Number of words to predict for this stage
+        full_length_indices: Set of indices that should use full audio/text (for replay buffer)
     """
+    if full_length_indices is None:
+        full_length_indices = set()
+
     model = model.to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=0.01)
     criterion = nn.CrossEntropyLoss(ignore_index=-100, label_smoothing=0.1)
+
+    print(f"  Initial Learning Rate: {learning_rate:.1e}", flush=True)
 
     best_loss = float('inf')
     best_epoch = -1  # Track which epoch had the best loss
@@ -205,6 +212,7 @@ def train_curriculum_stage(model, segment_files, transcriptions, vocab, surah_pa
     best_model_state = None  # Track best model state
     prev_loss = float('inf')
     start_time = time.time()
+    checkpoint_time = start_time  # Time of last checkpoint (for relative timing)
 
     # Calculate initial accuracy before training
     model.eval()
@@ -230,14 +238,27 @@ def train_curriculum_stage(model, segment_files, transcriptions, vocab, surah_pa
             seg_file = segment_files[i]
             text = transcriptions[i]
 
-            # Extract audio features
-            audio_features, sample_rate = extract_mel_features(seg_file, target_seconds=target_seconds)
+            # Determine if this is a full-length sample (from replay buffer)
+            is_full_length = i in full_length_indices
 
-            # Extract target text (first target_words words)
+            # Extract audio features (full or chunked)
+            if is_full_length:
+                # Full-length sample: use entire audio
+                audio_features, sample_rate = extract_mel_features(seg_file, target_seconds=None)
+            else:
+                # Chunked sample: use target_seconds
+                audio_features, sample_rate = extract_mel_features(seg_file, target_seconds=target_seconds)
+
+            # Extract target text (full or chunked)
             words = text.split()
-            if len(words) < target_words:
-                continue  # Skip if not enough words
-            target_text = " ".join(words[:target_words])
+            if is_full_length:
+                # Full-length sample: use entire transcription
+                target_text = text
+            else:
+                # Chunked sample: use first target_words
+                if len(words) < target_words:
+                    continue  # Skip if not enough words
+                target_text = " ".join(words[:target_words])
 
             if not target_text:
                 continue
@@ -266,14 +287,34 @@ def train_curriculum_stage(model, segment_files, transcriptions, vocab, surah_pa
 
         avg_loss = total_loss / total_iterations
 
+        # Dynamic learning rate: reduce by 10% if loss increases
+        if avg_loss > prev_loss:
+            current_lr = optimizer.param_groups[0]['lr']
+            new_lr = max(current_lr * 0.9, 1e-7)  # Minimum LR = 1e-7
+            if new_lr != current_lr:
+                for param_group in optimizer.param_groups:
+                    param_group['lr'] = new_lr
+                # Only print if LR actually changed
+                if new_lr > 1e-7:
+                    # Format LR without trailing zero (e.g., 9e-04 instead of 9.0e-04)
+                    lr_str = f"{new_lr:.0e}" if new_lr >= 1e-6 else f"{new_lr:.1e}"
+                    print(f"  Loss increased ({prev_loss:.4f} → {avg_loss:.4f}), reducing LR to: {lr_str}", flush=True)
+
         # Save best
         if avg_loss < best_loss:
             best_loss = avg_loss
             best_epoch = epoch + 1
             best_model_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
 
-        elapsed = time.time() - start_time
+        # Calculate relative elapsed time since last checkpoint
+        elapsed = time.time() - checkpoint_time
         current_lr = optimizer.param_groups[0]['lr']
+
+        # Format elapsed time: seconds if < 60s, minutes if >= 60s
+        if elapsed >= 60:
+            time_str = f"{int(round(elapsed / 60))}m"
+        else:
+            time_str = f"{int(round(elapsed))}s"
 
         # Calculate accuracy after epoch 1 and every 10 epochs for display and early stopping
         accuracy_str = ""
@@ -303,8 +344,7 @@ def train_curriculum_stage(model, segment_files, transcriptions, vocab, surah_pa
             # Early stopping if accuracy > 90%
             if overall_acc > 90.0:
                 # Print current epoch info with accuracy before stopping
-                lr_str = f"{current_lr:.1e}"
-                print(f"  Epoch {epoch+1}/{num_epochs} | Loss={avg_loss:.4f}{accuracy_str} | LR={lr_str} | Time={elapsed:.1f}s", flush=True)
+                print(f"  Epoch {epoch+1}/{num_epochs} | Loss={avg_loss:.4f}{accuracy_str} | Time={time_str}", flush=True)
                 print(f"  ✓ Early stopping: accuracy {overall_acc:.1f}% at epoch {best_epoch}", flush=True)
                 # Keep best model loaded, don't restore
                 break
@@ -315,21 +355,19 @@ def train_curriculum_stage(model, segment_files, transcriptions, vocab, surah_pa
 
         # Print epoch info: epoch 1, every 10 epochs, or last epoch
         if epoch == 0 or (epoch + 1) % 10 == 0 or epoch == num_epochs - 1:
-            # Format LR: always use scientific notation for consistency
-            lr_str = f"{current_lr:.1e}"
-            print(f"  Epoch {epoch+1}/{num_epochs} | Loss={avg_loss:.4f}{accuracy_str} | LR={lr_str} | Time={elapsed:.1f}s")
-
-        # Reduce learning rate by 10% if loss increased
-        if avg_loss > prev_loss:
-            for param_group in optimizer.param_groups:
-                old_lr = param_group['lr']
-                new_lr = max(old_lr * 0.9, 1e-7)  # Reduce by 10%, but not below 1e-7
-                param_group['lr'] = new_lr
+            print(f"  Epoch {epoch+1}/{num_epochs} | Loss={avg_loss:.4f}{accuracy_str} | Time={time_str}")
+            # Reset checkpoint time after printing
+            checkpoint_time = time.time()
 
         prev_loss = avg_loss
 
     total_time = time.time() - start_time
-    print(f"  ✓ Stage {stage_num} completed in {total_time:.1f}s")
+
+    # Format time: seconds if < 60s, minutes if >= 60s
+    if total_time >= 60:
+        print(f"  ✓ Stage {stage_num} completed in {int(round(total_time / 60))}m")
+    else:
+        print(f"  ✓ Stage {stage_num} completed in {int(round(total_time))}s")
 
     # Restore best model state before returning (only if not already loaded from early stopping)
     if best_model_state is not None:
@@ -526,6 +564,156 @@ def train_stage(model, segment_files, transcriptions, vocab, surah_part,
     return model
 
 # ==============================================================
+# Replay Buffer - Prevent Catastrophic Forgetting
+# ==============================================================
+def collect_replay_samples(dataset_name, current_surah_part, datasets_dir, current_set_size):
+    """
+    Collect a small sample from all previously trained surahs to prevent catastrophic forgetting.
+
+    Args:
+        dataset_name: Name of dataset (e.g., "Quran-A")
+        current_surah_part: Current surah being trained (e.g., "002-01")
+        datasets_dir: Path to datasets directory
+        current_set_size: Size of current training set (to calculate 10% replay buffer with minimum 20)
+
+    Returns:
+        (replay_segment_files, replay_transcriptions): Lists of replay samples
+    """
+    current_surah_num = current_surah_part.split('-')[0]
+
+    replay_segment_files = []
+    replay_transcriptions = []
+
+    # Find all text files for previous surahs (lower surah numbers)
+    text_dir = f"../datasets/{dataset_name}/text"
+    all_text_files = sorted(glob.glob(os.path.join(text_dir, "*.txt")))
+
+    # Count previous surah parts and total available samples
+    previous_surah_parts = []
+    total_previous_samples = 0
+    for text_file in all_text_files:
+        basename = os.path.basename(text_file)
+        surah_part = basename.replace('.txt', '')
+        surah_num = surah_part.split('-')[0]
+        if surah_num < current_surah_num:
+            # Count samples in this surah part
+            with open(text_file, "r", encoding="utf-8") as f:
+                num_samples = len([line for line in f if line.strip()])
+            previous_surah_parts.append((text_file, surah_part, surah_num))
+            total_previous_samples += num_samples
+
+    if not previous_surah_parts:
+        return replay_segment_files, replay_transcriptions
+
+    # Calculate total replay buffer size as min(max(10% of current set, 20), total previous samples)
+    total_replay_size = min(max(int(current_set_size * 0.1), 20), total_previous_samples)
+
+    # Distribute replay budget evenly across previous surahs
+    samples_per_surah = max(1, total_replay_size // len(previous_surah_parts))
+
+    for text_file, surah_part, surah_num in previous_surah_parts:
+        # Load transcriptions
+        with open(text_file, "r", encoding="utf-8") as f:
+            transcriptions = [line.strip() for line in f if line.strip()]
+
+        # Load corresponding audio segments
+        segment_files = sorted(glob.glob(os.path.join(datasets_dir, surah_num, f"{surah_part}-*.wav")))
+
+        if len(segment_files) > 0 and len(segment_files) == len(transcriptions):
+            # Sample up to samples_per_surah, but not more than available
+            num_samples = min(samples_per_surah, len(segment_files))
+
+            # Randomly sample indices
+            indices = random.sample(range(len(segment_files)), num_samples)
+
+            for idx in indices:
+                replay_segment_files.append(segment_files[idx])
+                replay_transcriptions.append(transcriptions[idx])
+
+    if len(replay_segment_files) > 0:
+        # Extract segment names and format as comma-separated list
+        segment_names = [os.path.basename(f).replace('.wav', '') for f in replay_segment_files]
+        segments_str = ', '.join(segment_names)
+        print(f"  Replay buffer segments: ({segments_str})")
+        print(f"  Replay buffer size: {len(replay_segment_files)}\n")
+
+    return replay_segment_files, replay_transcriptions
+
+def collect_full_length_replay_samples(dataset_name, current_surah_part, datasets_dir, current_set_size):
+    """
+    Collect full-length samples from current and previous surahs for curriculum training.
+    This helps the model not forget full-length patterns while learning chunked patterns.
+
+    Args:
+        dataset_name: Name of dataset (e.g., "Quran-A")
+        current_surah_part: Current surah being trained (e.g., "002-01")
+        datasets_dir: Path to datasets directory
+        current_set_size: Size of current training set (to calculate 10% full-length replay buffer with minimum 20)
+
+    Returns:
+        (full_replay_segment_files, full_replay_transcriptions): Lists of full-length replay samples
+    """
+    current_surah_num = current_surah_part.split('-')[0]
+
+    full_replay_segment_files = []
+    full_replay_transcriptions = []
+
+    # Find all text files for current and previous surahs
+    text_dir = f"../datasets/{dataset_name}/text"
+    all_text_files = sorted(glob.glob(os.path.join(text_dir, "*.txt")))
+
+    # Count current and previous surah parts and total available samples
+    relevant_surah_parts = []
+    total_available_samples = 0
+    for text_file in all_text_files:
+        basename = os.path.basename(text_file)
+        surah_part = basename.replace('.txt', '')
+        surah_num = surah_part.split('-')[0]
+        if surah_num <= current_surah_num:
+            # Count samples in this surah part
+            with open(text_file, "r", encoding="utf-8") as f:
+                num_samples = len([line for line in f if line.strip()])
+            relevant_surah_parts.append((text_file, surah_part, surah_num))
+            total_available_samples += num_samples
+
+    if not relevant_surah_parts:
+        return full_replay_segment_files, full_replay_transcriptions
+
+    # Calculate full-length replay buffer size as min(max(10% of current set, 20), total available samples)
+    total_full_replay_size = min(max(int(current_set_size * 0.1), 20), total_available_samples)
+
+    # Distribute replay budget evenly
+    samples_per_surah = max(1, total_full_replay_size // len(relevant_surah_parts))
+
+    for text_file, surah_part, surah_num in relevant_surah_parts:
+        # Load transcriptions
+        with open(text_file, "r", encoding="utf-8") as f:
+            transcriptions = [line.strip() for line in f if line.strip()]
+
+        # Load corresponding audio segments
+        segment_files = sorted(glob.glob(os.path.join(datasets_dir, surah_num, f"{surah_part}-*.wav")))
+
+        if len(segment_files) > 0 and len(segment_files) == len(transcriptions):
+            # Sample up to samples_per_surah, but not more than available
+            num_samples = min(samples_per_surah, len(segment_files))
+
+            # Randomly sample indices
+            indices = random.sample(range(len(segment_files)), num_samples)
+
+            for idx in indices:
+                full_replay_segment_files.append(segment_files[idx])
+                full_replay_transcriptions.append(transcriptions[idx])
+
+    if len(full_replay_segment_files) > 0:
+        # Extract segment names and format as comma-separated list
+        segment_names = [os.path.basename(f).replace('.wav', '') for f in full_replay_segment_files]
+        segments_str = ', '.join(segment_names)
+        print(f"  Replay buffer segments: ({segments_str})")
+        print(f"  Replay buffer size: {len(full_replay_segment_files)}\n")
+
+    return full_replay_segment_files, full_replay_transcriptions
+
+# ==============================================================
 # Main
 # ==============================================================
 def main():
@@ -576,6 +764,9 @@ def main():
 
     if len(transcriptions) != len(segment_files):
         print(f"⚠️  Warning: Mismatch between transcriptions ({len(transcriptions)}) and segments ({len(segment_files)})")
+
+    # Note: Replay buffer samples will be collected fresh for each curriculum stage
+    # This ensures variety and prevents overfitting to the same replay samples
 
     # Create model
     model = EncoderDecoderTransformer(
@@ -660,19 +851,36 @@ def main():
             print(f"  ⚠️  No segments available for this stage. Skipping.")
             continue
 
-        print(f"  Training on {len(stage_segment_files)}/{len(segment_info)} segments", flush=True)
+        # Collect fresh random replay samples for this stage (all full-length)
+        # This ensures variety and prevents overfitting to the same replay samples
+        # Replay buffer = 10% of current stage size, all samples are full-length
+        stage_full_replay_files, stage_full_replay_transcriptions = collect_full_length_replay_samples(
+            dataset_name, surah_part, datasets_dir, len(stage_segment_files)
+        )
+
+        # Add replay buffer to this stage (current segments + full-length replay)
+        all_stage_files = stage_segment_files + stage_full_replay_files
+        all_stage_transcriptions = stage_transcriptions + stage_full_replay_transcriptions
+
+        # Mark which indices are full-length samples (so they don't get chunked)
+        # Full-length replay samples start after current stage segments
+        full_length_start = len(stage_segment_files)
+        full_length_indices = set(range(full_length_start, len(all_stage_files)))
+
+        print(f"  Training on {len(stage_segment_files)} new segments + {len(stage_full_replay_files)} replay buffer segments", flush=True)
 
         model = train_curriculum_stage(
             model,
-            stage_segment_files,
-            stage_transcriptions,
+            all_stage_files,
+            all_stage_transcriptions,
             vocab,
             surah_part,
             chunk_count,
             target_seconds,
             target_words,
             num_epochs=500,
-            learning_rate=1e-3
+            learning_rate=1e-3,
+            full_length_indices=full_length_indices
         )
 
         # Calculate comprehensive accuracy for this stage on all segments
@@ -798,6 +1006,9 @@ def main():
         target_seconds=None, target_words=None, device=device
     )
     print(f"   Accuracy: {overall_acc:.0f}%\n", flush=True)
+
+    # Output final accuracy for train.sh to capture
+    print(f"FINAL_ACCURACY: {overall_acc:.0f}%")
 
     # Sample generation at the end (first segment for consistency)
     test_audio_features, sample_rate = extract_mel_features(segment_files[0])

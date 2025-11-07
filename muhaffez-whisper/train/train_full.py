@@ -196,10 +196,13 @@ def train_model(model, segment_files, transcriptions, vocab, surah_part,
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=0.01)
     criterion = nn.CrossEntropyLoss(ignore_index=-100, label_smoothing=0.1)
 
+    print(f"Initial Learning Rate: {learning_rate:.1e}")
+
     best_loss = float('inf')
     best_epoch = -1
     prev_loss = float('inf')
     start_time = time.time()
+    checkpoint_time = start_time  # Time of last checkpoint (for relative timing)
 
     # Calculate initial accuracy before training
     model.eval()
@@ -263,6 +266,19 @@ def train_model(model, segment_files, transcriptions, vocab, surah_part,
 
         avg_loss = total_loss / total_iterations
 
+        # Dynamic learning rate: reduce by 10% if loss increases
+        if avg_loss > prev_loss:
+            current_lr = optimizer.param_groups[0]['lr']
+            new_lr = max(current_lr * 0.9, 1e-7)  # Minimum LR = 1e-7
+            if new_lr != current_lr:
+                for param_group in optimizer.param_groups:
+                    param_group['lr'] = new_lr
+                # Only print if LR actually changed
+                if new_lr > 1e-7:
+                    # Format LR without trailing zero (e.g., 9e-04 instead of 9.0e-04)
+                    lr_str = f"{new_lr:.0e}" if new_lr >= 1e-6 else f"{new_lr:.1e}"
+                    print(f"  Loss increased ({prev_loss:.4f} → {avg_loss:.4f}), reducing LR to: {lr_str}", flush=True)
+
         # Save best
         if avg_loss < best_loss:
             best_loss = avg_loss
@@ -275,6 +291,13 @@ def train_model(model, segment_files, transcriptions, vocab, surah_part,
 
         elapsed = time.time() - start_time
         current_lr = optimizer.param_groups[0]['lr']
+
+        # Format elapsed time: seconds if < 60s, minutes if >= 60s
+        elapsed_from_checkpoint = time.time() - checkpoint_time
+        if elapsed_from_checkpoint >= 60:
+            time_str = f"{int(round(elapsed_from_checkpoint / 60))}m"
+        else:
+            time_str = f"{int(round(elapsed_from_checkpoint))}s"
 
         # Calculate accuracy after epoch 1 and every 10 epochs for display and early stopping
         accuracy_str = ""
@@ -299,8 +322,7 @@ def train_model(model, segment_files, transcriptions, vocab, surah_part,
             # Early stopping if accuracy > 90%
             if overall_acc > 90.0:
                 # Print current epoch info with accuracy before stopping
-                lr_str = f"{current_lr:.1e}"
-                print(f"Epoch {epoch+1}/{num_epochs} | Loss={avg_loss:.4f}{accuracy_str} | LR={lr_str} | Time={elapsed:.1f}s")
+                print(f"Epoch {epoch+1}/{num_epochs} | Loss={avg_loss:.4f}{accuracy_str} | Time={time_str}")
                 print(f"✓ Early stopping: accuracy {overall_acc:.1f}% at epoch {best_epoch}", flush=True)
                 # Keep best model loaded, don't restore
                 break
@@ -310,21 +332,18 @@ def train_model(model, segment_files, transcriptions, vocab, surah_part,
 
         # Print epoch 1, every 10 epochs, or on last epoch
         if epoch == 0 or (epoch + 1) % 10 == 0 or epoch == num_epochs - 1:
-            # Format LR: always use scientific notation for consistency
-            lr_str = f"{current_lr:.1e}"
-            print(f"Epoch {epoch+1}/{num_epochs} | Loss={avg_loss:.4f}{accuracy_str} | LR={lr_str} | Time={elapsed:.1f}s")
-
-        # Reduce learning rate by 10% if loss increased
-        if avg_loss > prev_loss:
-            for param_group in optimizer.param_groups:
-                old_lr = param_group['lr']
-                new_lr = max(old_lr * 0.9, 1e-7)  # Reduce by 10%, but not below 1e-7
-                param_group['lr'] = new_lr
+            print(f"Epoch {epoch+1}/{num_epochs} | Loss={avg_loss:.4f}{accuracy_str} | Time={time_str}")
+            # Reset checkpoint time after printing
+            checkpoint_time = time.time()
 
         prev_loss = avg_loss
 
     total_time = time.time() - start_time
-    print(f"Training complete in {total_time:.1f}s")
+    # Format total time: seconds if < 60s, minutes if >= 60s
+    if total_time >= 60:
+        print(f"Training complete in {int(round(total_time / 60))}m")
+    else:
+        print(f"Training complete in {int(round(total_time))}s")
 
     # Load best checkpoint
     if os.path.exists(checkpoint_name):
@@ -435,6 +454,83 @@ def train_model(model, segment_files, transcriptions, vocab, surah_part,
     return model
 
 # ==============================================================
+# Replay Buffer - Prevent Catastrophic Forgetting
+# ==============================================================
+def collect_replay_samples(dataset_name, current_surah_part, datasets_dir, current_set_size):
+    """
+    Collect a small sample from all previously trained surahs to prevent catastrophic forgetting.
+
+    Args:
+        dataset_name: Name of dataset (e.g., "Quran-A")
+        current_surah_part: Current surah being trained (e.g., "002-01")
+        datasets_dir: Path to datasets directory
+        current_set_size: Size of current training set (to calculate 10% replay buffer with minimum 20)
+
+    Returns:
+        (replay_segment_files, replay_transcriptions): Lists of replay samples
+    """
+    current_surah_num = current_surah_part.split('-')[0]
+
+    replay_segment_files = []
+    replay_transcriptions = []
+
+    # Find all text files for previous surahs (lower surah numbers)
+    text_dir = f"../datasets/{dataset_name}/text"
+    all_text_files = sorted(glob.glob(os.path.join(text_dir, "*.txt")))
+
+    # Count previous surah parts and total available samples
+    previous_surah_parts = []
+    total_previous_samples = 0
+    for text_file in all_text_files:
+        basename = os.path.basename(text_file)
+        surah_part = basename.replace('.txt', '')
+        surah_num = surah_part.split('-')[0]
+        if surah_num < current_surah_num:
+            # Count samples in this surah part
+            with open(text_file, "r", encoding="utf-8") as f:
+                num_samples = len([line for line in f if line.strip()])
+            previous_surah_parts.append((text_file, surah_part, surah_num))
+            total_previous_samples += num_samples
+
+    if not previous_surah_parts:
+        return replay_segment_files, replay_transcriptions
+
+    # Calculate total replay buffer size as min(max(10% of current set, 20), total previous samples)
+    total_replay_size = min(max(int(current_set_size * 0.1), 20), total_previous_samples)
+
+    # Distribute replay budget evenly across previous surahs
+    samples_per_surah = max(1, total_replay_size // len(previous_surah_parts))
+
+    for text_file, surah_part, surah_num in previous_surah_parts:
+        # Load transcriptions
+        with open(text_file, "r", encoding="utf-8") as f:
+            transcriptions = [line.strip() for line in f if line.strip()]
+
+        # Load corresponding audio segments
+        segment_files = sorted(glob.glob(os.path.join(datasets_dir, surah_num, f"{surah_part}-*.wav")))
+
+        if len(segment_files) > 0 and len(segment_files) == len(transcriptions):
+            # Sample up to samples_per_surah, but not more than available
+            num_samples = min(samples_per_surah, len(segment_files))
+
+            # Randomly sample indices
+            import random
+            indices = random.sample(range(len(segment_files)), num_samples)
+
+            for idx in indices:
+                replay_segment_files.append(segment_files[idx])
+                replay_transcriptions.append(transcriptions[idx])
+
+    if len(replay_segment_files) > 0:
+        # Extract segment names and format as comma-separated list
+        segment_names = [os.path.basename(f).replace('.wav', '') for f in replay_segment_files]
+        segments_str = ', '.join(segment_names)
+        print(f"  Replay buffer segments: ({segments_str})")
+        print(f"  Replay buffer size: {len(replay_segment_files)}\n")
+
+    return replay_segment_files, replay_transcriptions
+
+# ==============================================================
 # Main
 # ==============================================================
 def main():
@@ -496,6 +592,18 @@ def main():
     print(f"   Audio: {'full' if not target_seconds else f'first {target_seconds}s'}")
     print(f"   Text: {'full' if not target_words else f'first {target_words} words'}")
 
+    # Collect replay buffer samples from previous surahs to prevent catastrophic forgetting
+    # Replay buffer size = 10% of current training set
+    replay_segment_files, replay_transcriptions = collect_replay_samples(
+        dataset_name, surah_part, datasets_dir, len(segment_files)
+    )
+
+    # Combine current surah samples with replay buffer
+    all_segment_files = segment_files + replay_segment_files
+    all_transcriptions = transcriptions + replay_transcriptions
+
+    print(f"   Training samples: {len(segment_files)} current + {len(replay_segment_files)} replay = {len(all_segment_files)} total\n")
+
     # Create model
     model = EncoderDecoderTransformer(
         vocab_size=len(vocab),
@@ -518,11 +626,11 @@ def main():
     # Train
     from datetime import datetime
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    print(f"\n[{timestamp}] Starting training for up to 500 epochs on {len(segment_files)} segments...\n")
+    print(f"\n[{timestamp}] Starting training for up to 500 epochs on {len(all_segment_files)} segments...\n")
     model = train_model(
         model,
-        segment_files,
-        transcriptions,
+        all_segment_files,
+        all_transcriptions,
         vocab,
         surah_part,
         target_seconds=target_seconds,
@@ -534,6 +642,14 @@ def main():
     # Save final model
     torch.save(model.state_dict(), model_path)
     print(f"Final model saved to: {model_path}")
+
+    # Calculate and output final accuracy for train.sh to capture
+    model.eval()
+    overall_acc, avg_acc, seg_accuracies = calculate_comprehensive_accuracy(
+        model, segment_files, transcriptions, vocab,
+        target_seconds=None, target_words=None, device=device
+    )
+    print(f"FINAL_ACCURACY: {overall_acc:.0f}%")
 
 
 if __name__ == "__main__":
