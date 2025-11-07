@@ -98,17 +98,22 @@ run_test_suite() {
     return 0
 }
 
+# Track which surahs we've backed up
+declare -A BACKED_UP_SURAHS
+
 # Run both test suites for each surah part
 for SURAH_PART in "${SURAH_PARTS[@]}"; do
     # Extract surah number (e.g., "002" from "002-04")
     SURAH_NUM=$(echo "$SURAH_PART" | cut -d'-' -f1)
 
-    # Set up log file for this dataset and surah with single backup
+    # Set up log file for this dataset and surah (append mode)
     LOG_FILE="log_${DATASET}_${SURAH_NUM}.txt"
 
-    # If log file exists, move it to backup
-    if [ -f "$LOG_FILE" ]; then
-        mv "$LOG_FILE" "log_${DATASET}_${SURAH_NUM}_backup.txt"
+    # Create backup only once per surah (on first part)
+    if [ -z "${BACKED_UP_SURAHS[$SURAH_NUM]}" ] && [ -f "$LOG_FILE" ]; then
+        cp "$LOG_FILE" "log_${DATASET}_${SURAH_NUM}_backup.txt"
+        echo "✓ Backup created: log_${DATASET}_${SURAH_NUM}_backup.txt"
+        BACKED_UP_SURAHS[$SURAH_NUM]=1
     fi
 
     echo ""

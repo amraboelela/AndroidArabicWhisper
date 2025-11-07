@@ -121,7 +121,12 @@ def calculate_comprehensive_accuracy(model, segment_files, transcriptions, vocab
                 continue
 
             # Generate with timeout protection
-            max_tokens = min((target_words * 10) if target_words else 50, 100)  # Cap at 100 tokens
+            # For large datasets, reduce max_tokens to avoid hanging
+            if len(segment_files) > 20:
+                max_tokens = min((target_words * 5) if target_words else 30, 50)
+            else:
+                max_tokens = min((target_words * 10) if target_words else 50, 100)
+
             waveform, sr = torchaudio.load(seg_file)
             audio_duration = target_seconds if target_seconds else (waveform.shape[1] / sr)
 
@@ -206,7 +211,7 @@ def train_model(model, segment_files, transcriptions, vocab, surah_part,
 
     # If already perfect, no need to train
     if overall_acc > 95.0:
-        print(f"✓ Model already at {overall_acc:.1f}% accuracy (exceeds 95% threshold). Skipping training.\n")
+        print(f"✓ Model already at {overall_acc:.1f}% accuracy. Skipping training.\n")
         return model
 
     # Build description
@@ -278,7 +283,9 @@ def train_model(model, segment_files, transcriptions, vocab, surah_part,
             print(f"Epoch {epoch+1}/{num_epochs} | Loss={avg_loss:.4f} | LR={lr_str} | Time={elapsed:.1f}s")
 
         # Calculate accuracy every 10 epochs (skip epoch 1 since we showed initial)
-        if (epoch + 1) % 10 == 0:
+        # For large datasets (>20 segments), only calculate every 100 epochs to avoid slowdown
+        accuracy_interval = 100 if len(segment_files) > 20 else 10
+        if (epoch + 1) % accuracy_interval == 0:
             # Save current model state
             current_model_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
 
@@ -293,13 +300,14 @@ def train_model(model, segment_files, transcriptions, vocab, surah_part,
                 target_seconds, target_words, device
             )
 
-            # Only log every 50 epochs
-            if (epoch + 1) % 50 == 0:
+            # Only log every 50 epochs (or every 100 for large datasets)
+            log_interval = 100 if len(segment_files) > 20 else 50
+            if (epoch + 1) % log_interval == 0:
                 print(f"  Accuracy at epoch {epoch+1}: {overall_acc:.1f}%")
 
             # Early stopping if accuracy > 95%
             if overall_acc > 95.0:
-                print(f"✓ Early stopping: accuracy {overall_acc:.1f}% exceeds 95% threshold")
+                print(f"✓ Early stopping at epoch {epoch+1}: accuracy {overall_acc:.1f}%", flush=True)
                 # Keep best model loaded, don't restore
                 break
 
@@ -499,24 +507,21 @@ def main():
         dropout=0.1
     )
 
-    # Load existing model and continue training (backup created once per surah, not per part)
+    # Load existing model and continue training (backup created only for full surahs, not parts)
     import shutil
-    import time
-    surah_num = surah_part.split('-')[0]  # Get surah number (e.g., "001" or "002")
-    day_num = time.strftime("%u")  # Day of week (1=Monday, 7=Sunday)
-    backup_path = model_path.replace(".pt", f"_backup_{surah_num}.pt")
-    day_backup_path = model_path.replace(".pt", f"_backup_{surah_num}_{day_num}.pt")
 
-    if os.path.exists(model_path):
-        # Only create backup if it doesn't exist yet for this day (once per surah per day)
-        if not os.path.exists(backup_path) or not os.path.exists(day_backup_path):
-            # Move existing backup to day-specific backup
-            if os.path.exists(backup_path):
-                shutil.move(backup_path, day_backup_path)
-            # Create new backup
+    # Only create backup for full surahs (e.g., "001"), not surah parts (e.g., "002-04")
+    is_full_surah = '-' not in surah_part
+
+    if os.path.exists(model_path) and is_full_surah:
+        backup_path = model_path.replace(".pt", "_backup.pt")
+
+        # Only create backup if it doesn't exist yet
+        if not os.path.exists(backup_path):
             shutil.copy2(model_path, backup_path)
             print(f"✓ Backup created: {backup_path}")
 
+    if os.path.exists(model_path):
         print(f"Loading existing model from {model_path}...")
         model.load_state_dict(torch.load(model_path, map_location=device))
         print(f"✓ Model loaded successfully! Continuing training on {surah_part}.")

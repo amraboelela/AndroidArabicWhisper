@@ -200,9 +200,23 @@ def train_curriculum_stage(model, segment_files, transcriptions, vocab, surah_pa
     criterion = nn.CrossEntropyLoss(ignore_index=-100, label_smoothing=0.1)
 
     best_loss = float('inf')
+    best_epoch = -1  # Track which epoch had the best loss
     best_model_state = None  # Track best model state
     prev_loss = float('inf')
     start_time = time.time()
+
+    # Calculate initial accuracy before training
+    model.eval()
+    overall_acc, avg_acc, seg_accuracies = calculate_comprehensive_accuracy(
+        model, segment_files, transcriptions, vocab,
+        target_seconds, target_words, device
+    )
+    print(f"  Initial accuracy: {overall_acc:.1f}%", flush=True)
+
+    # If already perfect, no need to train
+    if overall_acc > 95.0:
+        print(f"  ✓ Model already at {overall_acc:.1f}% accuracy. Skipping training.", flush=True)
+        return model
 
     for epoch in range(num_epochs):
         model.train()
@@ -254,6 +268,7 @@ def train_curriculum_stage(model, segment_files, transcriptions, vocab, surah_pa
         # Save best
         if avg_loss < best_loss:
             best_loss = avg_loss
+            best_epoch = epoch + 1
             best_model_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
 
         elapsed = time.time() - start_time
@@ -264,8 +279,8 @@ def train_curriculum_stage(model, segment_files, transcriptions, vocab, surah_pa
             lr_str = f"{current_lr:.1e}"
             print(f"  Epoch {epoch+1}/{num_epochs} | Loss={avg_loss:.4f} | LR={lr_str} | Time={elapsed:.1f}s")
 
-        # Calculate accuracy every 50 epochs
-        if (epoch + 1) % 50 == 0:
+        # Calculate accuracy every 10 epochs
+        if (epoch + 1) % 10 == 0:
             # Save current model state
             current_model_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
 
@@ -279,11 +294,15 @@ def train_curriculum_stage(model, segment_files, transcriptions, vocab, surah_pa
                 model, segment_files, transcriptions, vocab,
                 target_seconds, target_words, device
             )
-            print(f"    Accuracy at epoch {epoch+1}: {overall_acc:.1f}%")
+
+            # Only log every 50 epochs (or every 100 for large datasets)
+            log_interval = 100 if len(segment_files) > 20 else 50
+            if (epoch + 1) % log_interval == 0:
+                print(f"    Accuracy at epoch {epoch+1}: {overall_acc:.1f}%")
 
             # Early stopping if accuracy > 95%
             if overall_acc > 95.0:
-                print(f"  ✓ Early stopping: accuracy {overall_acc:.1f}% exceeds 95% threshold")
+                print(f"  ✓ Early stopping at epoch {epoch+1}: accuracy {overall_acc:.1f}%", flush=True)
                 # Keep best model loaded, don't restore
                 break
 
@@ -301,7 +320,7 @@ def train_curriculum_stage(model, segment_files, transcriptions, vocab, surah_pa
         prev_loss = avg_loss
 
     total_time = time.time() - start_time
-    print(f"  ✓ Stage {stage_num} completed in {total_time:.1f}s | Best loss: {best_loss:.4f}")
+    print(f"  ✓ Stage {stage_num} completed in {total_time:.1f}s | Best loss: {best_loss:.4f} at epoch {best_epoch}")
 
     # Restore best model state before returning (only if not already loaded from early stopping)
     if best_model_state is not None:
