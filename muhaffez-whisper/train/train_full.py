@@ -301,7 +301,7 @@ def train_model(model, segment_files, transcriptions, vocab, surah_part,
                 # Print current epoch info with accuracy before stopping
                 lr_str = f"{current_lr:.1e}"
                 print(f"Epoch {epoch+1}/{num_epochs} | Loss={avg_loss:.4f}{accuracy_str} | LR={lr_str} | Time={elapsed:.1f}s")
-                print(f"✓ Early stopping at epoch {epoch+1}: accuracy {overall_acc:.1f}%", flush=True)
+                print(f"✓ Early stopping: accuracy {overall_acc:.1f}% at epoch {epoch+1}", flush=True)
                 # Keep best model loaded, don't restore
                 break
 
@@ -324,7 +324,7 @@ def train_model(model, segment_files, transcriptions, vocab, surah_part,
         prev_loss = avg_loss
 
     total_time = time.time() - start_time
-    print(f"Training complete in {total_time:.1f}s | Best loss: {best_loss:.4f} at epoch {best_epoch}")
+    print(f"Training complete in {total_time:.1f}s")
 
     # Load best checkpoint
     if os.path.exists(checkpoint_name):

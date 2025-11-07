@@ -42,6 +42,7 @@ import android.content.res.AssetManager
 
 class MainActivity : ComponentActivity() {
   private var whisperOnnxHelper: WhisperOnnxKotlinHelper? = null
+  private var muhaffezHelper: MuhaffezWhisperHelper? = null
   private var audioRecorder: AudioRecorder? = null
   private var accumulatedTranscription = StringBuilder()
 
@@ -65,6 +66,10 @@ class MainActivity : ComponentActivity() {
     Log.d("#transcribe", "Using ONNX implementation (pure Kotlin)")
     whisperOnnxHelper = WhisperOnnxKotlinHelper(this)
 
+    // Initialize Muhaffez Whisper model for word-level transcription
+    Log.d("#transcribe", "Initializing Muhaffez Whisper Helper")
+    muhaffezHelper = MuhaffezWhisperHelper(this)
+
     // Copy audio test files to internal storage
     copyAudioFromAssets(assets, this.filesDir)
 
@@ -79,6 +84,7 @@ class MainActivity : ComponentActivity() {
         ) {
           MainScreen(
             whisperOnnxHelper = whisperOnnxHelper,
+            muhaffezHelper = muhaffezHelper,
             audioFilePath = audioFilePath,
             onStartRecording = { startRecording() },
             onStopRecording = { stopRecording() },
@@ -146,12 +152,14 @@ class MainActivity : ComponentActivity() {
   override fun onDestroy() {
     super.onDestroy()
     audioRecorder?.stopRecording()
+    muhaffezHelper?.cleanup()
   }
 }
 
 @Composable
 fun MainScreen(
   whisperOnnxHelper: WhisperOnnxKotlinHelper?,
+  muhaffezHelper: MuhaffezWhisperHelper?,
   audioFilePath: String,
   onStartRecording: () -> Unit,
   onStopRecording: () -> Unit,
@@ -253,14 +261,15 @@ fun MainScreen(
       )
     }
 
-    // Test with existing audio file
+    // Test with existing audio file (BPE tokenizer model)
     Button(
       onClick = {
         Thread {
           try {
+            transcription = "🔄 Processing..."
             val result = whisperOnnxHelper?.transcribe(audioFilePath) ?: "Error: No helper available"
             transcription = result
-            Log.d("#transcribe", "Test transcription: $result")
+            Log.d("#transcribe", "Test transcription (BPE): $result")
           } catch (e: Exception) {
             transcription = "Error: ${e.message}"
             Log.e("#transcribe", "Test transcription error", e)
@@ -269,7 +278,29 @@ fun MainScreen(
       },
       modifier = Modifier.fillMaxWidth()
     ) {
-      Text("Test with 001.wav")
+      Text("Test with 001.wav (BPE Model)")
+    }
+
+    Spacer(modifier = Modifier.height(8.dp))
+
+    // Test with Muhaffez Whisper (word-level model)
+    Button(
+      onClick = {
+        Thread {
+          try {
+            transcription = "🔄 Processing Muhaffez model..."
+            val result = muhaffezHelper?.transcribeFile(audioFilePath) ?: "Error: No helper available"
+            transcription = result
+            Log.d("#transcribe", "Muhaffez transcription: $result")
+          } catch (e: Exception) {
+            transcription = "Error: ${e.message}"
+            Log.e("#transcribe", "Muhaffez transcription error", e)
+          }
+        }.start()
+      },
+      modifier = Modifier.fillMaxWidth()
+    ) {
+      Text("Test with 001.wav (Muhaffez Word Model)")
     }
 
 

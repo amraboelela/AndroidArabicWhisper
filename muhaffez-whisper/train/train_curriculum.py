@@ -201,6 +201,7 @@ def train_curriculum_stage(model, segment_files, transcriptions, vocab, surah_pa
 
     best_loss = float('inf')
     best_epoch = -1  # Track which epoch had the best loss
+    best_accuracy = 0.0  # Track accuracy at best epoch
     best_model_state = None  # Track best model state
     prev_loss = float('inf')
     start_time = time.time()
@@ -294,17 +295,17 @@ def train_curriculum_stage(model, segment_files, transcriptions, vocab, surah_pa
             # Build accuracy string for display
             accuracy_str = f" | Accuracy={overall_acc:.0f}%"
 
-            # Only log every 50 epochs (or every 100 for large datasets)
-            log_interval = 100 if len(segment_files) > 20 else 50
-            if (epoch + 1) % log_interval == 0:
-                print(f"    Accuracy at epoch {epoch+1}: {overall_acc:.1f}%")
+            # Update best accuracy when we have best model loaded
+            if best_model_state is not None:
+                # We just evaluated the best model, so this is the accuracy for best epoch
+                best_accuracy = overall_acc
 
             # Early stopping if accuracy > 90%
             if overall_acc > 90.0:
                 # Print current epoch info with accuracy before stopping
                 lr_str = f"{current_lr:.1e}"
-                print(f"  Epoch {epoch+1}/{num_epochs} | Loss={avg_loss:.4f}{accuracy_str} | LR={lr_str} | Time={elapsed:.1f}s")
-                print(f"  ✓ Early stopping at epoch {epoch+1}: accuracy {overall_acc:.1f}%", flush=True)
+                print(f"  Epoch {epoch+1}/{num_epochs} | Loss={avg_loss:.4f}{accuracy_str} | LR={lr_str} | Time={elapsed:.1f}s", flush=True)
+                print(f"  ✓ Early stopping: accuracy {overall_acc:.1f}% at epoch {epoch+1}", flush=True)
                 # Keep best model loaded, don't restore
                 break
 
@@ -312,7 +313,8 @@ def train_curriculum_stage(model, segment_files, transcriptions, vocab, surah_pa
             model.load_state_dict({k: v.to(device) for k, v in current_model_state.items()})
             model.train()
 
-        if epoch == 0 or (epoch + 1) % 50 == 0 or epoch == num_epochs - 1:
+        # Print epoch info: epoch 1, every 10 epochs, or last epoch
+        if epoch == 0 or (epoch + 1) % 10 == 0 or epoch == num_epochs - 1:
             # Format LR: always use scientific notation for consistency
             lr_str = f"{current_lr:.1e}"
             print(f"  Epoch {epoch+1}/{num_epochs} | Loss={avg_loss:.4f}{accuracy_str} | LR={lr_str} | Time={elapsed:.1f}s")
@@ -327,7 +329,12 @@ def train_curriculum_stage(model, segment_files, transcriptions, vocab, surah_pa
         prev_loss = avg_loss
 
     total_time = time.time() - start_time
-    print(f"  ✓ Stage {stage_num} completed in {total_time:.1f}s | Best loss: {best_loss:.4f} at epoch {best_epoch}")
+
+    # Show final accuracy instead of best loss
+    if best_accuracy > 0:
+        print(f"  ✓ Stage {stage_num} completed in {total_time:.1f}s | Accuracy {best_accuracy:.1f}% at epoch {best_epoch}")
+    else:
+        print(f"  ✓ Stage {stage_num} completed in {total_time:.1f}s")
 
     # Restore best model state before returning (only if not already loaded from early stopping)
     if best_model_state is not None:
@@ -512,7 +519,7 @@ def train_stage(model, segment_files, transcriptions, vocab, surah_part,
             model.train()
 
     total_time = time.time() - start_time
-    print(f"\n✓ Stage {stage_num} complete in {total_time:.1f}s | Best loss: {best_loss:.4f} at epoch {best_epoch}")
+    print(f"\n✓ Stage {stage_num} complete in {total_time:.1f}s")
 
     # Load best checkpoint
     if os.path.exists(checkpoint_name):
