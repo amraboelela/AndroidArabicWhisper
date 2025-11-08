@@ -130,7 +130,14 @@ run_test_suite() {
         # Store result for final summary
         ACCURACY_RESULTS+=("$suite_name - $DATASET $surah_part: ${accuracy}%")
 
-        echo "✓ $suite_name (${minutes}m ${seconds}s) - Accuracy: ${accuracy}%"
+        # Format time string
+        if [ $minutes -gt 0 ]; then
+            local time_str="${minutes}m ${seconds}s"
+        else
+            local time_str="${seconds}s"
+        fi
+
+        echo "✓ $suite_name ($time_str) - Accuracy: ${accuracy}%"
         PASSED=$((PASSED + 1))
     else
         local suite_end=$(date +%s)
@@ -138,7 +145,14 @@ run_test_suite() {
         local minutes=$((elapsed / 60))
         local seconds=$((elapsed % 60))
 
-        echo "✗ $suite_name (${minutes}m ${seconds}s) - FAILED"
+        # Format time string
+        if [ $minutes -gt 0 ]; then
+            local time_str="${minutes}m ${seconds}s"
+        else
+            local time_str="${seconds}s"
+        fi
+
+        echo "✗ $suite_name ($time_str) - FAILED"
         echo "   Check $log_file for details. Last 30 lines:"
         tail -30 "$log_file"
         FAILED=$((FAILED + 1))
@@ -173,7 +187,8 @@ for SURAH_PART in "${SURAH_PARTS[@]}"; do
     # Print vocabulary size once per surah
     if [[ ! "$CLEARED_LOGS" =~ "DEVICE_$SURAH_NUM" ]]; then
         {
-            # Print vocabulary size once
+            # Print timestamp and vocabulary size once
+            echo "[$(date '+%Y-%m-%d %H:%M:%S')]"
             if [ -f "../models/vocabulary.json" ]; then
                 VOCAB_SIZE=$(python3 -c "import json; vocab = json.load(open('../models/vocabulary.json')); print(len(vocab))" 2>/dev/null)
                 if [ -n "$VOCAB_SIZE" ]; then
@@ -187,7 +202,6 @@ for SURAH_PART in "${SURAH_PARTS[@]}"; do
 
     # Write surah part header to log file
     {
-        echo ""
         echo "============================================================"
         echo "TESTING SURAH PART: $SURAH_PART"
         echo "============================================================"

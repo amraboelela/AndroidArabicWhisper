@@ -32,6 +32,13 @@ def extract_mel_features(audio_path, n_mels=80, target_seconds=None):
     if waveform.shape[0] > 1:
         waveform = waveform.mean(dim=0, keepdim=True)
 
+    # Resample to 16kHz (Whisper standard)
+    target_sample_rate = 16000
+    if sample_rate != target_sample_rate:
+        resampler = torchaudio.transforms.Resample(orig_freq=sample_rate, new_freq=target_sample_rate)
+        waveform = resampler(waveform)
+        sample_rate = target_sample_rate
+
     # Trim to target seconds if specified
     if target_seconds is not None:
         num_samples = int(sample_rate * target_seconds)
@@ -102,6 +109,10 @@ def test_stage(model, segment_files, expected_texts, id_to_token, device,
     total_tokens = 0
     testable_segments = 0
 
+    # Store first few and failures for display
+    first_samples = []
+    failures = []
+
     for i, (segment_file, expected_text) in enumerate(zip(segment_files, expected_texts), 1):
         # Check if segment has enough words for this stage
         expected_words = expected_text.split()
@@ -161,17 +172,34 @@ def test_stage(model, segment_files, expected_texts, id_to_token, device,
         normalized_expected = normalize_text(stage_expected)
         match = "✓" if normalized_generated == normalized_expected else "✗"
 
-        if i <= 3 or match == "✗":  # Show first 3 and failures
-            print(f"[{i}] {segment_name}")
-            print(f"  Expected: {stage_expected}")
-            print(f"  Generated: {generated_text}")
-            print(f"  {match}\n")
+        # Collect samples for display
+        sample_info = (i, segment_name, stage_expected, generated_text, match)
+        if i <= 3:
+            first_samples.append(sample_info)
+        elif match == "✗":
+            failures.append(sample_info)
 
         # Token-level accuracy
         stage_expected_words = stage_expected.split()
         min_len = min(len(stage_expected_words), len(display_words))
         total_correct += sum(1 for j in range(min_len) if display_words[j] == stage_expected_words[j])
         total_tokens += len(stage_expected_words)
+
+    # Display first samples
+    for i, segment_name, stage_expected, generated_text, match in first_samples:
+        print(f"[{i}] {segment_name}")
+        print(f"  Expected: {stage_expected}")
+        print(f"  Generated: {generated_text}")
+        print(f"  {match}\n")
+
+    # Display failures if any
+    if failures:
+        print("Failing segments:\n")
+        for i, segment_name, stage_expected, generated_text, match in failures:
+            print(f"[{i}] {segment_name}")
+            print(f"  Expected: {stage_expected}")
+            print(f"  Generated: {generated_text}")
+            print(f"  {match}\n")
 
     # Stage summary
     accuracy = (total_correct / total_tokens * 100) if total_tokens > 0 else 0.0

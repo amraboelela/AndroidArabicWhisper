@@ -78,8 +78,14 @@ def tokenize_text(text, vocab):
     words = text.split()
     return [word_to_idx.get(word, 0) for word in words]
 
+def normalize_text(text):
+    """Normalize Arabic text by removing diacritics and extra spacing"""
+    normalized = text.replace("َ", "").replace("ً", "").replace("ُ", "").replace("ِ", "")
+    normalized = normalized.replace("ّ", "").replace("ْ", "").replace("ٌ", "").replace("ٍ", "")
+    return " ".join(normalized.split())
+
 def calculate_accuracy(model, segment_files, transcriptions, vocab, target_seconds, target_words, device):
-    """Calculate accuracy for current curriculum stage"""
+    """Calculate accuracy for current curriculum stage (same logic as test scripts)"""
     model.eval()
     total_correct = 0
     total_tokens = 0
@@ -97,7 +103,14 @@ def calculate_accuracy(model, segment_files, transcriptions, vocab, target_secon
 
             # Generate
             max_tokens = (target_words * 10) if target_words else 50
-            generated = model.generate(audio_batch, max_new_tokens=max_tokens, audio_duration_seconds=target_seconds, use_sampling=False)
+            generated = model.generate(
+                audio_batch,
+                max_new_tokens=max_tokens,
+                temperature=1.0,
+                min_tokens=1,
+                use_sampling=False,
+                audio_duration_seconds=target_seconds
+            )
             tokens = generated[0].tolist()
 
             if tokens and tokens[0] == 1:
@@ -211,7 +224,7 @@ def train_curriculum_stage(model, segment_files, transcriptions, vocab, stage_nu
         print(f"Accuracy: {current_acc:.1f}%", flush=True)
 
         if current_acc >= 90.0:
-            print(f"✓ Early stopping: accuracy reached 90%")
+            print(f"✓ Early stopping: accuracy reached 90%", flush=True)
             break
 
     return model

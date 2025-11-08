@@ -90,10 +90,19 @@ def tokenize_text(text, vocab):
     return [word_to_idx.get(word, 0) for word in words]
 
 # ==============================================================
+# Text normalization (same as test scripts)
+# ==============================================================
+def normalize_text(text):
+    """Normalize Arabic text by removing diacritics and extra spacing"""
+    normalized = text.replace("َ", "").replace("ً", "").replace("ُ", "").replace("ِ", "")
+    normalized = normalized.replace("ّ", "").replace("ْ", "").replace("ٌ", "").replace("ٍ", "")
+    return " ".join(normalized.split())
+
+# ==============================================================
 # Calculate accuracy
 # ==============================================================
 def calculate_accuracy(model, segment_files, transcriptions, vocab, device):
-    """Calculate overall accuracy"""
+    """Calculate overall accuracy (same logic as test scripts)"""
     model.eval()
     total_correct = 0
     total_tokens = 0
@@ -109,7 +118,14 @@ def calculate_accuracy(model, segment_files, transcriptions, vocab, device):
             audio_duration = waveform.shape[1] / sr
 
             # Generate
-            generated = model.generate(audio_batch, max_new_tokens=50, audio_duration_seconds=audio_duration, use_sampling=False)
+            generated = model.generate(
+                audio_batch,
+                max_new_tokens=50,
+                temperature=1.0,
+                min_tokens=1,
+                use_sampling=False,
+                audio_duration_seconds=audio_duration
+            )
             tokens = generated[0].tolist()
 
             # Clean tokens
@@ -119,10 +135,11 @@ def calculate_accuracy(model, segment_files, transcriptions, vocab, device):
                 tokens = tokens[:tokens.index(2)]
 
             generated_words = [vocab[idx] for idx in tokens if idx < len(vocab)]
-            expected_words = expected_text.split()
+            generated_text = " ".join(generated_words)
 
-            # Count correct
-            min_len = min(len(generated_words), len(expected_words))
+            # Token-level accuracy (word-by-word comparison)
+            expected_words = expected_text.split()
+            min_len = min(len(expected_words), len(generated_words))
             total_correct += sum(1 for i in range(min_len) if generated_words[i] == expected_words[i])
             total_tokens += len(expected_words)
 
@@ -293,7 +310,7 @@ def main():
             print(f"Accuracy: {current_acc:.1f}%", flush=True)
 
             if current_acc >= 95.0:
-                print(f"✓ Early stopping: accuracy reached 95%")
+                print(f"✓ Early stopping: accuracy reached 95%", flush=True)
                 break
 
     # Save final model
