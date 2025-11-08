@@ -115,15 +115,8 @@ run_test_suite() {
     if python3 -u "$script" "$DATASET" "$surah_part" >> "$log_file" 2>&1; then
         local suite_end=$(date +%s)
         local elapsed=$((suite_end - suite_start))
-
-        # Format time: show seconds if < 60s, otherwise minutes
-        if [ $elapsed -lt 60 ]; then
-            local time_str="${elapsed}s"
-        else
-            # Round to nearest minute with minimum of 1
-            local minutes=$(echo "scale=0; m = ($elapsed + 30) / 60; if (m < 1) 1 else m" | bc)
-            local time_str="${minutes}m"
-        fi
+        local minutes=$((elapsed / 60))
+        local seconds=$((elapsed % 60))
 
         # Extract accuracy and token counts from log file (last occurrence of "Token accuracy")
         local accuracy=$(grep "Token accuracy:" "$log_file" | tail -1 | sed 's/.*(\([0-9.]*\)%).*/\1/')
@@ -137,22 +130,15 @@ run_test_suite() {
         # Store result for final summary
         ACCURACY_RESULTS+=("$suite_name - $DATASET $surah_part: ${accuracy}%")
 
-        echo "✓ $suite_name ($time_str) - Accuracy: ${accuracy}%"
+        echo "✓ $suite_name (${minutes}m ${seconds}s) - Accuracy: ${accuracy}%"
         PASSED=$((PASSED + 1))
     else
         local suite_end=$(date +%s)
         local elapsed=$((suite_end - suite_start))
+        local minutes=$((elapsed / 60))
+        local seconds=$((elapsed % 60))
 
-        # Format time: show seconds if < 60s, otherwise minutes
-        if [ $elapsed -lt 60 ]; then
-            local time_str="${elapsed}s"
-        else
-            # Round to nearest minute with minimum of 1
-            local minutes=$(echo "scale=0; m = ($elapsed + 30) / 60; if (m < 1) 1 else m" | bc)
-            local time_str="${minutes}m"
-        fi
-
-        echo "✗ $suite_name ($time_str) - FAILED"
+        echo "✗ $suite_name (${minutes}m ${seconds}s) - FAILED"
         echo "   Check $log_file for details. Last 30 lines:"
         tail -30 "$log_file"
         FAILED=$((FAILED + 1))

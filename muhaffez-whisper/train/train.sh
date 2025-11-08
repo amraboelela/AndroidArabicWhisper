@@ -22,21 +22,11 @@ if [ -z "$TRAIN_LOGGING_ACTIVE" ]; then
         echo "✓ Training log backup created: $TRAIN_LOG_BACKUP"
     fi
 
-    # Clear the log file and write device info
+    # Clear the log file
     > "$TRAIN_LOG"
-    {
-        echo "============================================================"
-        if command -v python3 &> /dev/null; then
-            python3 -c "import torch; print('🚀 Using Metal GPU (Apple Silicon)' if torch.backends.mps.is_available() else ('🚀 Using CUDA GPU' if torch.cuda.is_available() else '⚠️  Using CPU (slower)')); print(f'Device: {\"mps\" if torch.backends.mps.is_available() else (\"cuda\" if torch.cuda.is_available() else \"cpu\")}')" 2>/dev/null || echo "Device: unknown"
-        else
-            echo "Device: unknown"
-        fi
-        echo "============================================================"
-        echo ""
-    } >> "$TRAIN_LOG"
 
     # Re-run this script with output redirected to log and console
-    "$0" "$@" 2>&1 | tee -a "$TRAIN_LOG"
+    "$0" "$@" 2>&1 | tee "$TRAIN_LOG"
     exit $?
 fi
 
@@ -165,13 +155,6 @@ if [ -f "$MODEL_PATH" ] && [ ! -f "$BACKUP_PATH" ]; then
     echo ""
 fi
 
-# Run initial accuracy calculation on ALL existing parts before training
-echo ""
-echo "Calculating initial accuracy..."
-INITIAL_ACCURACY=$(python3 calculate_accuracy.py "$DATASET" 2>&1 | tail -1)
-echo "Initial Accuracy: ${INITIAL_ACCURACY}" | tee -a "$TRAIN_LOG"
-echo ""
-
 # Run both training suites for each surah part
 for SURAH_PART in "${SURAH_PARTS[@]}"; do
     # Extract surah number (e.g., "002" from "002-04")
@@ -180,12 +163,32 @@ for SURAH_PART in "${SURAH_PARTS[@]}"; do
     # Set up log file for this dataset and surah
     LOG_FILE="log_${DATASET}_${SURAH_NUM}.txt"
 
-    # Backup and clear the log file at the start of training
-    if [ -f "$LOG_FILE" ]; then
-        BACKUP_LOG="log_${DATASET}_${SURAH_NUM}_backup.txt"
-        cp "$LOG_FILE" "$BACKUP_LOG"
+    # Backup and clear the log file to start fresh (only once per surah)
+    if [[ ! "$CLEARED_LOGS" =~ $SURAH_NUM ]]; then
+        # Create backup if log file exists
+        if [ -f "$LOG_FILE" ]; then
+            BACKUP_LOG="log_${DATASET}_${SURAH_NUM}_backup.txt"
+            cp "$LOG_FILE" "$BACKUP_LOG"
+            echo ""
+            echo "✓ Log backup created: $BACKUP_LOG"
+        fi
+        > "$LOG_FILE"
+        CLEARED_LOGS="$CLEARED_LOGS $SURAH_NUM"
     fi
-    > "$LOG_FILE"
+
+    echo ""
+
+    # Detect device info (only print once per surah) - write to surah log only, not main log
+    {
+        echo "============================================================"
+        if command -v python3 &> /dev/null; then
+            python3 -c "import torch; print('🚀 Using Metal GPU (Apple Silicon)' if torch.backends.mps.is_available() else ('🚀 Using CUDA GPU' if torch.cuda.is_available() else '⚠️  Using CPU (slower)')); print(f'Device: {\"mps\" if torch.backends.mps.is_available() else (\"cuda\" if torch.cuda.is_available() else \"cpu\")}')" 2>/dev/null || echo "Device: unknown"
+        else
+            echo "Device: unknown"
+        fi
+        echo "============================================================"
+        echo ""
+    } >> "$LOG_FILE"
 
     echo "════════════════════════════════════════════════════════════"
     echo "TRAINING SURAH PART: $SURAH_PART"
@@ -215,7 +218,13 @@ for SURAH_PART in "${SURAH_PARTS[@]}"; do
     echo "   Total training time: ${SURAH_TIME_STR}" >> "$LOG_FILE"
 done
 
-# Run final accuracy tests on all trained parts (silently)
+# Run fresh accuracy tests on all trained parts
+echo ""
+echo "════════════════════════════════════════════════════════════"
+echo "RUNNING FINAL ACCURACY TESTS ON ALL PARTS"
+echo "════════════════════════════════════════════════════════════"
+echo ""
+
 # Clear the accuracy results array to store fresh test results
 SUITE_ACCURACIES=()
 
@@ -225,17 +234,26 @@ for SURAH_PART in "${SURAH_PARTS[@]}"; do
     SURAH_NUM=$(echo "$SURAH_PART" | cut -d'-' -f1)
     LOG_FILE="log_${DATASET}_${SURAH_NUM}.txt"
 
-    # Run test_full.py silently
+    echo "Testing $DATASET $SURAH_PART..."
+
+    # Run test_full.py
     if python3 -u ../test/test_full.py "$DATASET" "$SURAH_PART" >> "$LOG_FILE" 2>&1; then
         accuracy=$(grep "Token accuracy:" "$LOG_FILE" | tail -1 | sed 's/.*(\([0-9.]*\)%).*/\1/')
         SUITE_ACCURACIES+=("$DATASET|$SURAH_PART|Full|${accuracy}%")
+        echo "  ✓ Full - Accuracy: ${accuracy}%"
+    else
+        echo "  ✗ Full - FAILED"
     fi
 
-    # Run test_curriculum.py silently
+    # Run test_curriculum.py
     if python3 -u ../test/test_curriculum.py "$DATASET" "$SURAH_PART" >> "$LOG_FILE" 2>&1; then
         accuracy=$(grep "Token accuracy:" "$LOG_FILE" | tail -1 | sed 's/.*(\([0-9.]*\)%).*/\1/')
         SUITE_ACCURACIES+=("$DATASET|$SURAH_PART|Curriculum|${accuracy}%")
+        echo "  ✓ Curriculum - Accuracy: ${accuracy}%"
+    else
+        echo "  ✗ Curriculum - FAILED"
     fi
+    echo ""
 done
 
 # Summary
@@ -266,17 +284,13 @@ if [ $FAILED -gt 0 ]; then
 fi
 echo "  Total time: ${TOTAL_TIME_STR}"
 
-# Calculate and display final overall accuracy
-FINAL_ACCURACY=$(python3 calculate_accuracy.py "$DATASET" 2>&1 | tail -1)
-echo "  Final Accuracy: ${FINAL_ACCURACY}"
-
-# Display detailed accuracies grouped by surah part
+# Display accuracies grouped by surah part
 if [ ${#SUITE_ACCURACIES[@]} -gt 0 ]; then
     echo ""
     echo "Accuracies:"
 
     # Track current surah part to group output
-    current_surah=""
+    local current_surah=""
     for acc in "${SUITE_ACCURACIES[@]}"; do
         # Split by | delimiter: dataset|surah_part|suite_name|accuracy
         IFS='|' read -r dataset surah_part suite_name accuracy <<< "$acc"

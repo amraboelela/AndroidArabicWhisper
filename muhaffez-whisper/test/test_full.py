@@ -195,13 +195,12 @@ def main():
         normalized_expected = normalize_text(expected_text)
         match = "✓" if normalized_generated == normalized_expected else "✗"
 
-        # Suppress detailed segment output (only show summary)
         # Show only first 10 samples
-        # if i <= 10:
-        #     print(f"[{i}/{len(segment_files)}] {segment_name}")
-        #     print(f"Expected: {expected_text}")
-        #     print(f"Generated: {generated_text}")
-        #     print(f"Match: {match}\n")
+        if i <= 10:
+            print(f"[{i}/{len(segment_files)}] {segment_name}")
+            print(f"Expected: {expected_text}")
+            print(f"Generated: {generated_text}")
+            print(f"Match: {match}\n")
 
         # Token-level accuracy
         expected_words = expected_text.split()
