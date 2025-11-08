@@ -115,7 +115,7 @@ run_training_suite() {
 
         if [ -n "$accuracy" ]; then
             echo "✓ $suite_name ($time_str) - Accuracy: $accuracy"
-            SUITE_ACCURACIES+=("$suite_name - $DATASET $surah_part: $accuracy")
+            SUITE_ACCURACIES+=("$DATASET|$surah_part|$suite_name|$accuracy")
         else
             echo "✓ $suite_name ($time_str)"
         fi
@@ -222,9 +222,14 @@ done
 END_TIME=$(date +%s)
 TOTAL_ELAPSED=$((END_TIME - START_TIME))
 
-# Format time: show seconds if < 60s, otherwise minutes
+# Format time: show seconds if < 60s, hours+minutes if >= 60m, otherwise minutes
 if [ $TOTAL_ELAPSED -lt 60 ]; then
     TOTAL_TIME_STR="${TOTAL_ELAPSED}s"
+elif [ $TOTAL_ELAPSED -ge 3600 ]; then
+    # Show hours and minutes
+    HOURS=$((TOTAL_ELAPSED / 3600))
+    REMAINING_MINUTES=$(((TOTAL_ELAPSED % 3600) / 60))
+    TOTAL_TIME_STR="${HOURS}h ${REMAINING_MINUTES}m"
 else
     # Round to nearest minute with minimum of 1
     TOTAL_MINUTES=$(echo "scale=0; m = ($TOTAL_ELAPSED + 30) / 60; if (m < 1) 1 else m" | bc)
@@ -235,17 +240,31 @@ echo ""
 echo "Training Summary:"
 echo "  Dataset: $DATASET"
 echo "  Surah parts: ${SURAH_PARTS[@]}"
-echo "  Total runs: $TOTAL training suites"
-echo "  Completed: $PASSED suites"
-echo "  Failed: $FAILED suites"
-echo "  Time: ${TOTAL_TIME_STR}"
+echo "  Completed suites: $PASSED"
+if [ $FAILED -gt 0 ]; then
+    echo "  Failed: $FAILED suites"
+fi
+echo "  Total time: ${TOTAL_TIME_STR}"
 
-# Display accuracies for each suite
+# Display accuracies grouped by surah part
 if [ ${#SUITE_ACCURACIES[@]} -gt 0 ]; then
     echo ""
     echo "Accuracies:"
+
+    # Track current surah part to group output
+    local current_surah=""
     for acc in "${SUITE_ACCURACIES[@]}"; do
-        echo "  $acc"
+        # Split by | delimiter: dataset|surah_part|suite_name|accuracy
+        IFS='|' read -r dataset surah_part suite_name accuracy <<< "$acc"
+
+        # Print surah part header if changed
+        if [ "$surah_part" != "$current_surah" ]; then
+            echo "$dataset $surah_part"
+            current_surah="$surah_part"
+        fi
+
+        # Print suite accuracy indented
+        echo "  $suite_name: $accuracy"
     done
 fi
 
