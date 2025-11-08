@@ -485,24 +485,7 @@ def train_stage(model, segment_files, transcriptions, vocab, surah_part,
         current_lr = optimizer.param_groups[0]['lr']
         print(f"Epoch {epoch+1}/{num_epochs} | Loss={avg_loss:.4f} | LR={current_lr:.6f} | Time={elapsed:.1f}s{best_marker}")
 
-        # Calculate accuracy every 50 epochs and check for early stopping
-        if (epoch + 1) % 50 == 0:
-            # Load best checkpoint for accuracy evaluation
-            if os.path.exists(checkpoint_name):
-                checkpoint = torch.load(checkpoint_name, map_location=device)
-                model.load_state_dict(checkpoint["model"])
-
-            # Calculate accuracy
-            overall_acc, avg_acc, seg_accuracies = calculate_comprehensive_accuracy(
-                model, segment_files, transcriptions, vocab,
-                target_seconds, target_words, device
-            )
-            print(f"  Accuracy at epoch {epoch+1}: {overall_acc:.1f}%")
-
-            # Early stopping if accuracy > 90%
-            if overall_acc > 90.0:
-                print(f"✓ Early stopping: accuracy {overall_acc:.1f}% exceeds 90% threshold")
-                break
+        # Removed periodic accuracy testing during training - only test at the very end
 
         prev_loss = avg_loss
 
@@ -602,8 +585,8 @@ def collect_replay_samples(dataset_name, current_surah_part, datasets_dir, curre
     if not previous_surah_parts:
         return replay_segment_files, replay_transcriptions
 
-    # Calculate total replay buffer size as min(max(10% of current set, 30), total previous samples)
-    total_replay_size = min(max(int(current_set_size * 0.1), 30), total_previous_samples)
+    # Calculate total replay buffer size as min(max(10% of current set, 50), total previous samples)
+    total_replay_size = min(max(int(current_set_size * 0.1), 50), total_previous_samples)
 
     # Distribute replay budget evenly across previous surahs
     samples_per_surah = max(1, total_replay_size // len(previous_surah_parts))
@@ -679,8 +662,8 @@ def collect_full_length_replay_samples(dataset_name, current_surah_part, dataset
     if not relevant_surah_parts:
         return full_replay_segment_files, full_replay_transcriptions
 
-    # Calculate full-length replay buffer size as min(max(10% of current set, 30), total available samples)
-    total_full_replay_size = min(max(int(current_set_size * 0.1), 30), total_available_samples)
+    # Calculate full-length replay buffer size as min(max(10% of current set, 50), total available samples)
+    total_full_replay_size = min(max(int(current_set_size * 0.1), 50), total_available_samples)
 
     # Distribute replay budget evenly
     samples_per_surah = max(1, total_full_replay_size // len(relevant_surah_parts))

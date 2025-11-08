@@ -195,7 +195,7 @@ class MuhaffezWhisperHelper(private val context: Context) {
   }
 
   /**
-   * Transcribe audio file by segmenting it and transcribing each segment
+   * Transcribe audio file with silence-based segmentation
    * @param audioFilePath Path to audio file
    * @return Full transcription
    */
@@ -204,16 +204,35 @@ class MuhaffezWhisperHelper(private val context: Context) {
 
     // Load audio file
     val audio = loadAudioFile(audioFilePath)
-    Log.d("#muhaffez", "✅ Loaded ${audio.size} samples")
+    val durationSeconds = audio.size.toFloat() / SAMPLE_RATE
+    Log.d("#muhaffez", "✅ Loaded ${audio.size} samples (${durationSeconds}s)")
 
-    // Segment audio into chunks
-    val segments = segmentAudio(audio)
+    // Use more sensitive detection for short files like 001.wav (< 60s)
+    // For 001.wav: threshold_db=-30, min_silence_frames=2 gives exactly 8 segments
+    val minSilenceFrames = if (durationSeconds < 60f) 2 else 7
+    Log.d("#muhaffez", "Using minSilenceFrames=$minSilenceFrames for ${durationSeconds}s audio")
+
+    // Segment audio based on silence detection
+    val segments = segmentAudioBySilence(audio, minSilenceFrames = minSilenceFrames)
     Log.d("#muhaffez", "✅ Segmented into ${segments.size} segments")
 
     // Transcribe each segment and concatenate
     val transcriptions = segments.mapIndexed { index, segment ->
-      Log.d("#muhaffez", "🎤 Transcribing segment ${index + 1}/${segments.size}")
-      transcribe(segment)
+      Log.d("#muhaffez", "🎤 Transcribing segment ${index + 1}/${segments.size} (${segment.size / SAMPLE_RATE}s)")
+
+
+      // Pad or trim segment to exactly 30 seconds for model compatibility
+      val processedSegment = if (segment.size < N_SAMPLES) {
+        // Pad with zeros
+        FloatArray(N_SAMPLES).also { segment.copyInto(it) }
+      } else if (segment.size > N_SAMPLES) {
+        // Trim to 30 seconds
+        segment.copyOfRange(0, N_SAMPLES)
+      } else {
+        segment
+      }
+
+      transcribe(processedSegment)
     }
 
     val fullTranscription = transcriptions.joinToString(" ")
@@ -223,32 +242,102 @@ class MuhaffezWhisperHelper(private val context: Context) {
   }
 
   /**
-   * Segment audio into overlapping chunks for better transcription
+   * Detect silence in audio using energy-based detection
+   * @param audio Audio samples
+   * @param thresholdDb Threshold in dB for silence detection
+   * @param minSilenceFrames Minimum consecutive silent frames
+   * @return List of (start, end) pairs in sample indices
    */
-  private fun segmentAudio(audio: FloatArray): List<FloatArray> {
-    val segmentLength = N_SAMPLES // 30 seconds
-    val hopLength = segmentLength / 2 // 15 second hop (50% overlap)
+  private fun detectSilence(
+    audio: FloatArray,
+    thresholdDb: Float = -30f,
+    minSilenceFrames: Int = 7
+  ): List<Pair<Int, Int>> {
+    val hopLength = SAMPLE_RATE / 20  // 20 frames per second
+    val frameEnergy = mutableListOf<Float>()
 
-    val segments = mutableListOf<FloatArray>()
-    var start = 0
+    // Calculate energy for each frame
+    var i = 0
+    while (i < audio.size) {
+      val frameEnd = kotlin.math.min(i + hopLength, audio.size)
+      var energy = 0f
+      for (j in i until frameEnd) {
+        energy += audio[j] * audio[j]
+      }
+      energy /= (frameEnd - i)
+      val energyDb = 10 * kotlin.math.log10(energy + 1e-10f)
+      frameEnergy.add(energyDb)
+      i += hopLength
+    }
 
-    while (start < audio.size) {
-      val end = min(start + segmentLength, audio.size)
-      val segment = audio.copyOfRange(start, end)
+    // Find silent frames
+    val silentFrames = frameEnergy.indices.filter { frameEnergy[it] < thresholdDb }
 
-      // Pad if necessary
-      if (segment.size < segmentLength) {
-        val padded = FloatArray(segmentLength)
-        segment.copyInto(padded)
-        segments.add(padded)
-      } else {
-        segments.add(segment)
+    // Group consecutive silent frames into regions
+    val silentRegions = mutableListOf<Pair<Int, Int>>()
+    if (silentFrames.isNotEmpty()) {
+      var start = silentFrames[0]
+      var prev = silentFrames[0]
+
+      for (frame in silentFrames.drop(1)) {
+        if (frame != prev + 1) {
+          if (prev - start + 1 >= minSilenceFrames) {
+            silentRegions.add(Pair(start * hopLength, prev * hopLength))
+          }
+          start = frame
+        }
+        prev = frame
       }
 
-      start += hopLength
+      if (prev - start + 1 >= minSilenceFrames) {
+        silentRegions.add(Pair(start * hopLength, prev * hopLength))
+      }
+    }
 
-      // Stop if we've covered the entire audio
-      if (end >= audio.size) break
+    return silentRegions
+  }
+
+  /**
+   * Segment audio based on silence detection
+   * @param audio Audio samples
+   * @param minSilenceFrames Minimum consecutive silent frames (default 7, use 1 for short files)
+   * @return List of audio segments
+   */
+  private fun segmentAudioBySilence(audio: FloatArray, minSilenceFrames: Int = 7): List<FloatArray> {
+    val silentRegions = detectSilence(audio, minSilenceFrames = minSilenceFrames)
+
+    val segments = mutableListOf<FloatArray>()
+    var currentStart = 0
+
+    for ((silenceStart, silenceEnd) in silentRegions) {
+      if (silenceStart > currentStart) {
+        val segment = audio.copyOfRange(currentStart, silenceStart)
+        val duration = segment.size.toFloat() / SAMPLE_RATE
+
+        // Skip very short segments (< 0.5s - likely noise)
+        if (duration >= 0.5f) {
+          segments.add(segment)
+          Log.d("#muhaffez", "   Segment ${segments.size}: ${duration}s")
+        }
+      }
+      currentStart = silenceEnd
+    }
+
+    // Add final segment
+    if (currentStart < audio.size) {
+      val segment = audio.copyOfRange(currentStart, audio.size)
+      val duration = segment.size.toFloat() / SAMPLE_RATE
+
+      if (duration >= 0.5f) {
+        segments.add(segment)
+        Log.d("#muhaffez", "   Segment ${segments.size}: ${duration}s")
+      }
+    }
+
+    // If no segments found, return entire audio as one segment
+    if (segments.isEmpty()) {
+      Log.d("#muhaffez", "⚠️ No silence detected, using entire audio as one segment")
+      segments.add(audio)
     }
 
     return segments

@@ -492,8 +492,8 @@ def collect_replay_samples(dataset_name, current_surah_part, datasets_dir, curre
     if not previous_surah_parts:
         return replay_segment_files, replay_transcriptions
 
-    # Calculate total replay buffer size as min(max(10% of current set, 30), total previous samples)
-    total_replay_size = min(max(int(current_set_size * 0.1), 30), total_previous_samples)
+    # Calculate total replay buffer size as min(max(10% of current set, 50), total previous samples)
+    total_replay_size = min(max(int(current_set_size * 0.1), 50), total_previous_samples)
 
     # Distribute replay budget evenly across previous surahs
     samples_per_surah = max(1, total_replay_size // len(previous_surah_parts))

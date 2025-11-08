@@ -161,11 +161,12 @@ def test_stage(model, segment_files, expected_texts, id_to_token, device,
         normalized_expected = normalize_text(stage_expected)
         match = "✓" if normalized_generated == normalized_expected else "✗"
 
-        if i <= 3 or match == "✗":  # Show first 3 and failures
-            print(f"[{i}] {segment_name}")
-            print(f"  Expected: {stage_expected}")
-            print(f"  Generated: {generated_text}")
-            print(f"  {match}\n")
+        # Suppress detailed segment output (only show summary)
+        # if i <= 3 or match == "✗":  # Show first 3 and failures
+        #     print(f"[{i}] {segment_name}")
+        #     print(f"  Expected: {stage_expected}")
+        #     print(f"  Generated: {generated_text}")
+        #     print(f"  {match}\n")
 
         # Token-level accuracy
         stage_expected_words = stage_expected.split()
