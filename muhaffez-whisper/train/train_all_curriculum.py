@@ -34,6 +34,29 @@ else:
 CHUNK_DURATION = 1.3
 WORDS_PER_CHUNK = 1
 
+def load_mel_features(audio_path):
+    """Load precomputed mel features from .pt file"""
+    mel_path = audio_path.replace('.wav', '.pt')
+    if os.path.exists(mel_path):
+        return torch.load(mel_path, map_location='cpu', weights_only=True)
+    else:
+        # Fallback: compute on the fly if precomputed file doesn't exist
+        print(f"⚠️  Warning: Precomputed mel features not found for {audio_path}, computing on the fly...")
+        return extract_mel_features(audio_path)[0]
+
+def load_mel_features_trimmed(audio_path, target_seconds):
+    """Load precomputed mel features and trim to target_seconds"""
+    mel_features = load_mel_features(audio_path)
+
+    # Trim to target seconds if needed
+    # Mel features are at 100 fps (frames per second)
+    if target_seconds is not None:
+        target_frames = int(target_seconds * 100)
+        if mel_features.shape[0] > target_frames:
+            mel_features = mel_features[:target_frames, :]
+
+    return mel_features
+
 def extract_mel_features(audio_path, n_mels=80, target_seconds=None):
     """Extract mel features from audio"""
     waveform, sample_rate = torchaudio.load(audio_path)
@@ -97,8 +120,8 @@ def calculate_accuracy(model, segment_files, transcriptions, vocab, target_secon
             if not expected_words:
                 continue
 
-            # Extract features
-            mel_features, _ = extract_mel_features(seg_file, target_seconds=target_seconds)
+            # Load precomputed mel features
+            mel_features = load_mel_features_trimmed(seg_file, target_seconds)
             audio_batch = mel_features.transpose(0, 1).unsqueeze(0).to(device)
 
             # Generate
@@ -163,8 +186,8 @@ def train_curriculum_stage(model, segment_files, transcriptions, vocab, stage_nu
             seg_file = all_files[i]
             text = all_texts[i]
 
-            # Extract features
-            mel_features, _ = extract_mel_features(seg_file, target_seconds=target_seconds)
+            # Load precomputed mel features
+            mel_features = load_mel_features_trimmed(seg_file, target_seconds)
             audio_batch = mel_features.transpose(0, 1).unsqueeze(0).to(device)
 
             # Get target text for this stage

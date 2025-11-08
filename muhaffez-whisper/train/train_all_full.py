@@ -37,6 +37,16 @@ else:
 # ==============================================================
 # Audio feature extraction
 # ==============================================================
+def load_mel_features(audio_path):
+    """Load precomputed mel features from .pt file"""
+    mel_path = audio_path.replace('.wav', '.pt')
+    if os.path.exists(mel_path):
+        return torch.load(mel_path, map_location='cpu', weights_only=True)
+    else:
+        # Fallback: compute on the fly if precomputed file doesn't exist
+        print(f"⚠️  Warning: Precomputed mel features not found for {audio_path}, computing on the fly...")
+        return extract_mel_features(audio_path)[0]
+
 def extract_mel_features(audio_path, n_mels=80, target_seconds=None):
     """Extract mel features from audio, optionally trimming to target_seconds"""
     waveform, sample_rate = torchaudio.load(audio_path)
@@ -109,8 +119,8 @@ def calculate_accuracy(model, segment_files, transcriptions, vocab, device):
 
     with torch.no_grad():
         for seg_file, expected_text in zip(segment_files, transcriptions):
-            # Extract features
-            mel_features, sample_rate = extract_mel_features(seg_file)
+            # Load precomputed mel features
+            mel_features = load_mel_features(seg_file)
             audio_batch = mel_features.transpose(0, 1).unsqueeze(0).to(device)
 
             # Get audio duration
@@ -259,8 +269,8 @@ def main():
                 seg_file = all_segment_files[i]
                 text = all_transcriptions[i]
 
-                # Extract features
-                mel_features, sample_rate = extract_mel_features(seg_file)
+                # Load precomputed mel features
+                mel_features = load_mel_features(seg_file)
                 audio_batch = mel_features.transpose(0, 1).unsqueeze(0).to(device)
 
                 # Tokenize
