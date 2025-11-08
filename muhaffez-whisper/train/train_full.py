@@ -317,7 +317,7 @@ def train_model(model, segment_files, transcriptions, vocab, surah_part,
             # Early stopping if accuracy > 90%
             if overall_acc > 90.0:
                 # Print current epoch info with accuracy before stopping
-                print(f"Epoch {epoch+1}/{num_epochs} | Loss={avg_loss:.4f}{accuracy_str} | Time={time_str}")
+                print(f"Epoch {epoch+1} | Loss={avg_loss:.4f}{accuracy_str} | Time={time_str}")
                 print(f"✓ Early stopping: accuracy {overall_acc:.1f}% at epoch {best_epoch}", flush=True)
                 # Keep best model loaded, don't restore
                 break
@@ -327,7 +327,7 @@ def train_model(model, segment_files, transcriptions, vocab, surah_part,
 
         # Print epoch 1, every 10 epochs, or on last epoch
         if epoch == 0 or (epoch + 1) % 10 == 0 or epoch == num_epochs - 1:
-            print(f"Epoch {epoch+1}/{num_epochs} | Loss={avg_loss:.4f}{accuracy_str} | Time={time_str}")
+            print(f"Epoch {epoch+1} | Loss={avg_loss:.4f}{accuracy_str} | Time={time_str}")
             # Reset checkpoint time after printing
             checkpoint_time = time.time()
 
