@@ -8,6 +8,10 @@ Examples:
 """
 import json
 import torch
+import warnings
+# Suppress all torchaudio warnings
+warnings.filterwarnings("ignore", category=UserWarning, module="torchaudio")
+warnings.filterwarnings("ignore", message=".*torchaudio.*")
 import torchaudio
 import glob
 import os
@@ -67,17 +71,13 @@ def main():
     dataset_name = sys.argv[1]  # e.g., "Quran-A"
     surah_part = sys.argv[2]  # e.g., "001", "002-04"
 
-    # Device setup
+    # Device setup (silently)
     if torch.backends.mps.is_available():
         device = torch.device("mps")
-        print("🚀 Using Metal GPU (Apple Silicon)")
     elif torch.cuda.is_available():
         device = torch.device("cuda")
-        print("🚀 Using CUDA GPU")
     else:
         device = torch.device("cpu")
-        print("⚠️  Using CPU (slower)")
-    print(f"Device: {device}")
 
     # Set seed for reproducible results
     torch.manual_seed(42)
@@ -106,7 +106,6 @@ def main():
         id_to_token = {v: k for k, v in vocab.items()}
     else:
         id_to_token = {i: t for i, t in enumerate(vocab)}
-    print(f"Vocabulary size: {len(id_to_token)}")
 
     # Load reference text
     if not os.path.exists(text_path):
@@ -162,8 +161,6 @@ def main():
 
     for i, (segment_file, expected_text) in enumerate(zip(segment_files, expected_texts), 1):
         segment_name = os.path.basename(segment_file)
-        print(f"[{i}/{len(segment_files)}] {segment_name}")
-        print(f"Expected: {expected_text}")
 
         # Extract mel features
         mel_features = extract_mel_features(segment_file)
@@ -193,13 +190,17 @@ def main():
         generated_words = [id_to_token[idx] for idx in tokens if idx in id_to_token]
         generated_text = " ".join(generated_words)
 
-        print(f"Generated: {generated_text}")
-
         # Check match
         normalized_generated = normalize_text(generated_text)
         normalized_expected = normalize_text(expected_text)
         match = "✓" if normalized_generated == normalized_expected else "✗"
-        print(f"Match: {match}\n")
+
+        # Show only first 10 samples
+        if i <= 10:
+            print(f"[{i}/{len(segment_files)}] {segment_name}")
+            print(f"Expected: {expected_text}")
+            print(f"Generated: {generated_text}")
+            print(f"Match: {match}\n")
 
         # Token-level accuracy
         expected_words = expected_text.split()
@@ -209,12 +210,9 @@ def main():
 
     # Summary
     accuracy = (total_correct / total_tokens * 100) if total_tokens > 0 else 0.0
-    print(f"{'='*60}")
     print(f"TEST RESULTS: {surah_part}")
-    print(f"{'='*60}")
     print(f"Token accuracy: {total_correct}/{total_tokens} ({accuracy:.1f}%)")
     print(f"Segments tested: {len(segment_files)}")
-    print(f"{'='*60}")
 
 
 if __name__ == "__main__":

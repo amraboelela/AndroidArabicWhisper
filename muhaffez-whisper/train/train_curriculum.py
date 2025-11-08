@@ -602,8 +602,8 @@ def collect_replay_samples(dataset_name, current_surah_part, datasets_dir, curre
     if not previous_surah_parts:
         return replay_segment_files, replay_transcriptions
 
-    # Calculate total replay buffer size as min(max(10% of current set, 20), total previous samples)
-    total_replay_size = min(max(int(current_set_size * 0.1), 20), total_previous_samples)
+    # Calculate total replay buffer size as min(max(10% of current set, 30), total previous samples)
+    total_replay_size = min(max(int(current_set_size * 0.1), 30), total_previous_samples)
 
     # Distribute replay budget evenly across previous surahs
     samples_per_surah = max(1, total_replay_size // len(previous_surah_parts))
@@ -679,8 +679,8 @@ def collect_full_length_replay_samples(dataset_name, current_surah_part, dataset
     if not relevant_surah_parts:
         return full_replay_segment_files, full_replay_transcriptions
 
-    # Calculate full-length replay buffer size as min(max(10% of current set, 20), total available samples)
-    total_full_replay_size = min(max(int(current_set_size * 0.1), 20), total_available_samples)
+    # Calculate full-length replay buffer size as min(max(10% of current set, 30), total available samples)
+    total_full_replay_size = min(max(int(current_set_size * 0.1), 30), total_available_samples)
 
     # Distribute replay budget evenly
     samples_per_surah = max(1, total_full_replay_size // len(relevant_surah_parts))
@@ -836,7 +836,7 @@ def main():
 
         # Print stage header
         print(f"\n{'='*60}")
-        print(f"CURRICULUM STAGE {chunk_count}/{global_max_chunks}")
+        print(f"Part: {surah_part}, Curriculum Stage: {chunk_count}/{global_max_chunks}")
         print(f"Training all segments: {target_seconds:.1f}s → {target_words} word(s)")
         print(f"{'='*60}\n")
 

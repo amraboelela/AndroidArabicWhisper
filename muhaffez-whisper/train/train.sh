@@ -218,6 +218,44 @@ for SURAH_PART in "${SURAH_PARTS[@]}"; do
     echo "   Total training time: ${SURAH_TIME_STR}" >> "$LOG_FILE"
 done
 
+# Run fresh accuracy tests on all trained parts
+echo ""
+echo "════════════════════════════════════════════════════════════"
+echo "RUNNING FINAL ACCURACY TESTS ON ALL PARTS"
+echo "════════════════════════════════════════════════════════════"
+echo ""
+
+# Clear the accuracy results array to store fresh test results
+SUITE_ACCURACIES=()
+
+# Test each trained surah part
+for SURAH_PART in "${SURAH_PARTS[@]}"; do
+    # Extract surah number
+    SURAH_NUM=$(echo "$SURAH_PART" | cut -d'-' -f1)
+    LOG_FILE="log_${DATASET}_${SURAH_NUM}.txt"
+
+    echo "Testing $DATASET $SURAH_PART..."
+
+    # Run test_full.py
+    if python3 -u ../test/test_full.py "$DATASET" "$SURAH_PART" >> "$LOG_FILE" 2>&1; then
+        accuracy=$(grep "Token accuracy:" "$LOG_FILE" | tail -1 | sed 's/.*(\([0-9.]*\)%).*/\1/')
+        SUITE_ACCURACIES+=("$DATASET|$SURAH_PART|Full|${accuracy}%")
+        echo "  ✓ Full - Accuracy: ${accuracy}%"
+    else
+        echo "  ✗ Full - FAILED"
+    fi
+
+    # Run test_curriculum.py
+    if python3 -u ../test/test_curriculum.py "$DATASET" "$SURAH_PART" >> "$LOG_FILE" 2>&1; then
+        accuracy=$(grep "Token accuracy:" "$LOG_FILE" | tail -1 | sed 's/.*(\([0-9.]*\)%).*/\1/')
+        SUITE_ACCURACIES+=("$DATASET|$SURAH_PART|Curriculum|${accuracy}%")
+        echo "  ✓ Curriculum - Accuracy: ${accuracy}%"
+    else
+        echo "  ✗ Curriculum - FAILED"
+    fi
+    echo ""
+done
+
 # Summary
 END_TIME=$(date +%s)
 TOTAL_ELAPSED=$((END_TIME - START_TIME))
