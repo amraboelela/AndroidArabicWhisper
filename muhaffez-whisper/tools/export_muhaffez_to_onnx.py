@@ -120,7 +120,8 @@ def export_muhaffez_to_onnx():
             self.model = model
 
         def forward(self, input_ids, encoder_hidden_states):
-            return self.model.decode(input_ids, encoder_hidden_states)
+            logits, _ = self.model.decode(input_ids, encoder_hidden_states, use_cache=False)
+            return logits
 
     decoder_wrapper = DecoderWrapper(model)
 

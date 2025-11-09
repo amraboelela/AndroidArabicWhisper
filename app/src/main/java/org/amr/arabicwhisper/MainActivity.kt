@@ -41,10 +41,7 @@ import java.io.File
 import android.content.res.AssetManager
 
 class MainActivity : ComponentActivity() {
-  private var whisperOnnxHelper: WhisperOnnxKotlinHelper? = null
   private var muhaffezHelper: MuhaffezWhisperHelper? = null
-  private var audioRecorder: AudioRecorder? = null
-  private var accumulatedTranscription = StringBuilder()
 
   private val requestPermissionLauncher = registerForActivityResult(
     ActivityResultContracts.RequestPermission()
@@ -61,10 +58,6 @@ class MainActivity : ComponentActivity() {
 
     // Check and request audio recording permission
     checkAudioPermission()
-
-    // Initialize Whisper ONNX model
-    Log.d("#transcribe", "Using ONNX implementation (pure Kotlin)")
-    whisperOnnxHelper = WhisperOnnxKotlinHelper(this)
 
     // Initialize Muhaffez Whisper model for word-level transcription
     Log.d("#transcribe", "Initializing Muhaffez Whisper Helper")
@@ -83,11 +76,8 @@ class MainActivity : ComponentActivity() {
           color = MaterialTheme.colorScheme.background
         ) {
           MainScreen(
-            whisperOnnxHelper = whisperOnnxHelper,
             muhaffezHelper = muhaffezHelper,
             audioFilePath = audioFilePath,
-            onStartRecording = { startRecording() },
-            onStopRecording = { stopRecording() },
             context = this
           )
         }
@@ -109,76 +99,20 @@ class MainActivity : ComponentActivity() {
     }
   }
 
-  private fun startRecording() {
-    if (ContextCompat.checkSelfPermission(
-        this,
-        Manifest.permission.RECORD_AUDIO
-      ) != PackageManager.PERMISSION_GRANTED
-    ) {
-      requestPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-      return
-    }
-
-    // Clear state before starting new recording
-    accumulatedTranscription.clear()
-    Log.d("#transcribe", "Starting new recording, state cleared")
-
-    audioRecorder = AudioRecorder { audioData ->
-      // Call transcribeStream with ONNX helper
-      whisperOnnxHelper?.transcribeStream(audioData) { result ->
-        runOnUiThread {
-          if (result.isNotEmpty()) {
-            Log.d("#transcribe", "ONNX: New chunk transcribed: $result")
-            if (accumulatedTranscription.isNotEmpty()) {
-              accumulatedTranscription.append(" ")
-            }
-            accumulatedTranscription.append(result)
-            whisperOnnxHelper?.onTranscriptionUpdate?.invoke(accumulatedTranscription.toString())
-          }
-        }
-      }
-    }.apply {
-      startRecording()
-    }
-    Log.d("#transcribe", "Recording started")
-  }
-
-  private fun stopRecording() {
-    audioRecorder?.stopRecording()
-    audioRecorder = null
-    Log.d("#transcribe", "Recording stopped")
-  }
-
   override fun onDestroy() {
     super.onDestroy()
-    audioRecorder?.stopRecording()
     muhaffezHelper?.cleanup()
   }
 }
 
 @Composable
 fun MainScreen(
-  whisperOnnxHelper: WhisperOnnxKotlinHelper?,
   muhaffezHelper: MuhaffezWhisperHelper?,
   audioFilePath: String,
-  onStartRecording: () -> Unit,
-  onStopRecording: () -> Unit,
   context: android.content.Context
 ) {
-  var isRecording by remember { mutableStateOf(false) }
   var transcription by remember { mutableStateOf("") }
   var isProcessing by remember { mutableStateOf(false) }
-
-  // Update the transcription state when helper provides new results
-  whisperOnnxHelper?.onTranscriptionUpdate = {
-    Log.d("#transcribe", "UI update with transcription: $it")
-    transcription = it
-  }
-
-  // Update processing state
-  whisperOnnxHelper?.onProcessingStateChange = {
-    isProcessing = it
-  }
 
   Column(
     modifier = Modifier
@@ -188,98 +122,25 @@ fun MainScreen(
   ) {
     Spacer(modifier = Modifier.height(24.dp))
     Text(
-      text = "Arabic Whisper",
+      text = "Muhaffez Arabic Whisper",
       style = MaterialTheme.typography.headlineMedium,
       modifier = Modifier.padding(bottom = 24.dp)
     )
 
-    // Microphone button
-    Button(
-      onClick = {
-        if (isRecording) {
-          isRecording = false
-          onStopRecording()
-        } else {
-          isRecording = true
-          transcription = ""
-          onStartRecording()
-        }
+    // Status text
+    Text(
+      text = when {
+        isProcessing -> "🔄 Processing..."
+        transcription.isEmpty() -> "Tap button to test transcription"
+        else -> transcription
       },
-      modifier = Modifier
-        .size(120.dp)
-        .padding(16.dp),
-      colors = ButtonDefaults.buttonColors(
-        containerColor = if (isRecording) Color.Red else MaterialTheme.colorScheme.primary
-      )
-    ) {
-      Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-      ) {
-        Icon(
-          imageVector = if (isRecording) Icons.Default.Stop else Icons.Default.Mic,
-          contentDescription = if (isRecording) "Stop Recording" else "Start Recording",
-          modifier = Modifier.size(48.dp)
-        )
-        Spacer(modifier = Modifier.height(4.dp))
-        Text(
-          text = if (isRecording) "Stop" else "Record",
-          style = MaterialTheme.typography.labelSmall
-        )
-      }
-    }
-
-    // Status text - show transcription with optional processing indicator below
-    Column(
-      modifier = Modifier.padding(vertical = 16.dp),
-      horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-      // Show transcription text if available
-      if (transcription.isNotEmpty()) {
-        Text(
-          text = transcription,
-          style = MaterialTheme.typography.bodyMedium,
-          color = MaterialTheme.colorScheme.onBackground
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-      }
-
-      // Show status indicator
-      Text(
-        text = when {
-          isProcessing -> "🔄 Processing..."
-          isRecording && transcription.isEmpty() -> "🎤 Recording..."
-          transcription.isEmpty() -> "Tap microphone to start"
-          else -> "" // Hide status when we have transcription and not processing
-        },
-        style = MaterialTheme.typography.bodySmall,
-        color = when {
-          isProcessing -> Color(0xFFFF9800) // Orange
-          isRecording -> Color.Red
-          else -> MaterialTheme.colorScheme.onBackground
-        }
-      )
-    }
-
-    // Test with existing audio file (BPE tokenizer model)
-    Button(
-      onClick = {
-        Thread {
-          try {
-            transcription = "🔄 Processing..."
-            val result = whisperOnnxHelper?.transcribe(audioFilePath) ?: "Error: No helper available"
-            transcription = result
-            Log.d("#transcribe", "Test transcription (BPE): $result")
-          } catch (e: Exception) {
-            transcription = "Error: ${e.message}"
-            Log.e("#transcribe", "Test transcription error", e)
-          }
-        }.start()
+      style = MaterialTheme.typography.bodyMedium,
+      color = when {
+        isProcessing -> Color(0xFFFF9800) // Orange
+        else -> MaterialTheme.colorScheme.onBackground
       },
-      modifier = Modifier.fillMaxWidth()
-    ) {
-      Text("Test with 001.wav (BPE Model)")
-    }
+      modifier = Modifier.padding(vertical = 16.dp)
+    )
 
     Spacer(modifier = Modifier.height(8.dp))
 
@@ -288,19 +149,22 @@ fun MainScreen(
       onClick = {
         Thread {
           try {
-            transcription = "🔄 Processing Muhaffez model..."
+            isProcessing = true
+            transcription = "🔄 Processing..."
             val result = muhaffezHelper?.transcribeFile(audioFilePath) ?: "Error: No helper available"
             transcription = result
+            isProcessing = false
             Log.d("#transcribe", "Muhaffez transcription: $result")
           } catch (e: Exception) {
             transcription = "Error: ${e.message}"
+            isProcessing = false
             Log.e("#transcribe", "Muhaffez transcription error", e)
           }
         }.start()
       },
       modifier = Modifier.fillMaxWidth()
     ) {
-      Text("Test with 001.wav (Muhaffez Word Model)")
+      Text("Test with 001.wav")
     }
 
 
@@ -317,7 +181,7 @@ fun MainScreenPreview() {
 
 fun copyAudioFromAssets(assetManager: AssetManager, destDir: File) {
   try {
-    val audioFiles = listOf("001.wav", "002-01.wav", "test.wav")
+    val audioFiles = listOf("001.wav")
     for (fileName in audioFiles) {
       val outFile = File(destDir, fileName)
       if (!outFile.exists()) {
