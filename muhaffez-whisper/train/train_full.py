@@ -24,7 +24,7 @@ import os
 import random
 import time
 sys.path.append("..")
-from custom_scripts.encoder_decoder_transformer import EncoderDecoderTransformer
+from tools.encoder_decoder_transformer import EncoderDecoderTransformer
 
 # ==============================================================
 # Device setup

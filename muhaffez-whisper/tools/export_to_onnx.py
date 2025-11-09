@@ -8,7 +8,7 @@ import torch
 import json
 
 sys.path.append(".")
-from custom_scripts.encoder_decoder_transformer import EncoderDecoderTransformer
+from tools.encoder_decoder_transformer import EncoderDecoderTransformer
 
 def export_encoder(model, output_path):
     """Export encoder to ONNX"""
@@ -50,8 +50,8 @@ def export_encoder(model, output_path):
     print(f"✓ Encoder exported to {output_path}")
 
 def export_decoder(model, output_path):
-    """Export decoder to ONNX"""
-    print("Exporting decoder...")
+    """Export decoder to ONNX without KV-caching (simpler for initial version)"""
+    print("Exporting decoder (without KV-cache for simplicity)...")
 
     # Create wrapper that takes both inputs
     class DecoderWrapper(torch.nn.Module):
@@ -60,7 +60,8 @@ def export_decoder(model, output_path):
             self.model = original_model
 
         def forward(self, input_ids, encoder_hidden_states):
-            return self.model.decode(input_ids, encoder_hidden_states)
+            logits, _ = self.model.decode(input_ids, encoder_hidden_states, use_cache=False)
+            return logits
 
     decoder_wrapper = DecoderWrapper(model)
     decoder_wrapper.eval()
@@ -88,6 +89,7 @@ def export_decoder(model, output_path):
     )
 
     print(f"✓ Decoder exported to {output_path}")
+    print("  Note: KV-caching not included in ONNX export (use_cache=False)")
 
 def main():
     # Paths

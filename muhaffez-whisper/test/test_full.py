@@ -17,7 +17,7 @@ import glob
 import os
 import sys
 sys.path.append("..")
-from custom_scripts.encoder_decoder_transformer import EncoderDecoderTransformer
+from tools.encoder_decoder_transformer import EncoderDecoderTransformer
 
 
 def extract_mel_features(audio_path, n_mels=80):

@@ -43,7 +43,7 @@ muhaffez-whisper/
 │   ├── segment_audio.py
 │   ├── normalize_text.py
 │   └── transcribe_segments.py
-└── custom_scripts/    # Model implementations
+└── tools/    # Model implementations
     └── encoder_decoder_transformer.py
 ```
 

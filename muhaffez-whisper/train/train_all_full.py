@@ -22,7 +22,7 @@ import os
 import random
 import time
 sys.path.append("..")
-from custom_scripts.encoder_decoder_transformer import EncoderDecoderTransformer
+from tools.encoder_decoder_transformer import EncoderDecoderTransformer
 
 # ==============================================================
 # Device setup
@@ -39,7 +39,7 @@ else:
 # ==============================================================
 def load_mel_features(audio_path):
     """Load precomputed mel features from .pt file"""
-    mel_path = audio_path.replace('.wav', '.pt')
+    mel_path = audio_path.replace('/audio/', '/mels/').replace('.wav', '.pt')
     if os.path.exists(mel_path):
         return torch.load(mel_path, map_location='cpu', weights_only=True)
     else:

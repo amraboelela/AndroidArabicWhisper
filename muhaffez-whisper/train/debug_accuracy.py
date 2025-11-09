@@ -7,7 +7,7 @@ import json
 import glob
 import os
 from train_all_full import calculate_accuracy
-from custom_scripts.encoder_decoder_transformer import EncoderDecoderTransformer
+from tools.encoder_decoder_transformer import EncoderDecoderTransformer
 
 # Setup
 device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')

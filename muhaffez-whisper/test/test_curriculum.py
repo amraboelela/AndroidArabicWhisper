@@ -17,7 +17,7 @@ import glob
 import os
 import sys
 sys.path.append("..")
-from custom_scripts.encoder_decoder_transformer import EncoderDecoderTransformer
+from tools.encoder_decoder_transformer import EncoderDecoderTransformer
 
 # Curriculum settings
 CHUNK_DURATION = 1.3  # seconds per word

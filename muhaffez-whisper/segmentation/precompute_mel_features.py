@@ -81,7 +81,7 @@ def precompute_dataset(dataset_path):
 
     for audio_file in audio_files:
         # Create mel feature path (same directory, .pt extension)
-        mel_path = audio_file.replace('.wav', '.pt')
+        mel_path = audio_file.replace('/audio/', '/mels/').replace('.wav', '.pt')
 
         # Skip if already exists
         if os.path.exists(mel_path):
