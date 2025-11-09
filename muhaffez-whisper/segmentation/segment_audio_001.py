@@ -14,7 +14,7 @@ import os
 import sys
 
 
-def detect_silence(audio, sample_rate, threshold_db=-30, min_silence_frames=2):
+def detect_silence(audio, sample_rate, threshold_db=-30, min_silence_frames=1):
     """Detect silent regions in audio"""
     if audio.shape[0] > 1:
         audio = audio.mean(dim=0, keepdim=True)  # convert to mono
@@ -28,7 +28,10 @@ def detect_silence(audio, sample_rate, threshold_db=-30, min_silence_frames=2):
         energy_db = 10 * np.log10(energy + 1e-10)
         frame_energy.append(energy_db)
 
+    print(f"Total frames: {len(frame_energy)}")
+
     silent_frames = [i for i, e in enumerate(frame_energy) if e < threshold_db]
+    print(f"Silent frames: {len(silent_frames)}")
 
     silent_regions = []
     if silent_frames:
@@ -38,11 +41,14 @@ def detect_silence(audio, sample_rate, threshold_db=-30, min_silence_frames=2):
             if frame != prev + 1:
                 if prev - start + 1 >= min_silence_frames:
                     silent_regions.append((start, prev))
+                    print(f"  Silent region: frames {start}-{prev} ({prev - start + 1} frames)")
                 start = frame
             prev = frame
         if prev - start + 1 >= min_silence_frames:
             silent_regions.append((start, prev))
+            print(f"  Silent region: frames {start}-{prev} ({prev - start + 1} frames)")
 
+    print(f"Silent regions: {len(silent_regions)}")
     return silent_regions, hop_length
 
 
@@ -90,32 +96,56 @@ def segment_audio_simple(audio_path, output_dir):
 
 
 def main():
-    # Get dataset name and segment name from command line
-    if len(sys.argv) < 3:
-        print("Usage: python3 segment_audio.py <dataset_name> <segment_name>")
+    if len(sys.argv) < 2:
+        print("Usage: python3 segment_audio_001.py <audio_file_path> [output_dir]")
         print("Examples:")
-        print("  python3 segment_audio.py Quran-A 002-04")
-        print("  python3 segment_audio.py Quran-A 001")
+        print("  python3 segment_audio_001.py /path/to/001.wav")
+        print("  python3 segment_audio_001.py /path/to/001.wav /tmp/segments")
+        print()
+        print("Legacy usage (deprecated):")
+        print("  python3 segment_audio_001.py <dataset_name> <segment_name>")
         sys.exit(1)
 
-    dataset_name = sys.argv[1]
-    segment_name = sys.argv[2]
+    # Check if first arg is a file path or dataset name
+    if os.path.exists(sys.argv[1]):
+        # New mode: direct file path
+        audio_path = sys.argv[1]
 
-    # Extract prefix (e.g., "002-04" -> "002", "001" -> "001")
-    segment_prefix = segment_name.split('-')[0]
+        # Determine output directory
+        if len(sys.argv) >= 3:
+            output_dir = sys.argv[2]
+        else:
+            # Default: create output dir in segmentation folder
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            base_name = os.path.splitext(os.path.basename(audio_path))[0]
+            output_dir = os.path.join(script_dir, f"{base_name}_segments")
 
-    # Determine output directory based on prefix
-    output_dir = f"../{dataset_name}/audio/{segment_prefix}"
+        os.makedirs(output_dir, exist_ok=True)
+        segment_audio_simple(audio_path, output_dir)
+    else:
+        # Legacy mode: dataset name + segment name
+        if len(sys.argv) < 3:
+            print("❌ For legacy mode, provide both dataset_name and segment_name")
+            sys.exit(1)
 
-    # Audio path from ~/audio/{dataset_name}/
-    audio_path = os.path.expanduser(f"~/audio/{dataset_name}/{segment_name}.mp3")
+        dataset_name = sys.argv[1]
+        segment_name = sys.argv[2]
 
-    if not os.path.exists(audio_path):
-        print(f"❌ Audio file not found: {audio_path}")
-        sys.exit(1)
+        # Extract prefix (e.g., "002-04" -> "002", "001" -> "001")
+        segment_prefix = segment_name.split('-')[0]
 
-    os.makedirs(output_dir, exist_ok=True)
-    segment_audio_simple(audio_path, output_dir)
+        # Determine output directory based on prefix
+        output_dir = f"{dataset_name}/audio/{segment_prefix}"
+
+        # Audio path from ~/audio/{dataset_name}/
+        audio_path = os.path.expanduser(f"~/audio/{dataset_name}/{segment_name}.mp3")
+
+        if not os.path.exists(audio_path):
+            print(f"❌ Audio file not found: {audio_path}")
+            sys.exit(1)
+
+        os.makedirs(output_dir, exist_ok=True)
+        segment_audio_simple(audio_path, output_dir)
 
 
 if __name__ == "__main__":
