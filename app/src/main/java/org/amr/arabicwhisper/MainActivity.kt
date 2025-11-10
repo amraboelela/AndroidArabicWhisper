@@ -42,6 +42,7 @@ import android.content.res.AssetManager
 
 class MainActivity : ComponentActivity() {
   private var muhaffezHelper: MuhaffezWhisperHelper? = null
+  private var googleSpeechRecognizer: GoogleSpeechRecognizer? = null
 
   private val requestPermissionLauncher = registerForActivityResult(
     ActivityResultContracts.RequestPermission()
@@ -102,6 +103,7 @@ class MainActivity : ComponentActivity() {
   override fun onDestroy() {
     super.onDestroy()
     muhaffezHelper?.cleanup()
+    googleSpeechRecognizer?.destroy()
   }
 }
 
@@ -114,6 +116,7 @@ fun MainScreen(
   var transcription by remember { mutableStateOf("") }
   var isProcessing by remember { mutableStateOf(false) }
   var isRecording by remember { mutableStateOf(false) }
+  var useGoogleRecognition by remember { mutableStateOf(true) }
 
   // Create AudioRecorder with callback for each 1.3-second chunk
   val audioRecorder = remember {
@@ -144,6 +147,44 @@ fun MainScreen(
     }
   }
 
+  // Track base transcription (confirmed) and current partial
+  var baseTranscription by remember { mutableStateOf("") }
+  var currentPartial by remember { mutableStateOf("") }
+
+  // Create Google Speech Recognizer
+  val googleSpeechRecognizer = remember {
+    GoogleSpeechRecognizer(
+      context = context,
+      onResult = { result ->
+        // Append confirmed result to base transcription
+        baseTranscription = if (baseTranscription.isEmpty()) {
+          result
+        } else {
+          "$baseTranscription $result"
+        }
+        // Update displayed transcription
+        transcription = baseTranscription
+        currentPartial = ""
+        Log.d("#transcribe", "Google recognition result: $result")
+      },
+      onError = { error ->
+        transcription = "$transcription [Error: $error]"
+        Log.e("#transcribe", "Google recognition error: $error")
+        isRecording = false
+      },
+      onPartialResult = { partial ->
+        // Show partial results in real-time
+        currentPartial = partial
+        transcription = if (baseTranscription.isEmpty()) {
+          partial
+        } else {
+          "$baseTranscription $partial"
+        }
+        Log.d("#transcribe", "Google partial result: $partial")
+      }
+    )
+  }
+
   Column(
     modifier = Modifier
       .fillMaxSize()
@@ -161,9 +202,9 @@ fun MainScreen(
     Text(
       text = when {
         transcription.isNotEmpty() -> transcription
-        isRecording -> "🎙️ Recording... (speak now)"
+        isRecording -> if (useGoogleRecognition) "🎙️ Google Speech Recognition active..." else "🎙️ Recording... (speak now)"
         isProcessing -> "🔄 Processing..."
-        else -> "Tap button to test transcription or record audio"
+        else -> "Select recognition method and tap to record"
       },
       style = MaterialTheme.typography.bodyMedium,
       color = when {
@@ -176,20 +217,63 @@ fun MainScreen(
 
     Spacer(modifier = Modifier.height(8.dp))
 
+    // Toggle between Google and Whisper
+    Row(
+      modifier = Modifier.fillMaxWidth(),
+      horizontalArrangement = Arrangement.SpaceEvenly,
+      verticalAlignment = Alignment.CenterVertically
+    ) {
+      Button(
+        onClick = { useGoogleRecognition = false },
+        enabled = !isRecording && !isProcessing,
+        colors = ButtonDefaults.buttonColors(
+          containerColor = if (!useGoogleRecognition) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
+        ),
+        modifier = Modifier.weight(1f).padding(end = 4.dp)
+      ) {
+        Text(if (!useGoogleRecognition) "✓ Whisper" else "Whisper")
+      }
+
+      Button(
+        onClick = { useGoogleRecognition = true },
+        enabled = !isRecording && !isProcessing,
+        colors = ButtonDefaults.buttonColors(
+          containerColor = if (useGoogleRecognition) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
+        ),
+        modifier = Modifier.weight(1f).padding(start = 4.dp)
+      ) {
+        Text(if (useGoogleRecognition) "✓ Google" else "Google")
+      }
+    }
+
+    Spacer(modifier = Modifier.height(16.dp))
+
     // Record/Stop button
     Button(
       onClick = {
         if (isRecording) {
           // Stop recording
           isRecording = false
-          audioRecorder.stopRecording()
-          Log.d("#transcribe", "Recording stopped")
+          if (useGoogleRecognition) {
+            googleSpeechRecognizer.stopListening()
+            Log.d("#transcribe", "Google speech recognition stopped")
+          } else {
+            audioRecorder.stopRecording()
+            Log.d("#transcribe", "Whisper recording stopped")
+          }
         } else {
           // Start recording
           isRecording = true
           transcription = ""
-          audioRecorder.startRecording()
-          Log.d("#transcribe", "Recording started")
+          baseTranscription = ""
+          currentPartial = ""
+          if (useGoogleRecognition) {
+            googleSpeechRecognizer.startListening()
+            Log.d("#transcribe", "Google speech recognition started")
+          } else {
+            audioRecorder.startRecording()
+            Log.d("#transcribe", "Whisper recording started")
+          }
         }
       },
       modifier = Modifier.fillMaxWidth(),
@@ -207,7 +291,7 @@ fun MainScreen(
           modifier = Modifier.size(24.dp)
         )
         Spacer(modifier = Modifier.size(8.dp))
-        Text(if (isRecording) "Stop Recording" else "Record Audio")
+        Text(if (isRecording) "Stop Recording" else if (useGoogleRecognition) "Record with Google" else "Record with Whisper")
       }
     }
 
