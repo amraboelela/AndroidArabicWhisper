@@ -22,11 +22,13 @@ class AudioPreprocessor {
         /**
          * Load audio file from path
          * Properly parses WAV format including metadata chunks
+         * Supports both 16-bit PCM and 32-bit IEEE Float formats
          */
         fun loadAudioFile(filePath: String): FloatArray {
             val bytes = File(filePath).readBytes()
             val sampleRate = parseSampleRate(bytes)
             val numChannels = parseNumChannels(bytes)
+            val audioFormat = parseAudioFormat(bytes)
 
             // Find the "data" chunk to get actual audio data size
             var dataChunkOffset = 44  // Default assumption
@@ -49,6 +51,30 @@ class AudioPreprocessor {
                 offset += 8 + chunkSize
             }
 
+            val audio = when (audioFormat) {
+                1 -> loadPCM16(bytes, dataChunkOffset, dataChunkSize, numChannels)
+                3 -> loadIEEEFloat32(bytes, dataChunkOffset, dataChunkSize, numChannels)
+                else -> {
+                    Log.e("AudioPreprocessor", "Unsupported audio format: $audioFormat (only PCM=1 and IEEE Float=3 are supported)")
+                    FloatArray(0)
+                }
+            }
+
+            return if (sampleRate != SAMPLE_RATE) resampleAudio(audio, sampleRate, SAMPLE_RATE) else audio
+        }
+
+        /**
+         * Parse audio format from WAV header
+         * 1 = PCM, 3 = IEEE Float
+         */
+        private fun parseAudioFormat(bytes: ByteArray): Int =
+            ((bytes[21].toInt() and 0xFF) shl 8) or
+                    (bytes[20].toInt() and 0xFF)
+
+        /**
+         * Load 16-bit PCM audio data
+         */
+        private fun loadPCM16(bytes: ByteArray, dataChunkOffset: Int, dataChunkSize: Int, numChannels: Int): FloatArray {
             val audioSamples = (dataChunkSize / 2) / max(1, numChannels)
             val audio = FloatArray(audioSamples)
 
@@ -71,7 +97,43 @@ class AudioPreprocessor {
                     audio[i] = sum / numChannels
                 }
             }
-            return if (sampleRate != SAMPLE_RATE) resampleAudio(audio, sampleRate, SAMPLE_RATE) else audio
+
+            Log.d("AudioPreprocessor", "Loaded 16-bit PCM: $audioSamples samples, $numChannels channel(s)")
+            return audio
+        }
+
+        /**
+         * Load 32-bit IEEE Float audio data
+         */
+        private fun loadIEEEFloat32(bytes: ByteArray, dataChunkOffset: Int, dataChunkSize: Int, numChannels: Int): FloatArray {
+            val audioSamples = (dataChunkSize / 4) / max(1, numChannels)
+            val audio = FloatArray(audioSamples)
+
+            for (i in 0 until audioSamples) {
+                val byteIndex = dataChunkOffset + i * 4 * numChannels
+                if (numChannels == 1) {
+                    // Read 32-bit float (little-endian)
+                    val bits = ((bytes[byteIndex + 3].toInt() and 0xFF) shl 24) or
+                              ((bytes[byteIndex + 2].toInt() and 0xFF) shl 16) or
+                              ((bytes[byteIndex + 1].toInt() and 0xFF) shl 8) or
+                              (bytes[byteIndex].toInt() and 0xFF)
+                    audio[i] = Float.fromBits(bits)
+                } else {
+                    var sum = 0f
+                    for (ch in 0 until numChannels) {
+                        val offset = byteIndex + ch * 4
+                        val bits = ((bytes[offset + 3].toInt() and 0xFF) shl 24) or
+                                  ((bytes[offset + 2].toInt() and 0xFF) shl 16) or
+                                  ((bytes[offset + 1].toInt() and 0xFF) shl 8) or
+                                  (bytes[offset].toInt() and 0xFF)
+                        sum += Float.fromBits(bits)
+                    }
+                    audio[i] = sum / numChannels
+                }
+            }
+
+            Log.d("AudioPreprocessor", "Loaded 32-bit IEEE Float: $audioSamples samples, $numChannels channel(s)")
+            return audio
         }
 
         private fun parseSampleRate(bytes: ByteArray): Int =
@@ -108,6 +170,66 @@ class AudioPreprocessor {
             val WHISPER_MEL_MEAN = -4.2677393f
             val WHISPER_MEL_STD = 4.5689974f
             return Array(logMelSpec.size) { i -> FloatArray(logMelSpec[i].size) { j -> (logMelSpec[i][j] - WHISPER_MEL_MEAN) / WHISPER_MEL_STD } }
+        }
+
+        /**
+         * Segment audio using energy-based silence detection
+         * Matches Python implementation in segment_audio_001.py
+         */
+        fun segmentAudioEnergyBased(audio: FloatArray, thresholdDb: Float = -30f, minSilenceFrames: Int = 11): List<FloatArray> {
+            val hopLength = SAMPLE_RATE / 20  // 20 frames per second (50ms per frame)
+
+            // Calculate energy for each frame
+            val frameEnergy = mutableListOf<Float>()
+            var i = 0
+            while (i < audio.size) {
+                val end = min(i + hopLength, audio.size)
+                val frame = audio.copyOfRange(i, end)
+                val energy = frame.map { it * it }.average().toFloat()
+                val energyDb = 10 * log10(max(energy, 1e-10f))
+                frameEnergy.add(energyDb)
+                i += hopLength
+            }
+
+            // Find silent frames
+            val silentFrames = frameEnergy.indices.filter { frameEnergy[it] < thresholdDb }
+
+            // Group consecutive silent frames into regions
+            val silentRegions = mutableListOf<Pair<Int, Int>>()
+            if (silentFrames.isNotEmpty()) {
+                var start = silentFrames[0]
+                var prev = silentFrames[0]
+                for (frame in silentFrames.drop(1)) {
+                    if (frame != prev + 1) {
+                        if (prev - start + 1 >= minSilenceFrames) silentRegions.add(Pair(start, prev))
+                        start = frame
+                    }
+                    prev = frame
+                }
+                if (prev - start + 1 >= minSilenceFrames) silentRegions.add(Pair(start, prev))
+            }
+
+            // Convert frame indices to sample indices
+            val silentSamples = silentRegions.map { (s, e) -> Pair(s * hopLength, e * hopLength) }
+
+            // Create segments between silent regions
+            val allSegments = mutableListOf<Pair<Int, Int>>()
+            var currentStart = 0
+            for ((silenceStart, silenceEnd) in silentSamples) {
+                if (silenceStart > currentStart) {
+                    allSegments.add(Pair(currentStart, min(silenceStart, audio.size)))
+                }
+                currentStart = min(silenceEnd, audio.size)
+            }
+            if (currentStart < audio.size) {
+                allSegments.add(Pair(currentStart, audio.size))
+            }
+
+            // Filter segments >= 0.5s (matches Python)
+            val segments = allSegments.filter { (start, end) -> (end - start) >= SAMPLE_RATE / 2 }
+                .map { (start, end) -> audio.copyOfRange(start, end) }
+
+            return segments
         }
 
         private fun computeSTFT(audio: FloatArray, nFFT: Int, hopLength: Int): Array<FloatArray> {

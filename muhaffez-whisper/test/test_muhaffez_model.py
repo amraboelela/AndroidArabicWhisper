@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-Test script for Muhaffez Whisper ONNX model with 001.wav audio file (offline mode)
+Test script for Muhaffez Whisper ONNX model with audio file (offline mode)
+Usage: python3 test_muhaffez_model.py [audio_file_path]
+       python3 test_muhaffez_model.py /path/to/segment.wav
 """
 
 import os
@@ -13,7 +15,7 @@ import onnxruntime as ort
 
 # Paths
 MODEL_DIR = "/Users/amraboelela/develop/android/AndroidArabicWhisper/app/src/main/assets/muhaffez_whisper"
-AUDIO_PATH = "/Users/amraboelela/develop/android/AndroidArabicWhisper/app/src/main/assets/001.wav"
+DEFAULT_AUDIO_PATH = "/Users/amraboelela/develop/android/AndroidArabicWhisper/app/src/main/assets/001.wav"
 ENCODER_PATH = os.path.join(MODEL_DIR, "encoder_model.onnx")
 DECODER_PATH = os.path.join(MODEL_DIR, "decoder_model.onnx")
 VOCAB_PATH = os.path.join(MODEL_DIR, "vocabulary.json")
@@ -126,17 +128,19 @@ def decode_tokens(tokens, id_to_token):
 
     return ' '.join(words)
 
-def test_with_onnx():
+def test_with_onnx(audio_path):
     """Test using ONNX models directly"""
     print("="*60)
     print("Testing Muhaffez Whisper ONNX Model (Offline)")
     print("="*60)
+    print(f"Audio file: {audio_path}")
+    print()
 
     # Load vocabulary
     vocab, id_to_token = load_vocabulary(VOCAB_PATH)
 
     # Load audio
-    audio_array = load_audio(AUDIO_PATH)
+    audio_array = load_audio(audio_path)
 
     # Extract features
     input_features = log_mel_spectrogram(audio_array)
@@ -221,8 +225,18 @@ def test_with_onnx():
     return transcription
 
 def main():
+    # Get audio path from command line argument or use default
+    if len(sys.argv) > 1:
+        audio_path = sys.argv[1]
+        if not os.path.exists(audio_path):
+            print(f"Error: Audio file not found: {audio_path}")
+            return 1
+    else:
+        audio_path = DEFAULT_AUDIO_PATH
+        print(f"No audio file specified, using default: {audio_path}")
+
     try:
-        transcription = test_with_onnx()
+        transcription = test_with_onnx(audio_path)
         print("\nTest completed successfully!")
         return 0
     except Exception as e:

@@ -128,6 +128,7 @@ class MuhaffezWhisperHelper(private val context: Context) {
             val encoderHiddenStates = encoderOutputs[0].value as Array<Array<FloatArray>>
 
             val generatedTokens = mutableListOf<Long>()
+            val tokenProbabilities = mutableListOf<Float>()
             val maxTokens = 50
 
             for (step in 0 until maxTokens) {
@@ -144,7 +145,15 @@ class MuhaffezWhisperHelper(private val context: Context) {
 
                 val logits = decoderOutputs[0].value as Array<Array<FloatArray>>
                 val lastLogits = logits[0].last()
+
+                // Calculate softmax probabilities
+                val maxLogit = lastLogits.maxOrNull() ?: 0f
+                val expLogits = lastLogits.map { exp(it - maxLogit) }
+                val sumExp = expLogits.sum()
+                val probabilities = expLogits.map { it / sumExp }
+
                 val nextToken = lastLogits.indices.maxByOrNull { lastLogits[it] }?.toLong() ?: EOS_TOKEN
+                val nextTokenProb = if (nextToken.toInt() < probabilities.size) probabilities[nextToken.toInt()] else 0f
 
                 inputIdsTensor.close()
                 encoderHiddenStatesTensor.close()
@@ -152,9 +161,25 @@ class MuhaffezWhisperHelper(private val context: Context) {
 
                 if (nextToken == EOS_TOKEN) break
                 generatedTokens.add(nextToken)
+                tokenProbabilities.add(nextTokenProb)
             }
 
             encoderInput.close()
+
+            // Calculate average confidence
+            val avgConfidence = if (tokenProbabilities.isNotEmpty()) {
+                tokenProbabilities.average().toFloat() * 100
+            } else {
+                0f
+            }
+
+            Log.d("#muhaffez", "Confidence: %.1f%%".format(avgConfidence))
+
+            // Only return transcription if confidence is above 20%
+            if (avgConfidence < 20f) {
+                Log.d("#muhaffez", "⚠️ Low confidence (%.1f%%), skipping transcription".format(avgConfidence))
+                return ""
+            }
 
             return generatedTokens.map { idx -> if (idx.toInt() < vocabulary.size) vocabulary[idx.toInt()] else "<unk>" }
                 .joinToString(" ")
@@ -169,7 +194,7 @@ class MuhaffezWhisperHelper(private val context: Context) {
         val audioDuration = audio.size / SAMPLE_RATE.toFloat()
         Log.d("#muhaffez", "✅ Loaded ${audio.size} samples (%.2fs)".format(audioDuration))
 
-        val segments = segmentAudio(audio)
+        val segments = AudioPreprocessor.segmentAudioEnergyBased(audio, thresholdDb = -30f, minSilenceFrames = 11)
         Log.d("#muhaffez", "✅ Segmented into ${segments.size} segments")
 
         segments.forEachIndexed { index, segment ->
@@ -187,89 +212,6 @@ class MuhaffezWhisperHelper(private val context: Context) {
         }
 
         return allTranscriptions.joinToString(" ")
-    }
-
-    private fun segmentAudio(audio: FloatArray): List<FloatArray> = segmentAudioEnergyBased(audio)
-
-    /**
-     * Segment audio using energy-based silence detection
-     * Matches Python implementation in segment_audio_001.py
-     */
-    private fun segmentAudioEnergyBased(audio: FloatArray): List<FloatArray> {
-        val thresholdDb = -30f
-        val minSilenceFrames = 1  // 1 frame = 50ms minimum silence
-        val hopLength = SAMPLE_RATE / 20  // 20 frames per second (50ms per frame)
-
-        // Calculate energy for each frame
-        val frameEnergy = mutableListOf<Float>()
-        var i = 0
-        while (i < audio.size) {
-            val end = min(i + hopLength, audio.size)
-            val frame = audio.copyOfRange(i, end)
-            val energy = frame.map { it * it }.average().toFloat()
-            val energyDb = 10 * log10(max(energy, 1e-10f))
-            frameEnergy.add(energyDb)
-            i += hopLength
-        }
-
-        Log.d("#muhaffez", "Total frames: ${frameEnergy.size}")
-
-        // Find silent frames
-        val silentFrames = frameEnergy.indices.filter { frameEnergy[it] < thresholdDb }
-        Log.d("#muhaffez", "Silent frames: ${silentFrames.size}")
-        Log.d("#muhaffez", "First 20 silent frame indices: ${silentFrames.take(20)}")
-
-        // Group consecutive silent frames into regions
-        val silentRegions = mutableListOf<Pair<Int, Int>>()
-        if (silentFrames.isNotEmpty()) {
-            var start = silentFrames[0]
-            var prev = silentFrames[0]
-            for (frame in silentFrames.drop(1)) {
-                if (frame != prev + 1) {
-                    if (prev - start + 1 >= minSilenceFrames) silentRegions.add(Pair(start, prev))
-                    start = frame
-                }
-                prev = frame
-            }
-            if (prev - start + 1 >= minSilenceFrames) silentRegions.add(Pair(start, prev))
-        }
-
-        Log.d("#muhaffez", "Silent regions (frames): ${silentRegions.size}")
-        silentRegions.forEach { (s, e) ->
-            val silenceStartSample = s * hopLength
-            val silenceEndSample = e * hopLength
-            Log.d("#muhaffez", "  Silent region: frames $s-$e (${e - s + 1} frames), samples $silenceStartSample-$silenceEndSample")
-        }
-
-        // Convert frame indices to sample indices
-        val silentSamples = silentRegions.map { (s, e) -> Pair(s * hopLength, e * hopLength) }
-
-        // Create segments between silent regions
-        val allSegments = mutableListOf<Pair<Int, Int>>()
-        var currentStart = 0
-        for ((silenceStart, silenceEnd) in silentSamples) {
-            if (silenceStart > currentStart) {
-                allSegments.add(Pair(currentStart, min(silenceStart, audio.size)))
-            }
-            currentStart = min(silenceEnd, audio.size)
-        }
-        if (currentStart < audio.size) {
-            allSegments.add(Pair(currentStart, audio.size))
-        }
-
-        Log.d("#muhaffez", "Total segments created: ${allSegments.size}")
-        allSegments.forEachIndexed { idx, (start, end) ->
-            val duration = (end - start) / SAMPLE_RATE.toFloat()
-            Log.d("#muhaffez", "  Segment ${idx + 1}: %.2fs (${end - start} samples)".format(duration))
-        }
-
-        // Filter segments >= 0.5s (matches Python)
-        val segments = allSegments.filter { (start, end) -> (end - start) >= SAMPLE_RATE / 2 }
-            .map { (start, end) -> audio.copyOfRange(start, end) }
-
-        Log.d("#muhaffez", "Segments after filtering (>= 0.5s): ${segments.size}")
-
-        return segments
     }
 
     fun cleanup() {

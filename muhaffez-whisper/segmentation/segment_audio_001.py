@@ -12,9 +12,10 @@ import torchaudio
 import torch
 import os
 import sys
+import shutil
 
 
-def detect_silence(audio, sample_rate, threshold_db=-30, min_silence_frames=1):
+def detect_silence(audio, sample_rate, threshold_db=-30, min_silence_frames=11):
     """Detect silent regions in audio"""
     if audio.shape[0] > 1:
         audio = audio.mean(dim=0, keepdim=True)  # convert to mono
@@ -54,6 +55,12 @@ def detect_silence(audio, sample_rate, threshold_db=-30, min_silence_frames=1):
 
 def segment_audio_simple(audio_path, output_dir):
     """Segment audio purely based on silence - no duration constraints"""
+
+    # Delete output directory if it exists
+    if os.path.exists(output_dir):
+        print(f"Removing existing directory: {output_dir}")
+        shutil.rmtree(output_dir)
+
     waveform, sample_rate = torchaudio.load(audio_path)
 
     print(f"Loaded {audio_path}")

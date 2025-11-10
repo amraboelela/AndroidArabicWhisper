@@ -113,6 +113,36 @@ fun MainScreen(
 ) {
   var transcription by remember { mutableStateOf("") }
   var isProcessing by remember { mutableStateOf(false) }
+  var isRecording by remember { mutableStateOf(false) }
+
+  // Create AudioRecorder with callback for each 1.3-second chunk
+  val audioRecorder = remember {
+    AudioRecorder { audioChunk ->
+      // This callback is triggered every 1.3 seconds with trimmed audio
+      Thread {
+        try {
+          Log.d("#transcribe", "Transcribing chunk: ${audioChunk.size} samples")
+          val result = muhaffezHelper?.transcribe(audioChunk) ?: ""
+
+          // Only append non-empty results (confidence > 20%)
+          if (result.isNotEmpty()) {
+            // Append new transcription to existing text immediately
+            transcription = if (transcription.isEmpty()) {
+              result
+            } else {
+              "$transcription $result"
+            }
+            Log.d("#transcribe", "Chunk transcription: $result")
+          } else {
+            Log.d("#transcribe", "Chunk transcription skipped (low confidence)")
+          }
+        } catch (e: Exception) {
+          transcription = "$transcription [Error: ${e.message}]"
+          Log.e("#transcribe", "Chunk transcription error", e)
+        }
+      }.start()
+    }
+  }
 
   Column(
     modifier = Modifier
@@ -130,12 +160,14 @@ fun MainScreen(
     // Status text
     Text(
       text = when {
+        transcription.isNotEmpty() -> transcription
+        isRecording -> "🎙️ Recording... (speak now)"
         isProcessing -> "🔄 Processing..."
-        transcription.isEmpty() -> "Tap button to test transcription"
-        else -> transcription
+        else -> "Tap button to test transcription or record audio"
       },
       style = MaterialTheme.typography.bodyMedium,
       color = when {
+        isRecording -> Color(0xFFF44336) // Red
         isProcessing -> Color(0xFFFF9800) // Orange
         else -> MaterialTheme.colorScheme.onBackground
       },
@@ -143,6 +175,43 @@ fun MainScreen(
     )
 
     Spacer(modifier = Modifier.height(8.dp))
+
+    // Record/Stop button
+    Button(
+      onClick = {
+        if (isRecording) {
+          // Stop recording
+          isRecording = false
+          audioRecorder.stopRecording()
+          Log.d("#transcribe", "Recording stopped")
+        } else {
+          // Start recording
+          isRecording = true
+          transcription = ""
+          audioRecorder.startRecording()
+          Log.d("#transcribe", "Recording started")
+        }
+      },
+      modifier = Modifier.fillMaxWidth(),
+      colors = ButtonDefaults.buttonColors(
+        containerColor = if (isRecording) Color(0xFFF44336) else MaterialTheme.colorScheme.primary
+      )
+    ) {
+      Row(
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+      ) {
+        Icon(
+          imageVector = if (isRecording) Icons.Default.Stop else Icons.Default.Mic,
+          contentDescription = if (isRecording) "Stop recording" else "Start recording",
+          modifier = Modifier.size(24.dp)
+        )
+        Spacer(modifier = Modifier.size(8.dp))
+        Text(if (isRecording) "Stop Recording" else "Record Audio")
+      }
+    }
+
+    Spacer(modifier = Modifier.height(16.dp))
 
     // Test with Muhaffez Whisper (word-level model)
     Button(
@@ -162,6 +231,7 @@ fun MainScreen(
           }
         }.start()
       },
+      enabled = !isRecording && !isProcessing,
       modifier = Modifier.fillMaxWidth()
     ) {
       Text("Test with 001.wav")
