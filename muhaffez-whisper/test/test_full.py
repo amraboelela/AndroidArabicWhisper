@@ -9,10 +9,7 @@ Examples:
 import json
 import torch
 import warnings
-# Suppress all torchaudio warnings
-warnings.filterwarnings("ignore", category=UserWarning, module="torchaudio")
-warnings.filterwarnings("ignore", message=".*torchaudio.*")
-import torchaudio
+warnings.filterwarnings("ignore", category=UserWarning)
 import glob
 import os
 import sys
@@ -20,43 +17,12 @@ sys.path.append("..")
 from tools.encoder_decoder_transformer import EncoderDecoderTransformer
 
 
-def extract_mel_features(audio_path, n_mels=80):
-    """Extract Whisper-compatible mel spectrogram features"""
-    waveform, sample_rate = torchaudio.load(audio_path)
+def load_mel_features(mel_path):
+    """Load precomputed mel features from .pt file"""
+    if not os.path.exists(mel_path):
+        raise FileNotFoundError(f"Precomputed mel features not found: {mel_path}\nPlease run precompute_mel_features.py first")
 
-    # Convert stereo to mono
-    if waveform.shape[0] > 1:
-        waveform = waveform.mean(dim=0, keepdim=True)
-
-    # Resample to 16kHz (Whisper standard)
-    target_sample_rate = 16000
-    if sample_rate != target_sample_rate:
-        resampler = torchaudio.transforms.Resample(orig_freq=sample_rate, new_freq=target_sample_rate)
-        waveform = resampler(waveform)
-        sample_rate = target_sample_rate
-
-    # Whisper parameters (100 fps: 16000 / 160 = 100)
-    n_fft = 400
-    hop_length = 160
-
-    mel_transform = torchaudio.transforms.MelSpectrogram(
-        sample_rate=sample_rate,
-        n_fft=n_fft,
-        hop_length=hop_length,
-        n_mels=n_mels,
-        f_min=0,
-        f_max=sample_rate // 2,
-    )
-
-    mel_spec = mel_transform(waveform)
-    mel_spec = torch.log(mel_spec + 1e-9)
-    mel_features = mel_spec.squeeze(0).transpose(0, 1)
-
-    # Global Whisper normalization
-    WHISPER_MEL_MEAN = -4.2677393
-    WHISPER_MEL_STD = 4.5689974
-    mel_features = (mel_features - WHISPER_MEL_MEAN) / WHISPER_MEL_STD
-
+    mel_features = torch.load(mel_path, map_location='cpu', weights_only=True)
     return mel_features
 
 
@@ -91,7 +57,7 @@ def main():
     print("🎲 Random seed set to 42 for reproducibility")
 
     # File paths
-    datasets_dir = f"../datasets/{dataset_name}/audio"
+    mels_dir = f"../datasets/{dataset_name}/mels"
     vocab_path = "../models/vocabulary.json"
     model_path = "../models/muhaffez_whisper.pt"
 
@@ -123,12 +89,22 @@ def main():
         expected_texts = [line.strip() for line in f if line.strip()]
     print(f"Loaded {len(expected_texts)} transcriptions")
 
-    # Load audio segments
-    segment_files = sorted(glob.glob(os.path.join(datasets_dir, surah_num, f"{surah_part}-*.wav")))
+    # Load segment paths (mel files from mels directory)
+    # Check if surah_part has multiple parts (e.g., "002-04")
+    if '-' in surah_part and len(surah_part.split('-')) > 1 and surah_part.split('-')[1]:
+        # Multi-part surah (e.g., "002-04") - look in subdirectory
+        segment_files = sorted(glob.glob(os.path.join(mels_dir, surah_num, surah_part, f"{surah_part}-*.pt")))
+    else:
+        # Single surah (e.g., "001") - look directly in surah folder
+        segment_files = sorted(glob.glob(os.path.join(mels_dir, surah_num, f"{surah_part}-*.pt")))
 
     if not segment_files:
-        print(f"❌ Error: No audio segments found in {datasets_dir}/{surah_num}/{surah_part}-*.wav")
-        sys.exit(1)
+        # Try the subdirectory path as fallback
+        segment_files = sorted(glob.glob(os.path.join(mels_dir, surah_num, surah_part, f"{surah_part}-*.pt")))
+        if not segment_files:
+            print(f"❌ Error: No mel files found in {mels_dir}/{surah_num}/{surah_part}-*.pt")
+            print(f"       or {mels_dir}/{surah_num}/{surah_part}/{surah_part}-*.pt")
+            sys.exit(1)
 
     print(f"Found {len(segment_files)} audio segments")
 
@@ -170,12 +146,11 @@ def main():
         segment_name = os.path.basename(segment_file)
 
         # Extract mel features
-        mel_features = extract_mel_features(segment_file)
+        mel_features = load_mel_features(segment_file)
         audio_batch = mel_features.transpose(0, 1).unsqueeze(0).to(device)
 
-        # Calculate audio duration
-        waveform, sample_rate = torchaudio.load(segment_file)
-        audio_duration = waveform.shape[1] / sample_rate
+        # Calculate audio duration from mel features (100 fps)
+        audio_duration = mel_features.shape[0] / 100.0
 
         # Generate transcription
         with torch.no_grad():

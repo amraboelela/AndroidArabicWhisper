@@ -34,19 +34,17 @@ else:
 CHUNK_DURATION = 1.3
 WORDS_PER_CHUNK = 1
 
-def load_mel_features(audio_path):
+def load_mel_features(mel_path):
     """Load precomputed mel features from .pt file"""
-    mel_path = audio_path.replace('/audio/', '/mels/').replace('.wav', '.pt')
-    if os.path.exists(mel_path):
-        return torch.load(mel_path, map_location='cpu', weights_only=True)
-    else:
-        # Fallback: compute on the fly if precomputed file doesn't exist
-        print(f"⚠️  Warning: Precomputed mel features not found for {audio_path}, computing on the fly...")
-        return extract_mel_features(audio_path)[0]
+    if not os.path.exists(mel_path):
+        raise FileNotFoundError(f"Precomputed mel features not found: {mel_path}\nPlease run precompute_mel_features.py first")
 
-def load_mel_features_trimmed(audio_path, target_seconds):
+    mel_features = torch.load(mel_path, map_location='cpu', weights_only=True)
+    return mel_features
+
+def load_mel_features_trimmed(mel_path, target_seconds):
     """Load precomputed mel features and trim to target_seconds"""
-    mel_features = load_mel_features(audio_path)
+    mel_features = load_mel_features(mel_path)
 
     # Trim to target seconds if needed
     # Mel features are at 100 fps (frames per second)
@@ -288,20 +286,31 @@ def main():
     for text_file in text_files:
         surah_part = os.path.splitext(os.path.basename(text_file))[0]
         surah_num = surah_part.split('-')[0]
-        audio_dir = f"{datasets_dir}/audio/{surah_num}"
+        mels_dir = f"{datasets_dir}/mels/{surah_num}"
 
         with open(text_file, "r", encoding="utf-8") as f:
             transcriptions = [line.strip() for line in f if line.strip()]
 
-        segment_files = sorted(glob.glob(f"{audio_dir}/{surah_part}-*.wav"))
+        # Find mel feature files
+        # Check if surah_part has multiple parts (e.g., "002-04")
+        if '-' in surah_part and len(surah_part.split('-')) > 1 and surah_part.split('-')[1]:
+            # Multi-part surah (e.g., "002-04") - look in subdirectory
+            mel_files = sorted(glob.glob(f"{mels_dir}/{surah_part}/{surah_part}-*.pt"))
+        else:
+            # Single surah (e.g., "001") - look directly in surah folder
+            mel_files = sorted(glob.glob(f"{mels_dir}/{surah_part}-*.pt"))
 
-        if len(transcriptions) != len(segment_files):
+        # Fallback: try subdirectory if not found
+        if not mel_files:
+            mel_files = sorted(glob.glob(f"{mels_dir}/{surah_part}/{surah_part}-*.pt"))
+
+        if len(transcriptions) != len(mel_files):
             print(f"⚠️  Warning: Mismatch in {surah_part}")
             continue
 
-        all_segment_files.extend(segment_files)
+        all_segment_files.extend(mel_files)
         all_transcriptions.extend(transcriptions)
-        print(f"  Loaded {len(segment_files)} segments from {surah_part}")
+        print(f"  Loaded {len(mel_files)} segments from {surah_part}")
 
     total_segments = len(all_segment_files)
     print(f"\n✓ Total segments: {total_segments}")

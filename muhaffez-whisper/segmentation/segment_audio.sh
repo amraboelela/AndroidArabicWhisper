@@ -81,5 +81,11 @@ echo "Ended: $(date)"
 echo "============================================================"
 echo ""
 echo "Output files:"
-echo "  Audio segments: ../$DATASET_NAME/audio/$(echo $SEGMENT_NAME | cut -d'-' -f1)/$SEGMENT_NAME-*.wav"
+# Check if segment name has parts (e.g., "002-04")
+if [[ "$SEGMENT_NAME" == *-* ]]; then
+    SEGMENT_PREFIX=$(echo $SEGMENT_NAME | cut -d'-' -f1)
+    echo "  Audio segments: ../$DATASET_NAME/audio/raw/$SEGMENT_PREFIX/$SEGMENT_NAME/$SEGMENT_NAME-*.wav"
+else
+    echo "  Audio segments: ../$DATASET_NAME/audio/raw/$SEGMENT_NAME/$SEGMENT_NAME-*.wav"
+fi
 echo "  Transcription:  ../$DATASET_NAME/text/$SEGMENT_NAME.txt (normalized)"

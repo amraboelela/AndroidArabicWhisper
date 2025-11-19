@@ -30,7 +30,14 @@ def main():
     # Extract audio subdirectory (e.g., "002-04" -> "002", "001" -> "001")
     audio_subdir = segment_prefix.split('-')[0]
 
-    audio_dir = os.path.join(script_dir, f"../{dataset_name}/audio", audio_subdir)
+    # Determine audio directory based on segment structure
+    # If segment_prefix has parts (e.g., "002-04"), look in subdirectory
+    if '-' in segment_prefix:
+        audio_dir = os.path.join(script_dir, f"../{dataset_name}/audio/raw", audio_subdir, segment_prefix)
+    else:
+        # For single segments like "001", look directly in prefix folder
+        audio_dir = os.path.join(script_dir, f"../{dataset_name}/audio/raw", audio_subdir)
+
     output_file = os.path.join(script_dir, f"../{dataset_name}/text", f"{segment_prefix}.txt")
 
     print(f"Script directory: {script_dir}")

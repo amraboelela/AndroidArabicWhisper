@@ -43,12 +43,23 @@ all_transcriptions = []
 for text_file in text_files:
     surah_part = os.path.splitext(os.path.basename(text_file))[0]
     surah_num = surah_part.split('-')[0]
-    audio_dir = f'{datasets_dir}/audio/{surah_num}'
+    mels_dir = f'{datasets_dir}/mels/{surah_num}'
 
     with open(text_file, 'r', encoding='utf-8') as f:
         transcriptions = [line.strip() for line in f if line.strip()]
 
-    segment_files = sorted(glob.glob(f'{audio_dir}/{surah_part}-*.wav'))
+    # Find mel files from mels directory
+    # Check if surah_part has multiple parts (e.g., "002-04")
+    if '-' in surah_part and len(surah_part.split('-')) > 1 and surah_part.split('-')[1]:
+        # Multi-part surah (e.g., "002-04") - look in subdirectory
+        segment_files = sorted(glob.glob(f'{mels_dir}/{surah_part}/{surah_part}-*.pt'))
+    else:
+        # Single surah (e.g., "001") - look directly in surah folder
+        segment_files = sorted(glob.glob(f'{mels_dir}/{surah_part}-*.pt'))
+
+    # Fallback: try subdirectory if not found
+    if not segment_files:
+        segment_files = sorted(glob.glob(f'{mels_dir}/{surah_part}/{surah_part}-*.pt'))
 
     if len(segment_files) != len(transcriptions):
         print(f"⚠️  Skipping {surah_part}: mismatch")

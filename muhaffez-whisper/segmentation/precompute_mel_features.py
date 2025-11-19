@@ -116,7 +116,7 @@ def precompute_dataset(dataset_path):
     print(f"{'='*60}\n")
 
     # Find all audio files
-    audio_dir = f"{dataset_path}/audio"
+    audio_dir = f"{dataset_path}/audio/raw"
     if not os.path.exists(audio_dir):
         print(f"❌ Audio directory not found: {audio_dir}")
         return
@@ -133,8 +133,8 @@ def precompute_dataset(dataset_path):
     errors = 0
 
     for audio_file in audio_files:
-        # Create mel feature path (same directory, .pt extension)
-        mel_path = audio_file.replace('/audio/', '/mels/').replace('.wav', '.pt')
+        # Create mel feature path by replacing /audio/raw/ with /mels/ and .wav with .pt
+        mel_path = audio_file.replace('/audio/raw/', '/mels/').replace('.wav', '.pt')
 
         # Create mels directory if it doesn't exist
         os.makedirs(os.path.dirname(mel_path), exist_ok=True)

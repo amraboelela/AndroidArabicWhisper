@@ -24,7 +24,6 @@ sys.stderr.reconfigure(line_buffering=True)
 import json
 import torch
 import torch.nn as nn
-import torchaudio
 import glob
 import os
 import random
@@ -49,52 +48,23 @@ CHUNK_DURATION = 1.3  # seconds per chunk
 WORDS_PER_CHUNK = 1   # words per chunk
 
 # ==============================================================
-# Audio feature extraction
+# Mel feature loading
 # ==============================================================
-def extract_mel_features(audio_path, n_mels=80, target_seconds=None):
-    """Extract mel features from audio, optionally trimming to target_seconds"""
-    waveform, sample_rate = torchaudio.load(audio_path)
+def load_mel_features(mel_path, target_seconds=None):
+    """Load precomputed mel features from .pt file, optionally trimming to target_seconds"""
+    if not os.path.exists(mel_path):
+        raise FileNotFoundError(f"Precomputed mel features not found: {mel_path}\nPlease run precompute_mel_features.py first")
 
-    # Convert stereo to mono
-    if waveform.shape[0] > 1:
-        waveform = waveform.mean(dim=0, keepdim=True)
-
-    # Resample to 16kHz (Whisper standard)
-    target_sample_rate = 16000
-    if sample_rate != target_sample_rate:
-        resampler = torchaudio.transforms.Resample(orig_freq=sample_rate, new_freq=target_sample_rate)
-        waveform = resampler(waveform)
-        sample_rate = target_sample_rate
+    mel_features = torch.load(mel_path, map_location='cpu', weights_only=True)
 
     # Trim to target seconds if specified
+    # Mel features are at 100 fps (frames per second)
     if target_seconds is not None:
-        num_samples = int(sample_rate * target_seconds)
-        if waveform.shape[1] > num_samples:
-            waveform = waveform[:, :num_samples]
+        target_frames = int(target_seconds * 100)
+        if mel_features.shape[0] > target_frames:
+            mel_features = mel_features[:target_frames, :]
 
-    # Whisper parameters (100 fps: 16000 / 160 = 100)
-    n_fft = 400
-    hop_length = 160
-
-    mel_transform = torchaudio.transforms.MelSpectrogram(
-        sample_rate=sample_rate,
-        n_fft=n_fft,
-        hop_length=hop_length,
-        n_mels=n_mels,
-        f_min=0,
-        f_max=sample_rate // 2
-    )
-    mel_spec = mel_transform(waveform)
-    mel_spec = torch.log(mel_spec + 1e-9)
-    mel_features = mel_spec.squeeze(0).transpose(0, 1)
-
-    # Global Whisper normalization
-    # These are the standard Whisper mel spectrogram statistics
-    mel_mean = -4.2677
-    mel_std = 4.5689
-    mel_features = (mel_features - mel_mean) / (mel_std + 1e-8)
-
-    return mel_features, sample_rate
+    return mel_features
 
 # ==============================================================
 # Tokenization
@@ -117,7 +87,7 @@ def calculate_comprehensive_accuracy(model, segment_files, transcriptions, vocab
     with torch.no_grad():
         for idx, (seg_file, transcription) in enumerate(zip(segment_files, transcriptions)):
             # Extract audio features
-            audio_features, sample_rate = extract_mel_features(seg_file, target_seconds=target_seconds)
+            audio_features = load_mel_features(seg_file, target_seconds=target_seconds)
             audio_batch = audio_features.transpose(0, 1).unsqueeze(0).to(device)
 
             # Get expected text
@@ -239,10 +209,10 @@ def train_curriculum_stage(model, segment_files, transcriptions, vocab, surah_pa
             # Extract audio features (full or chunked)
             if is_full_length:
                 # Full-length sample: use entire audio
-                audio_features, sample_rate = extract_mel_features(seg_file, target_seconds=None)
+                audio_features = load_mel_features(seg_file, target_seconds=None)
             else:
                 # Chunked sample: use target_seconds
-                audio_features, sample_rate = extract_mel_features(seg_file, target_seconds=target_seconds)
+                audio_features = load_mel_features(seg_file, target_seconds=target_seconds)
 
             # Extract target text (full or chunked)
             words = text.split()
@@ -428,7 +398,7 @@ def train_stage(model, segment_files, transcriptions, vocab, surah_part,
             text = transcriptions[i]
 
             # Extract audio features
-            audio_features, sample_rate = extract_mel_features(seg_file, target_seconds=target_seconds)
+            audio_features = load_mel_features(seg_file, target_seconds=target_seconds)
 
             # Extract target text
             if target_words:
@@ -509,7 +479,7 @@ def train_stage(model, segment_files, transcriptions, vocab, surah_part,
         # Sample generation every 5 epochs
         if (epoch + 1) % 5 == 0 or epoch == num_epochs - 1:
             model.eval()
-            test_audio, sample_rate = extract_mel_features(segment_files[0], target_seconds=target_seconds)
+            test_audio = load_mel_features(segment_files[0], target_seconds=target_seconds)
             test_audio = test_audio.transpose(0, 1).unsqueeze(0).to(device)
 
             # Get expected text
@@ -613,26 +583,36 @@ def collect_replay_samples(dataset_name, current_surah_part, datasets_dir, curre
         with open(text_file, "r", encoding="utf-8") as f:
             transcriptions = [line.strip() for line in f if line.strip()]
 
-        # Extract surah number for audio path
+        # Extract surah number for mels path
         surah_num = surah_part.split('-')[0]
 
-        # Load corresponding audio segments
-        segment_files = sorted(glob.glob(os.path.join(datasets_dir, surah_num, f"{surah_part}-*.wav")))
+        # Load corresponding mel files
+        # Check if surah_part has multiple parts (e.g., "002-04")
+        if '-' in surah_part and len(surah_part.split('-')) > 1 and surah_part.split('-')[1]:
+            # Multi-part surah (e.g., "002-04") - look in subdirectory
+            mel_files = sorted(glob.glob(os.path.join(f"../datasets/{dataset_name}/mels", surah_num, surah_part, f"{surah_part}-*.pt")))
+        else:
+            # Single surah (e.g., "001") - look directly in surah folder
+            mel_files = sorted(glob.glob(os.path.join(f"../datasets/{dataset_name}/mels", surah_num, f"{surah_part}-*.pt")))
 
-        if len(segment_files) > 0 and len(segment_files) == len(transcriptions):
+        # Fallback: try subdirectory if not found
+        if not mel_files:
+            mel_files = sorted(glob.glob(os.path.join(f"../datasets/{dataset_name}/mels", surah_num, surah_part, f"{surah_part}-*.pt")))
+
+        if len(mel_files) > 0 and len(mel_files) == len(transcriptions):
             # Sample up to samples_per_surah, but not more than available
-            num_samples = min(samples_per_surah, len(segment_files))
+            num_samples = min(samples_per_surah, len(mel_files))
 
             # Randomly sample indices
-            indices = random.sample(range(len(segment_files)), num_samples)
+            indices = random.sample(range(len(mel_files)), num_samples)
 
             for idx in indices:
-                replay_segment_files.append(segment_files[idx])
+                replay_segment_files.append(mel_files[idx])
                 replay_transcriptions.append(transcriptions[idx])
 
     if len(replay_segment_files) > 0:
         # Extract segment names and format as comma-separated list
-        segment_names = [os.path.basename(f).replace('.wav', '') for f in replay_segment_files]
+        segment_names = [os.path.basename(f).replace('.pt', '') for f in replay_segment_files]
         segments_str = ', '.join(segment_names)
         print(f"  Replay buffer segments: ({segments_str})")
         print(f"  Replay buffer size: {len(replay_segment_files)}\n")
@@ -690,26 +670,36 @@ def collect_full_length_replay_samples(dataset_name, current_surah_part, dataset
         with open(text_file, "r", encoding="utf-8") as f:
             transcriptions = [line.strip() for line in f if line.strip()]
 
-        # Extract surah number for audio path
+        # Extract surah number for mels path
         surah_num = surah_part.split('-')[0]
 
-        # Load corresponding audio segments
-        segment_files = sorted(glob.glob(os.path.join(datasets_dir, surah_num, f"{surah_part}-*.wav")))
+        # Load corresponding mel files
+        # Check if surah_part has multiple parts (e.g., "002-04")
+        if '-' in surah_part and len(surah_part.split('-')) > 1 and surah_part.split('-')[1]:
+            # Multi-part surah (e.g., "002-04") - look in subdirectory
+            mel_files = sorted(glob.glob(os.path.join(f"../datasets/{dataset_name}/mels", surah_num, surah_part, f"{surah_part}-*.pt")))
+        else:
+            # Single surah (e.g., "001") - look directly in surah folder
+            mel_files = sorted(glob.glob(os.path.join(f"../datasets/{dataset_name}/mels", surah_num, f"{surah_part}-*.pt")))
 
-        if len(segment_files) > 0 and len(segment_files) == len(transcriptions):
+        # Fallback: try subdirectory if not found
+        if not mel_files:
+            mel_files = sorted(glob.glob(os.path.join(f"../datasets/{dataset_name}/mels", surah_num, surah_part, f"{surah_part}-*.pt")))
+
+        if len(mel_files) > 0 and len(mel_files) == len(transcriptions):
             # Sample up to samples_per_surah, but not more than available
-            num_samples = min(samples_per_surah, len(segment_files))
+            num_samples = min(samples_per_surah, len(mel_files))
 
             # Randomly sample indices
-            indices = random.sample(range(len(segment_files)), num_samples)
+            indices = random.sample(range(len(mel_files)), num_samples)
 
             for idx in indices:
-                full_replay_segment_files.append(segment_files[idx])
+                full_replay_segment_files.append(mel_files[idx])
                 full_replay_transcriptions.append(transcriptions[idx])
 
     if len(full_replay_segment_files) > 0:
         # Extract segment names and format as comma-separated list
-        segment_names = [os.path.basename(f).replace('.wav', '') for f in full_replay_segment_files]
+        segment_names = [os.path.basename(f).replace('.pt', '') for f in full_replay_segment_files]
         segments_str = ', '.join(segment_names)
         print(f"  Replay buffer segments: ({segments_str})")
         print(f"  Replay buffer size: {len(full_replay_segment_files)}\n")
@@ -731,6 +721,7 @@ def main():
     surah_part = sys.argv[2]  # e.g., "001", "002-01", "002-04"
 
     datasets_dir = f"../datasets/{dataset_name}/audio"
+    mels_dir = f"../datasets/{dataset_name}/mels"
     vocab_path = "../models/vocabulary.json"
     model_path = "../models/muhaffez_whisper.pt"
 
@@ -757,13 +748,24 @@ def main():
     with open(text_path, "r", encoding="utf-8") as f:
         transcriptions = [line.strip() for line in f if line.strip()]
 
-    segment_files = sorted(glob.glob(os.path.join(datasets_dir, surah_num, f"{surah_part}-*.wav")))
+    # Determine mel directory based on segment structure
+    # If surah_part has parts (e.g., "002-04"), look in subdirectory
+    if '-' in surah_part and len(surah_part.split('-')) > 1 and surah_part.split('-')[1]:
+        # Multi-part surah (e.g., "002-04")
+        segment_files = sorted(glob.glob(os.path.join(mels_dir, surah_num, surah_part, f"{surah_part}-*.pt")))
+    else:
+        # Single surah (e.g., "001")
+        segment_files = sorted(glob.glob(os.path.join(mels_dir, surah_num, f"{surah_part}-*.pt")))
 
     if not segment_files:
-        print(f"❌ Error: No audio segments found in {datasets_dir}/{surah_num}/{surah_part}-*.wav")
-        sys.exit(1)
+        # Try the subdirectory path as fallback
+        segment_files = sorted(glob.glob(os.path.join(mels_dir, surah_num, surah_part, f"{surah_part}-*.pt")))
+        if not segment_files:
+            print(f"❌ Error: No mel files found in {mels_dir}/{surah_num}/{surah_part}-*.pt")
+            print(f"       or {mels_dir}/{surah_num}/{surah_part}/{surah_part}-*.pt")
+            sys.exit(1)
 
-    print(f"Loaded {len(transcriptions)} transcriptions, {len(segment_files)} audio segments")
+    print(f"Loaded {len(transcriptions)} transcriptions, {len(segment_files)} mel files")
 
     if len(transcriptions) != len(segment_files):
         print(f"⚠️  Warning: Mismatch between transcriptions ({len(transcriptions)}) and segments ({len(segment_files)})")
@@ -909,7 +911,7 @@ def main():
 
         # Show one sample for visualization
         test_idx = random.randint(0, len(stage_segment_files) - 1)
-        test_audio_features, sample_rate = extract_mel_features(stage_segment_files[test_idx], target_seconds=target_seconds)
+        test_audio_features = load_mel_features(stage_segment_files[test_idx], target_seconds=target_seconds)
         test_audio_batch = test_audio_features.transpose(0, 1).unsqueeze(0).to(device)
 
         # Get expected text (first target_words words)
@@ -1026,7 +1028,7 @@ def main():
     print(f"FINAL_ACCURACY: {overall_acc:.0f}%")
 
     # Sample generation at the end (first segment for consistency)
-    test_audio_features, sample_rate = extract_mel_features(segment_files[0])
+    test_audio_features = load_mel_features(segment_files[0])
     test_audio_batch = test_audio_features.transpose(0, 1).unsqueeze(0).to(device)
 
     waveform, sr = torchaudio.load(segment_files[0])
