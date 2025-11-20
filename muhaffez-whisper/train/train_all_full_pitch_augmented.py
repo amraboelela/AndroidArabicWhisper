@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
-Train on ALL segments with pitch augmentation (±2 semitones)
-Usage: python3 train_all_full_augmented.py
+Train on ALL segments with pitch shifting augmentation
+Usage: python3 train_all_full_pitch_augmented.py
 
-This script trains on the entire Quran-A dataset with pitch augmentation,
-randomly pitch-shifting audio by ±2 semitones to make the model more robust
-to pitch variations across different reciters.
+This script trains on the entire Quran-A dataset with speed perturbation:
+- Pitch shifting: ±2 semitones (varying voice pitch)
+
+This makes the model robust to different voice pitches across reciters.
 """
 import sys
 import warnings
@@ -37,7 +38,7 @@ else:
     device = torch.device("cpu")
 
 # ==============================================================
-# Pitch augmentation
+# Pitch shifting augmentation
 # ==============================================================
 def pitch_shift_audio(waveform, sample_rate, n_steps):
     """
@@ -58,8 +59,6 @@ def pitch_shift_audio(waveform, sample_rate, n_steps):
     shift_ratio = 2.0 ** (n_steps / 12.0)
 
     # Resample to shift pitch
-    # To shift pitch up, we speed up (higher rate), then resample back
-    # To shift pitch down, we slow down (lower rate), then resample back
     shifted_rate = int(sample_rate * shift_ratio)
 
     # First resample: change speed (and pitch)
@@ -90,7 +89,7 @@ def pitch_shift_audio(waveform, sample_rate, n_steps):
 # ==============================================================
 def load_and_augment_audio(audio_path, augment=True):
     """
-    Load audio from mic folder and optionally apply pitch augmentation
+    Load audio from mic folder and optionally apply pitch shifting
 
     Args:
         audio_path: path to .pt mel file (we derive .wav path from it)
@@ -111,12 +110,13 @@ def load_and_augment_audio(audio_path, augment=True):
     if waveform.shape[0] > 1:
         waveform = waveform.mean(dim=0, keepdim=True)
 
-    # Apply pitch augmentation during training
+    # Apply speed perturbation during training
     if augment:
-        # Random pitch shift: -2, -1, 0, +1, or +2 semitones
-        n_steps = random.randint(-2, 2)
-        if n_steps != 0:
-            waveform = pitch_shift_audio(waveform, sample_rate, n_steps)
+        # Speed perturbation: randomly choose 0.9x, 1.0x, or 1.1x
+        speed_factors = [0.9, 1.0, 1.1]
+        speed_factor = random.choice(speed_factors)
+        if speed_factor != 1.0:
+            waveform = apply_speed_perturbation(waveform, speed_factor)
 
     return waveform, sample_rate
 
@@ -246,7 +246,8 @@ def main():
     dataset_name = "Quran-A"
 
     print(f"\n{'='*60}")
-    print(f"TRAINING WITH PITCH AUGMENTATION (±2 semitones)")
+    print(f"TRAINING WITH PITCH SHIFTING")
+    print(f"- Pitch: ±2 semitones (varying voice pitch)")
     print(f"DATASET: {dataset_name} (entire dataset)")
     print(f"{'='*60}\n")
 
@@ -298,7 +299,7 @@ def main():
 
     total_segments = len(all_segment_files)
     print(f"\n✓ Total segments: {total_segments}")
-    print(f"✓ Augmentation: Random pitch shift ±2 semitones per segment")
+    print(f"✓ Augmentation: Pitch shifting (±2 semitones)")
 
     # Initialize or load model
     model = EncoderDecoderTransformer(

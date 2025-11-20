@@ -158,9 +158,9 @@ fi
 
 echo ""
 
-# Run train_all_full_augmented.py
+# Run train_all_full_pitch_augmented.py
 SUITE_START=$(date +%s)
-if python3 -u train_all_full_augmented.py; then
+if python3 -u train_all_full_pitch_augmented.py; then
     SUITE_END=$(date +%s)
     ELAPSED=$((SUITE_END - SUITE_START))
 
@@ -171,7 +171,7 @@ if python3 -u train_all_full_augmented.py; then
         TIME_STR="${MINUTES}m"
     fi
 
-    echo "✓ Augmented ($TIME_STR)"
+    echo "✓ Pitch Augmented ($TIME_STR)"
     PASSED=$((PASSED + 1))
 else
     SUITE_END=$(date +%s)
@@ -184,7 +184,39 @@ else
         TIME_STR="${MINUTES}m"
     fi
 
-    echo "✗ Augmented ($TIME_STR) FAILED"
+    echo "✗ Pitch Augmented ($TIME_STR) FAILED"
+    FAILED=$((FAILED + 1))
+fi
+
+echo ""
+
+# Run train_all_full_speed_augmented.py
+SUITE_START=$(date +%s)
+if python3 -u train_all_full_speed_augmented.py; then
+    SUITE_END=$(date +%s)
+    ELAPSED=$((SUITE_END - SUITE_START))
+
+    if [ $ELAPSED -lt 60 ]; then
+        TIME_STR="${ELAPSED}s"
+    else
+        MINUTES=$(echo "scale=0; m = ($ELAPSED + 30) / 60; if (m < 1) 1 else m" | bc)
+        TIME_STR="${MINUTES}m"
+    fi
+
+    echo "✓ Speed Augmented ($TIME_STR)"
+    PASSED=$((PASSED + 1))
+else
+    SUITE_END=$(date +%s)
+    ELAPSED=$((SUITE_END - SUITE_START))
+
+    if [ $ELAPSED -lt 60 ]; then
+        TIME_STR="${ELAPSED}s"
+    else
+        MINUTES=$(echo "scale=0; m = ($ELAPSED + 30) / 60; if (m < 1) 1 else m" | bc)
+        TIME_STR="${MINUTES}m"
+    fi
+
+    echo "✗ Speed Augmented ($TIME_STR) FAILED"
     FAILED=$((FAILED + 1))
 fi
 
