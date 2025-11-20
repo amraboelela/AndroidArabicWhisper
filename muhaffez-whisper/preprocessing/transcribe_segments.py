@@ -24,7 +24,7 @@ def main():
     dataset_name = sys.argv[1]
     segment_prefix = sys.argv[2]
 
-    # Setup paths (script is in segmentation folder)
+    # Setup paths (script is in preprocessing folder)
     script_dir = os.path.dirname(os.path.abspath(__file__))
 
     # Extract audio subdirectory (e.g., "002-04" -> "002", "001" -> "001")

@@ -38,7 +38,7 @@ muhaffez-whisper/
 │   ├── test_full.py
 │   ├── test_curriculum.py
 │   └── test.sh
-├── segmentation/      # Audio segmentation scripts
+├── preprocessing/     # Audio preprocessing pipeline
 │   ├── segment_audio.sh
 │   ├── segment_audio.py
 │   ├── normalize_text.py
@@ -49,11 +49,11 @@ muhaffez-whisper/
 
 ## Quick Start
 
-### 1. Segment Audio
+### 1. Preprocess Audio
 Prepare audio data by segmenting long recordings into smaller chunks:
 
 ```bash
-cd segmentation
+cd preprocessing
 ./segment_audio.sh Quran-A 002-04
 ```
 
