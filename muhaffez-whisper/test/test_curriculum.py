@@ -257,7 +257,7 @@ def main():
     print(f"\nCurriculum has {len(stages)} stages")
 
     # Create model
-    n_mels = 80
+    n_mels = 40
     model = EncoderDecoderTransformer(
         vocab_size=len(id_to_token),
         d_model=128,

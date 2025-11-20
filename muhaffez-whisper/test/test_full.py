@@ -112,7 +112,7 @@ def main():
         print(f"⚠️  Warning: {len(segment_files)} segments vs {len(expected_texts)} text lines")
 
     # Create model
-    n_mels = 80
+    n_mels = 40
     model = EncoderDecoderTransformer(
         vocab_size=len(id_to_token),
         d_model=128,

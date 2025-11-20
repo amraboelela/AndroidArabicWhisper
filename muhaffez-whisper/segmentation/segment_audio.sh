@@ -5,10 +5,12 @@
 #        ./segment_audio.sh Quran-A 002-04
 #        ./segment_audio.sh Quran-A 001
 #
-# This script runs three operations in sequence:
-# 1. Segment audio file based on silence detection
+# This script runs five operations in sequence:
+# 1. Segment audio file based on silence detection (16kHz raw)
 # 2. Transcribe all segments using Whisper
 # 3. Normalize the transcribed text
+# 4. Convert current part to mobile mic quality (8kHz)
+# 5. Precompute mel features for current part only
 #
 
 set -e  # Exit on any error
@@ -33,7 +35,7 @@ echo ""
 
 # Step 1: Segment audio
 echo "============================================================"
-echo "[1/4] Segmenting audio file..."
+echo "[1/5] Segmenting audio file..."
 echo "============================================================"
 python3 segment_audio.py "$DATASET_NAME" "$SEGMENT_NAME"
 if [ $? -ne 0 ]; then
@@ -44,7 +46,7 @@ echo ""
 
 # Step 2: Transcribe segments
 echo "============================================================"
-echo "[2/4] Transcribing segments..."
+echo "[2/5] Transcribing segments..."
 echo "============================================================"
 python3 transcribe_segments.py "$DATASET_NAME" "$SEGMENT_NAME"
 if [ $? -ne 0 ]; then
@@ -55,7 +57,7 @@ echo ""
 
 # Step 3: Normalize text
 echo "============================================================"
-echo "[3/4] Normalizing transcribed text..."
+echo "[3/5] Normalizing transcribed text..."
 echo "============================================================"
 python3 normalize_text.py "$DATASET_NAME" "$SEGMENT_NAME"
 if [ $? -ne 0 ]; then
@@ -64,11 +66,22 @@ if [ $? -ne 0 ]; then
 fi
 echo ""
 
-# Step 4: Precompute mel features
+# Step 4: Convert raw audio to mic quality
 echo "============================================================"
-echo "[4/4] Precomputing mel spectrogram features..."
+echo "[4/5] Converting to mobile mic quality (8kHz)..."
 echo "============================================================"
-python3 precompute_mel_features.py "$DATASET_NAME"
+python3 convert_to_mic_quality.py "$DATASET_NAME" "$SEGMENT_NAME"
+if [ $? -ne 0 ]; then
+    echo "❌ Conversion to mic quality failed"
+    exit 1
+fi
+echo ""
+
+# Step 5: Precompute mel features from mic quality audio
+echo "============================================================"
+echo "[5/5] Precomputing mel spectrogram features from mic audio..."
+echo "============================================================"
+python3 generate_mels.py "$DATASET_NAME" "$SEGMENT_NAME"
 if [ $? -ne 0 ]; then
     echo "❌ Mel feature precomputation failed"
     exit 1
@@ -84,8 +97,11 @@ echo "Output files:"
 # Check if segment name has parts (e.g., "002-04")
 if [[ "$SEGMENT_NAME" == *-* ]]; then
     SEGMENT_PREFIX=$(echo $SEGMENT_NAME | cut -d'-' -f1)
-    echo "  Audio segments: ../$DATASET_NAME/audio/raw/$SEGMENT_PREFIX/$SEGMENT_NAME/$SEGMENT_NAME-*.wav"
+    echo "  Audio segments (raw):  ../$DATASET_NAME/audio/raw/$SEGMENT_PREFIX/$SEGMENT_NAME/$SEGMENT_NAME-*.wav"
+    echo "  Audio segments (mic):  ../$DATASET_NAME/audio/mic/$SEGMENT_PREFIX/$SEGMENT_NAME/$SEGMENT_NAME-*.wav"
 else
-    echo "  Audio segments: ../$DATASET_NAME/audio/raw/$SEGMENT_NAME/$SEGMENT_NAME-*.wav"
+    echo "  Audio segments (raw):  ../$DATASET_NAME/audio/raw/$SEGMENT_NAME/$SEGMENT_NAME-*.wav"
+    echo "  Audio segments (mic):  ../$DATASET_NAME/audio/mic/$SEGMENT_NAME/$SEGMENT_NAME-*.wav"
 fi
-echo "  Transcription:  ../$DATASET_NAME/text/$SEGMENT_NAME.txt (normalized)"
+echo "  Transcription:         ../$DATASET_NAME/text/$SEGMENT_NAME.txt (normalized)"
+echo "  Mel features:          ../$DATASET_NAME/mels/ (precomputed)"

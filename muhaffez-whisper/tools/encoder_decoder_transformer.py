@@ -13,7 +13,7 @@ import torch.nn.functional as F
 
 class EncoderDecoderTransformer(nn.Module):
     def __init__(self, vocab_size, d_model=384, n_encoder_layers=6, n_decoder_layers=4,
-                 n_heads=6, d_ff=1536, dropout=0.1, max_seq_len=1500, n_mels=80):
+                 n_heads=6, d_ff=1536, dropout=0.1, max_seq_len=1500, n_mels=40):
         super().__init__()
 
         self.d_model = d_model

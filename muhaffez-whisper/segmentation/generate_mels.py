@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """
-Precompute mel spectrograms for all audio files in all datasets
-Saves them as .pt files alongside the audio files for fast loading during training
+Generate mel spectrograms from audio files in datasets
+Saves them as .pt files for fast loading during training
 100% Whisper-accurate: Uses Whisper's exact mel filterbank, STFT settings, and normalization
 
-Usage: python3 precompute_mel_features.py [dataset_name]
-Example:
-  python3 precompute_mel_features.py          # Process all datasets
-  python3 precompute_mel_features.py Quran-A  # Process only Quran-A
+Usage: python3 generate_mels.py [dataset_name] [surah_part]
+Examples:
+  python3 generate_mels.py                    # Process all datasets
+  python3 generate_mels.py Quran-A            # Process all parts in Quran-A
+  python3 generate_mels.py Quran-A 002-02     # Process only 002-02
 """
 import sys
 import warnings
@@ -40,7 +41,7 @@ def load_whisper_mel_filters():
             sys.exit(1)
     return MEL_FILTERS
 
-def extract_mel_features_whisper_accurate(audio_path, n_mels=80):
+def extract_mel_features_whisper_accurate(audio_path, n_mels=40):
     """
     Extract mel features using Whisper's EXACT pipeline (bit-for-bit accurate):
     - Whisper's mel filterbank (not torchaudio's)
@@ -108,20 +109,45 @@ def extract_mel_features_whisper_accurate(audio_path, n_mels=80):
 
     return mel_features
 
-def precompute_dataset(dataset_path):
-    """Precompute mel features for all audio files in a dataset"""
+def precompute_dataset(dataset_path, surah_part=None):
+    """Precompute mel features for audio files in a dataset
+
+    Args:
+        dataset_path: Path to dataset directory
+        surah_part: Optional surah part to process (e.g., "001", "002-02"). If None, processes all.
+    """
     dataset_name = os.path.basename(dataset_path)
     print(f"\n{'='*60}")
-    print(f"PRECOMPUTING MEL FEATURES - DATASET: {dataset_name}")
+    if surah_part:
+        print(f"PRECOMPUTING MEL FEATURES - DATASET: {dataset_name}, PART: {surah_part}")
+    else:
+        print(f"PRECOMPUTING MEL FEATURES - DATASET: {dataset_name}")
     print(f"{'='*60}\n")
 
-    # Find all audio files
-    audio_dir = f"{dataset_path}/audio/raw"
+    # Find audio files from mic directory (8kHz mobile mic quality)
+    audio_dir = f"{dataset_path}/audio/mic"
     if not os.path.exists(audio_dir):
         print(f"❌ Audio directory not found: {audio_dir}")
         return
 
-    audio_files = sorted(glob.glob(f"{audio_dir}/**/*.wav", recursive=True))
+    # If surah_part specified, only process that part
+    if surah_part:
+        surah_num = surah_part.split('-')[0]
+        # Check if surah_part has multiple parts (e.g., "002-04")
+        if '-' in surah_part and len(surah_part.split('-')) > 1 and surah_part.split('-')[1]:
+            # Multi-part surah (e.g., "002-04") - look in subdirectory
+            audio_files = sorted(glob.glob(f"{audio_dir}/{surah_num}/{surah_part}/{surah_part}-*.wav"))
+        else:
+            # Single surah (e.g., "001") - look directly in surah folder
+            audio_files = sorted(glob.glob(f"{audio_dir}/{surah_num}/{surah_part}-*.wav"))
+
+        if not audio_files:
+            # Try subdirectory as fallback
+            audio_files = sorted(glob.glob(f"{audio_dir}/{surah_num}/{surah_part}/{surah_part}-*.wav"))
+    else:
+        # Process all audio files
+        audio_files = sorted(glob.glob(f"{audio_dir}/**/*.wav", recursive=True))
+
     if not audio_files:
         print(f"❌ No audio files found in {audio_dir}")
         return
@@ -133,8 +159,8 @@ def precompute_dataset(dataset_path):
     errors = 0
 
     for audio_file in audio_files:
-        # Create mel feature path by replacing /audio/raw/ with /mels/ and .wav with .pt
-        mel_path = audio_file.replace('/audio/raw/', '/mels/').replace('.wav', '.pt')
+        # Create mel feature path by replacing /audio/mic/ with /mels/ and .wav with .pt
+        mel_path = audio_file.replace('/audio/mic/', '/mels/').replace('.wav', '.pt')
 
         # Create mels directory if it doesn't exist
         os.makedirs(os.path.dirname(mel_path), exist_ok=True)
@@ -175,7 +201,10 @@ def main():
         if not os.path.exists(dataset_path):
             print(f"❌ Dataset not found: {dataset_path}")
             sys.exit(1)
-        precompute_dataset(dataset_path)
+
+        # Check if surah_part is specified
+        surah_part = sys.argv[2] if len(sys.argv) > 2 else None
+        precompute_dataset(dataset_path, surah_part)
     else:
         # Process all datasets
         datasets_dir = "../datasets"
