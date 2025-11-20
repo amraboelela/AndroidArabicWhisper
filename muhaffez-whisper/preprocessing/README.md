@@ -175,7 +175,7 @@ datasets/
 - **Sample Rate**: 16kHz (resampled from 8kHz input)
 - **STFT**: n_fft=400, hop_length=160 (100 fps)
 - **Mel Filterbank**: Whisper's mel_80.npz (using 40 mels)
-- **Normalization**: Whisper global normalization (mean=-4.27, std=4.57)
+- **Normalization**: Per-segment normalization (mean=0, std=1)
 - **Format**: PyTorch tensor (time, 40)
 
 ### Audio Quality

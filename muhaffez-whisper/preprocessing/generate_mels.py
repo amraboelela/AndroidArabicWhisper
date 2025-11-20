@@ -102,9 +102,9 @@ def extract_mel_features_whisper_accurate(audio_path, n_mels=40):
     # Transpose to (time, mel_bins)
     mel_features = mel_spec.transpose(0, 1)
 
-    # Global Whisper normalization (computed from LibriSpeech)
-    mel_mean = -4.2677
-    mel_std = 4.5689
+    # Localized per-segment normalization (better for varying audio conditions)
+    mel_mean = mel_features.mean()
+    mel_std = mel_features.std()
     mel_features = (mel_features - mel_mean) / (mel_std + 1e-8)
 
     return mel_features
@@ -226,14 +226,14 @@ def main():
             precompute_dataset(dataset_path)
 
     print("\n✓ All datasets processed successfully!")
-    print("\n📊 Mel features are now 100% Whisper-accurate (bit-for-bit identical):")
+    print("\n📊 Mel features with Whisper-accurate extraction + localized normalization:")
     print("   ✓ Whisper's exact mel filterbank (mel_80.npz)")
     print("   ✓ Whisper's STFT settings (n_fft=400, hop=160)")
     print("   ✓ Whisper's reflect padding (not zero padding)")
     print("   ✓ Whisper's Hann window (np.hanning(401)[:-1])")
     print("   ✓ Whisper's window normalization (energy correction)")
-    print("   ✓ Whisper's log + normalization (mean=-4.27, std=4.57)")
-    print("\n🎯 Your mel features now match OpenAI Whisper exactly!")
+    print("   ✓ Per-segment normalization (mean=0, std=1)")
+    print("\n🎯 Features are ready for training with consistent per-segment normalization!")
 
 if __name__ == "__main__":
     main()
