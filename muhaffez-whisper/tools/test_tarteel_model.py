@@ -10,7 +10,7 @@ import torchaudio
 
 def load_model_and_processor():
     """Load the custom tarteel model and processor"""
-    model_path = "models/custom-whisper-ar-quran"
+    model_path = "models/whisper-base-ar-quran"
 
     print(f"Loading CUSTOM model from {model_path}...")
     model = WhisperForConditionalGeneration.from_pretrained(model_path)
@@ -69,7 +69,7 @@ def transcribe_audio(model, processor, audio_path):
 
 def main():
     print("="*60)
-    print("Testing Custom Whisper Model (models/custom-whisper-ar-quran)")
+    print("Testing Custom Whisper Model (models/whisper-base-ar-quran)")
     print("="*60)
 
     # Load model

@@ -173,7 +173,7 @@ def export_custom_model_to_onnx():
     print("=" * 70)
     print()
     print(f"📊 Total model size: {total_size:.2f} MB")
-    print(f"   (vs {290:.2f} MB for custom-whisper-ar-quran)")
+    print(f"   (vs {290:.2f} MB for whisper-base-ar-quran)")
     print(f"   → {290/total_size:.1f}x smaller!")
     print()
     print("📁 Exported files:")

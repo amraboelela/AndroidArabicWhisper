@@ -107,10 +107,10 @@ def main():
     # Determine output directory based on prefix
     # If segment_name has parts (e.g., "002-04"), save to subdirectory
     if '-' in segment_name:
-        output_dir = f"../{dataset_name}/audio/raw/{segment_prefix}/{segment_name}"
+        output_dir = f"../datasets/{dataset_name}/audio/raw/{segment_prefix}/{segment_name}"
     else:
         # For single segments like "001", save directly in prefix folder
-        output_dir = f"../{dataset_name}/audio/raw/{segment_prefix}"
+        output_dir = f"../datasets/{dataset_name}/audio/raw/{segment_prefix}"
 
     # Audio path from ~/audio/{dataset_name}/
     audio_path = os.path.expanduser(f"~/audio/{dataset_name}/{segment_name}.mp3")

@@ -38,8 +38,8 @@ muhaffez-whisper/
 │   ├── test_full.py
 │   ├── test_curriculum.py
 │   └── test.sh
-├── preprocessing/     # Audio preprocessing pipeline
-│   ├── segment_audio.sh
+├── preprocess/        # Audio preprocessing pipeline
+│   ├── preprocess.sh
 │   ├── segment_audio.py
 │   ├── normalize_text.py
 │   └── transcribe_segments.py
@@ -53,8 +53,8 @@ muhaffez-whisper/
 Prepare audio data by segmenting long recordings into smaller chunks:
 
 ```bash
-cd preprocessing
-./segment_audio.sh Quran-A 002-04
+cd preprocess
+./preprocess.sh Quran-A 002-04
 ```
 
 ### 2. Train Model

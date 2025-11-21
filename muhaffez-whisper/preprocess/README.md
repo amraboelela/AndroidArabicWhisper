@@ -14,19 +14,19 @@ The preprocessing pipeline converts raw Quranic audio recordings into training-r
 
 ## Pipeline Script
 
-### `segment_audio.sh` - Main Pipeline Orchestrator
+### `preprocess.sh` - Main Pipeline Orchestrator
 
 Runs all five preprocessing stages in sequence.
 
 **Usage:**
 ```bash
-./segment_audio.sh <dataset_name> <segment_name>
+./preprocess.sh <dataset_name> <segment_name>
 ```
 
 **Examples:**
 ```bash
-./segment_audio.sh Quran-A 002-04  # Process Al-Baqara part 4
-./segment_audio.sh Quran-A 001     # Process Al-Fatiha
+./preprocess.sh Quran-A 002-04  # Process Al-Baqara part 4
+./preprocess.sh Quran-A 001     # Process Al-Fatiha
 ```
 
 **Output:**
@@ -189,7 +189,7 @@ datasets/
 
 ## Best Practices
 
-1. **Always run the full pipeline** using `segment_audio.sh` to ensure consistency
+1. **Always run the full pipeline** using `preprocess.sh` to ensure consistency
 2. **Check transcription quality** after step 2 before continuing
 3. **Verify segment count** matches between audio files and text lines
 4. **Use fallback mode** to batch-process entire datasets:

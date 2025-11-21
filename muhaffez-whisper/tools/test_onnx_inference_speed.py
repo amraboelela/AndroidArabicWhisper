@@ -25,8 +25,8 @@ print(f"⏱️  Preprocessing: {preprocessing_time:.1f}ms")
 
 # Load ONNX models
 print("\n📦 Loading ONNX models...")
-encoder_path = "/Users/amraboelela/develop/android/AndroidArabicWhisper/onnx/models/custom-whisper-ar-quran-onnx-simplified/encoder_model.onnx"
-decoder_path = "/Users/amraboelela/develop/android/AndroidArabicWhisper/onnx/models/custom-whisper-ar-quran-onnx-simplified/decoder_model.onnx"
+encoder_path = "/Users/amraboelela/develop/android/AndroidArabicWhisper/onnx/models/whisper-base-ar-quran-onnx-simplified/encoder_model.onnx"
+decoder_path = "/Users/amraboelela/develop/android/AndroidArabicWhisper/onnx/models/whisper-base-ar-quran-onnx-simplified/decoder_model.onnx"
 
 sess_options = ort.SessionOptions()
 sess_options.intra_op_num_threads = 4

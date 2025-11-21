@@ -57,8 +57,8 @@ def main():
     segment_name = sys.argv[2]
 
     # Determine file paths
-    input_file = f"../{dataset_name}/text/{segment_name}.txt"
-    output_file = f"../{dataset_name}/text/{segment_name}.txt"  # Overwrite the same file
+    input_file = f"../datasets/{dataset_name}/text/{segment_name}.txt"
+    output_file = f"../datasets/{dataset_name}/text/{segment_name}.txt"  # Overwrite the same file
 
     if not os.path.exists(input_file):
         print(f"❌ Input file not found: {input_file}")

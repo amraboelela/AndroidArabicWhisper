@@ -185,8 +185,8 @@ def main():
     print("Creating Simplified ONNX-Compatible Whisper Model")
     print("="*70)
 
-    model_path = "models/custom-whisper-ar-quran"
-    output_dir = "models/custom-whisper-ar-quran-onnx-simplified"
+    model_path = "models/whisper-base-ar-quran"
+    output_dir = "models/whisper-base-ar-quran-onnx-simplified"
 
     # Load original model
     print(f"\nLoading original model from {model_path}...")

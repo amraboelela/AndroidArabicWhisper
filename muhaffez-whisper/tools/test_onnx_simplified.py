@@ -122,7 +122,7 @@ def main():
     print("Testing Simplified ONNX Whisper Model")
     print("="*70)
 
-    model_dir = "models/custom-whisper-ar-quran-onnx-simplified"
+    model_dir = "models/whisper-base-ar-quran-onnx-simplified"
 
     # Load processor (for audio preprocessing and token decoding)
     print("\nLoading processor...")

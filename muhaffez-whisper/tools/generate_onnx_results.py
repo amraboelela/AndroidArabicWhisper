@@ -52,7 +52,7 @@ def main():
     print("="*70)
 
     # Load model
-    model_dir = 'models/custom-whisper-ar-quran-onnx-simplified'
+    model_dir = 'models/whisper-base-ar-quran-onnx-simplified'
     print(f"\nLoading model from {model_dir}...")
     processor = WhisperProcessor.from_pretrained(model_dir)
     encoder_path = os.path.join(model_dir, 'encoder_model.onnx')
