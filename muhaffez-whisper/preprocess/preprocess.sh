@@ -42,7 +42,7 @@ fi
 > "$LOG_FILE"
 
 echo "============================================================"
-echo "PROCESSING DATASET: $DATASET_NAME, SEGMENT: $SEGMENT_NAME"
+echo "PROCESSING DATASET: $DATASET_NAME, Surah (part): $SEGMENT_NAME"
 echo "Started: $(date)"
 echo "============================================================" | tee -a "$LOG_FILE"
 echo ""
@@ -75,12 +75,12 @@ tail -10 "$TEMP_LOG" | grep -E "✓ Saved|Statistics|Transcribed|Total" | tee -a
 cat "$TEMP_LOG" >> "$LOG_FILE"
 echo ""
 
-# Step 3: Normalize text
-echo "[3/5] Normalizing transcribed text..." | tee -a "$LOG_FILE"
-python3 normalize_text.py "$DATASET_NAME" "$SEGMENT_NAME" > "$TEMP_LOG" 2>&1
+# Step 3: Fix with Quran database and normalize text
+echo "[3/5] Fixing and normalizing text..." | tee -a "$LOG_FILE"
+python3 fix_text.py "$DATASET_NAME" "$SEGMENT_NAME" > "$TEMP_LOG" 2>&1
 if [ $? -ne 0 ]; then
     cat "$TEMP_LOG" | tee -a "$LOG_FILE"
-    echo "❌ Text normalization failed" | tee -a "$LOG_FILE"
+    echo "❌ Text fix/normalization failed" | tee -a "$LOG_FILE"
     rm "$TEMP_LOG"
     exit 1
 fi

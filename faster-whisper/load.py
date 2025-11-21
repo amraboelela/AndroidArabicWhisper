@@ -13,7 +13,8 @@ if not os.path.exists(output_dir):
 
 # Convert Hugging Face model to CTranslate2 format
     converter = TransformersConverter("tarteel-ai/whisper-base-ar-quran")
-    converter.convert(output_dir, quantization="int8")  # or "float16" for GPU
+    #converter.convert(output_dir, quantization="int8")  # or "float16" for GPU
+    converter.convert(output_dir, quantization="float16")  # or "float16" for GPU
 
 # Load the converted model
 model = WhisperModel(output_dir, device="cpu")  # or device="cuda"

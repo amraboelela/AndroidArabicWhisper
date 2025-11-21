@@ -53,6 +53,14 @@ def segment_audio_simple(audio_path, output_dir):
     print(f"Loaded {audio_path}")
     print(f"Sample rate: {sample_rate}, Duration: {waveform.shape[1] / sample_rate:.2f}s")
 
+    # Resample to 16kHz if needed (Whisper requires 16kHz)
+    target_sample_rate = 16000
+    if sample_rate != target_sample_rate:
+        print(f"Resampling from {sample_rate}Hz to {target_sample_rate}Hz...")
+        resampler = torchaudio.transforms.Resample(sample_rate, target_sample_rate)
+        waveform = resampler(waveform)
+        sample_rate = target_sample_rate
+
     silent_regions, hop_length = detect_silence(waveform, sample_rate)
     silent_samples = [(start * hop_length, end * hop_length) for start, end in silent_regions]
 
@@ -82,6 +90,7 @@ def segment_audio_simple(audio_path, output_dir):
                 output_dir,
                 f"{base_name}-{saved_count:02d}.wav"  # 2-digit format
             )
+            # Save as WAV format (torchaudio will handle PCM encoding automatically)
             torchaudio.save(output_path, segment_audio, sample_rate)
             print(f"  Segment {saved_count:3d}: {duration:5.2f}s -> {output_path}")
 
@@ -112,8 +121,8 @@ def main():
         # For single segments like "001", save directly in prefix folder
         output_dir = f"../datasets/{dataset_name}/audio/raw/{segment_prefix}"
 
-    # Audio path from ~/audio/{dataset_name}/
-    audio_path = os.path.expanduser(f"~/audio/{dataset_name}/{segment_name}.mp3")
+    # Audio path from ~/audio/Quran/{dataset_name}/
+    audio_path = os.path.expanduser(f"~/audio/Quran/{dataset_name}/{segment_name}.mp3")
 
     if not os.path.exists(audio_path):
         print(f"❌ Audio file not found: {audio_path}")
