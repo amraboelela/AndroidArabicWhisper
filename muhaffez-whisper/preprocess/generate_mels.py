@@ -21,32 +21,10 @@ import glob
 import os
 from pathlib import Path
 
-# Load Whisper's exact mel filterbank (80 mels, 0-8000 Hz)
-MEL_FILTERS = None
-
-def load_whisper_mel_filters():
-    """Load Whisper's proprietary mel filterbank"""
-    global MEL_FILTERS
-    if MEL_FILTERS is None:
-        try:
-            # Try to load from whisper package
-            import whisper
-            mel_filters_path = os.path.join(os.path.dirname(whisper.__file__), "assets", "mel_filters.npz")
-            mel_80 = np.load(mel_filters_path, allow_pickle=False)["mel_80"]
-            MEL_FILTERS = torch.from_numpy(mel_80).float()
-            print(f"✓ Loaded Whisper mel filters from: {mel_filters_path}")
-        except Exception as e:
-            print(f"❌ Failed to load Whisper mel filters: {e}")
-            print("   Make sure openai-whisper is installed: pip install openai-whisper")
-            sys.exit(1)
-    return MEL_FILTERS
-
 def extract_mel_features_whisper_accurate(audio_path, n_mels=40):
     """
-    Extract mel features using Whisper's EXACT pipeline (bit-for-bit accurate):
-    - Whisper's mel filterbank (not torchaudio's)
-    - Whisper's STFT settings (reflect padding, specific Hann window)
-    - Whisper's log + normalization
+    Extract mel features for 8kHz mic audio using 40 mel bins (0-4000 Hz)
+    Adapted from Whisper's pipeline for lower sample rate audio
     """
     # Load audio
     waveform, sample_rate = torchaudio.load(audio_path)
@@ -55,18 +33,16 @@ def extract_mel_features_whisper_accurate(audio_path, n_mels=40):
     if waveform.shape[0] > 1:
         waveform = waveform.mean(dim=0, keepdim=True)
 
-    # Resample to 16kHz (Whisper standard)
-    target_sample_rate = 16000
-    if sample_rate != target_sample_rate:
-        resampler = torchaudio.transforms.Resample(orig_freq=sample_rate, new_freq=target_sample_rate)
-        waveform = resampler(waveform)
-        sample_rate = target_sample_rate
+    # For 8kHz audio, we don't resample - keep it at 8kHz
+    # 8kHz gives us 0-4000 Hz frequency range (Nyquist)
+    # We'll use 40 mel bins for this range (half of Whisper's 80 mels for 16kHz)
 
-    # Whisper STFT parameters
-    n_fft = 400
-    hop_length = 160  # 16000 / 160 = 100 fps
+    # STFT parameters adapted for 8kHz
+    # Scale down from Whisper's 16kHz parameters
+    n_fft = 400  # Keep same n_fft for similar frequency resolution
+    hop_length = 80  # Half of 160 (since sample rate is half)
 
-    # Whisper padding: reflect mode (not zeros like torch default)
+    # Whisper padding: reflect mode
     pad = n_fft // 2
     waveform = torch.nn.functional.pad(
         waveform,
@@ -74,7 +50,7 @@ def extract_mel_features_whisper_accurate(audio_path, n_mels=40):
         mode="reflect"
     ).squeeze(0)
 
-    # Whisper Hann window: np.hanning(n_fft + 1)[:-1]
+    # Whisper Hann window
     window = torch.hann_window(n_fft + 1, periodic=False)[:-1]
 
     # Compute STFT (center=False because we manually padded)
@@ -88,13 +64,23 @@ def extract_mel_features_whisper_accurate(audio_path, n_mels=40):
     )
 
     # Compute magnitude squared (power spectrogram)
-    # Normalize by window energy (Whisper does this internally)
     window_norm = (window**2).sum()
     magnitude = (stft.abs() ** 2) / window_norm
 
-    # Apply Whisper's mel filterbank
-    mel_filters = load_whisper_mel_filters()
-    mel_spec = mel_filters @ magnitude
+    # Create mel filterbank for 8kHz audio with 40 mel bins
+    # Frequency range: 0-4000 Hz (Nyquist for 8kHz)
+    mel_filterbank = torchaudio.functional.melscale_fbanks(
+        n_freqs=n_fft // 2 + 1,
+        f_min=0.0,
+        f_max=4000.0,
+        n_mels=n_mels,
+        sample_rate=sample_rate,
+        norm="slaney",
+        mel_scale="slaney"
+    )
+
+    # Apply mel filterbank
+    mel_spec = mel_filterbank.T @ magnitude
 
     # Log mel (Whisper uses ln, not log10)
     mel_spec = torch.log(mel_spec + 1e-10)
@@ -124,76 +110,111 @@ def precompute_dataset(dataset_path, surah_part=None):
         print(f"PRECOMPUTING MEL FEATURES - DATASET: {dataset_name}")
     print(f"{'='*60}\n")
 
-    # Find audio files from mic directory (8kHz mobile mic quality)
-    audio_dir = f"{dataset_path}/audio/mic"
-    if not os.path.exists(audio_dir):
-        print(f"❌ Audio directory not found: {audio_dir}")
-        return
+    # Process both mic and augmented audio
+    audio_sources = [
+        ('mic', f"{dataset_path}/audio/mic", '/audio/mic/', '/mels/'),
+        ('augmented', f"{dataset_path}/audio/augmented", '/audio/augmented/', '/mels/augmented/')
+    ]
 
-    # If surah_part specified, only process that part
-    if surah_part:
-        surah_num = surah_part.split('-')[0]
-        # Check if surah_part has multiple parts (e.g., "002-04")
-        if '-' in surah_part and len(surah_part.split('-')) > 1 and surah_part.split('-')[1]:
-            # Multi-part surah (e.g., "002-04") - look in subdirectory
-            audio_files = sorted(glob.glob(f"{audio_dir}/{surah_num}/{surah_part}/{surah_part}-*.wav"))
+    total_processed = 0
+    total_skipped = 0
+    total_errors = 0
+
+    for source_name, audio_dir, search_pattern, replace_pattern in audio_sources:
+        if not os.path.exists(audio_dir):
+            if source_name == 'mic':
+                print(f"❌ Audio directory not found: {audio_dir}")
+                return
+            else:
+                # Augmented audio is optional
+                continue
+
+        # If surah_part specified, only process that part
+        if surah_part:
+            surah_num = surah_part.split('-')[0]
+            # Check if surah_part has multiple parts (e.g., "002-04")
+            if '-' in surah_part and len(surah_part.split('-')) > 1 and surah_part.split('-')[1]:
+                # Multi-part surah (e.g., "002-04")
+                if source_name == 'mic':
+                    audio_files = sorted(glob.glob(f"{audio_dir}/{surah_num}/{surah_part}/{surah_part}-*.wav"))
+                else:
+                    # For augmented, search in all augmentation subdirectories
+                    audio_files = sorted(glob.glob(f"{audio_dir}/**/{surah_num}/{surah_part}-*.wav", recursive=True))
+            else:
+                # Single surah (e.g., "001")
+                if source_name == 'mic':
+                    audio_files = sorted(glob.glob(f"{audio_dir}/{surah_num}/{surah_part}-*.wav"))
+                else:
+                    # For augmented, search in all augmentation subdirectories
+                    audio_files = sorted(glob.glob(f"{audio_dir}/**/{surah_num}/{surah_part}-*.wav", recursive=True))
+
+            if not audio_files and source_name == 'mic':
+                # Try subdirectory as fallback for mic
+                audio_files = sorted(glob.glob(f"{audio_dir}/{surah_num}/{surah_part}/{surah_part}-*.wav"))
         else:
-            # Single surah (e.g., "001") - look directly in surah folder
-            audio_files = sorted(glob.glob(f"{audio_dir}/{surah_num}/{surah_part}-*.wav"))
+            # Process all audio files
+            audio_files = sorted(glob.glob(f"{audio_dir}/**/*.wav", recursive=True))
 
         if not audio_files:
-            # Try subdirectory as fallback
-            audio_files = sorted(glob.glob(f"{audio_dir}/{surah_num}/{surah_part}/{surah_part}-*.wav"))
-    else:
-        # Process all audio files
-        audio_files = sorted(glob.glob(f"{audio_dir}/**/*.wav", recursive=True))
+            if source_name == 'mic':
+                print(f"❌ No audio files found in {audio_dir}")
+                return
+            else:
+                # No augmented files is OK
+                continue
 
-    if not audio_files:
-        print(f"❌ No audio files found in {audio_dir}")
-        return
+        print(f"\n{source_name.upper()}: Found {len(audio_files)} audio files")
 
-    print(f"Found {len(audio_files)} audio files")
+        processed = 0
+        skipped = 0
+        errors = 0
 
-    processed = 0
-    skipped = 0
-    errors = 0
+        for audio_file in audio_files:
+            # Create mel feature path by replacing search pattern with replace pattern and .wav with .pt
+            mel_path = audio_file.replace(search_pattern, replace_pattern).replace('.wav', '.pt')
 
-    for audio_file in audio_files:
-        # Create mel feature path by replacing /audio/mic/ with /mels/ and .wav with .pt
-        mel_path = audio_file.replace('/audio/mic/', '/mels/').replace('.wav', '.pt')
+            # Create mels directory if it doesn't exist
+            os.makedirs(os.path.dirname(mel_path), exist_ok=True)
 
-        # Create mels directory if it doesn't exist
-        os.makedirs(os.path.dirname(mel_path), exist_ok=True)
+            # Skip if already exists
+            if os.path.exists(mel_path):
+                skipped += 1
+                continue
 
-        # Skip if already exists
-        if os.path.exists(mel_path):
-            skipped += 1
-            continue
+            try:
+                # Extract and save mel features (Whisper-accurate)
+                mel_features = extract_mel_features_whisper_accurate(audio_file)
+                torch.save(mel_features, mel_path)
+                processed += 1
 
-        try:
-            # Extract and save mel features (Whisper-accurate)
-            mel_features = extract_mel_features_whisper_accurate(audio_file)
-            torch.save(mel_features, mel_path)
-            processed += 1
+                if processed % 50 == 0:
+                    print(f"  Processed {processed}/{len(audio_files) - skipped} files...", flush=True)
 
-            if processed % 50 == 0:
-                print(f"  Processed {processed}/{len(audio_files) - skipped} files...", flush=True)
+            except Exception as e:
+                print(f"❌ Error processing {audio_file}: {e}")
+                errors += 1
 
-        except Exception as e:
-            print(f"❌ Error processing {audio_file}: {e}")
-            errors += 1
+        print(f"✓ {source_name.upper()} complete!")
+        print(f"  Processed: {processed} files")
+        if skipped > 0:
+            print(f"  Skipped (already exists): {skipped} files")
+        if errors > 0:
+            print(f"  Errors: {errors} files")
 
-    print(f"\n✓ Precomputation complete!")
-    print(f"  Processed: {processed} files")
-    if skipped > 0:
-        print(f"  Skipped (already exists): {skipped} files")
-    if errors > 0:
-        print(f"  Errors: {errors} files")
+        total_processed += processed
+        total_skipped += skipped
+        total_errors += errors
+
+    print(f"\n{'='*60}")
+    print(f"✓ TOTAL PRECOMPUTATION COMPLETE!")
+    print(f"  Total Processed: {total_processed} files")
+    if total_skipped > 0:
+        print(f"  Total Skipped: {total_skipped} files")
+    if total_errors > 0:
+        print(f"  Total Errors: {total_errors} files")
+    print(f"{'='*60}")
 
 def main():
-    # Load mel filters once at startup
-    load_whisper_mel_filters()
-
     if len(sys.argv) > 1:
         # Process specific dataset
         dataset_name = sys.argv[1]
@@ -226,14 +247,14 @@ def main():
             precompute_dataset(dataset_path)
 
     print("\n✓ All datasets processed successfully!")
-    print("\n📊 Mel features with Whisper-accurate extraction + localized normalization:")
-    print("   ✓ Whisper's exact mel filterbank (mel_80.npz)")
-    print("   ✓ Whisper's STFT settings (n_fft=400, hop=160)")
-    print("   ✓ Whisper's reflect padding (not zero padding)")
-    print("   ✓ Whisper's Hann window (np.hanning(401)[:-1])")
-    print("   ✓ Whisper's window normalization (energy correction)")
+    print("\n📊 Mel features optimized for 8kHz mic audio:")
+    print("   ✓ 40 mel bins (0-4000 Hz frequency range)")
+    print("   ✓ 8kHz sample rate (mobile mic quality)")
+    print("   ✓ STFT parameters: n_fft=400, hop=80")
+    print("   ✓ Reflect padding (Whisper-style)")
+    print("   ✓ Slaney mel scale normalization")
     print("   ✓ Per-segment normalization (mean=0, std=1)")
-    print("\n🎯 Features are ready for training with consistent per-segment normalization!")
+    print("\n🎯 Features are ready for training with 40-mel configuration!")
 
 if __name__ == "__main__":
     main()
