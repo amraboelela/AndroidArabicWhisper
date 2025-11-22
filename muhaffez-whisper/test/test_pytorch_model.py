@@ -24,7 +24,7 @@ model = EncoderDecoderTransformer(
     d_ff=512,
     dropout=0.0,
     max_seq_len=1500,
-    n_mels=80
+    n_mels=40
 )
 checkpoint = torch.load('../models/muhaffez_whisper.pt', map_location='cpu')
 model.load_state_dict(checkpoint)
@@ -50,7 +50,7 @@ mel_transform = torchaudio.transforms.MelSpectrogram(
     sample_rate=16000,
     n_fft=400,
     hop_length=160,
-    n_mels=80,
+    n_mels=40,
     f_min=0,
     f_max=8000
 )

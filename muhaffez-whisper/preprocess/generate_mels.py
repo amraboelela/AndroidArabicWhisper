@@ -112,7 +112,7 @@ def precompute_dataset(dataset_path, surah_part=None):
 
     # Process both mic and augmented audio
     audio_sources = [
-        ('mic', f"{dataset_path}/audio/mic", '/audio/mic/', '/mels/'),
+        ('mic', f"{dataset_path}/audio/mic", '/audio/mic/', '/mels/normal/'),
         ('augmented', f"{dataset_path}/audio/augmented", '/audio/augmented/', '/mels/augmented/')
     ]
 

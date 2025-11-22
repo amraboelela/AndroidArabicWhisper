@@ -161,3 +161,42 @@ set(CTRANSLATE2_ROOT "/Users/amraboelela/develop/android/CTranslate2")
 - When training model on new data, use very low Learning Rate (1e-5), Early stop when loss plateaus (change < 0.001), use max number of epochs = 5
 - never kill the adb process
 - do not read the whole onnx/vocabulary.json file it is too long
+
+## Text Correction Rules for Muhaffez-Whisper Dataset
+
+When manually fixing transcription errors in dataset text files (e.g., `muhaffez-whisper/datasets/Quran-A/text/*.txt`):
+
+### Critical Rules
+1. **NEVER combine lines** - Each line corresponds to an audio segment and must remain separate
+2. **Only fix incorrect words** - Change wrong words to correct words, don't add or remove lines
+3. **Do NOT add extra words** - Only fix words that are already there; do not add missing words even if verse seems incomplete
+4. **No extra spaces** - Use single space between words only; do not add double spaces
+5. **Remove tanween endings** - Use vocabulary words without tanween (e.g., `ماء` not `ماءا`, `بناء` not `بناءا`)
+6. **Verify words exist in vocabulary** - Check `muhaffez-whisper/models/vocabulary.json` to ensure words match
+7. **Preserve line count** - The final file MUST have the same number of lines as the original transcription
+
+### Common Transcription Errors to Fix
+- `ايفلاميك` → `الم`
+- `المصلحون` → `المفلحون`
+- `وكم` → `ختم`
+- `لقلوبهم` → `في قلوبهم`
+- `يعمه` → `يعمهون`
+- `طم` → `صم`
+- `الصواعط` → `الصواعق`
+- `البلق` → `البرق`
+- `تستقون` → `تتقون`
+- `انزلا` → `اندادا`
+- `يستحي` → `يستحيي`
+- `توجعون` → `ترجعون`
+- `انزئهم` → `انبئهم`
+- `رغبا` → `رغدا`
+- `فازل` → `فازلهما`
+- `هدا` → `هدى`
+- `يحذنون` → `يحزنون`
+
+### Process
+1. Read the file to see all lines
+2. Fix only the incorrect words within each line
+3. Keep the exact same number of lines as the original
+4. Verify the line count with `wc -l` after editing
+- in the fix text do not put extra spaces between words

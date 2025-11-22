@@ -45,7 +45,7 @@ def export_muhaffez_to_onnx():
         d_ff=512,
         dropout=0.0,  # No dropout for inference
         max_seq_len=1500,
-        n_mels=80
+        n_mels=40
     )
 
     # Load weights
@@ -63,10 +63,10 @@ def export_muhaffez_to_onnx():
 
     encoder_path = output_dir / "encoder_model.onnx"
 
-    # Dummy input: mel features (batch, n_mels=80, time=3000)
-    dummy_mel = torch.randn(1, 80, 3000)
+    # Dummy input: mel features (batch, n_mels=40, time=3000)
+    dummy_mel = torch.randn(1, 40, 3000)
 
-    print("   Input shape: (batch=1, n_mels=80, time=3000)")
+    print("   Input shape: (batch=1, n_mels=40, time=3000)")
     print("   Exporting...")
 
     # Create encoder wrapper
