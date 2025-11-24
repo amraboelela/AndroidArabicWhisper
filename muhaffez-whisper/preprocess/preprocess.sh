@@ -15,8 +15,6 @@
 # 7. Precompute mel features for current part only
 #
 
-set -e  # Exit on any error
-
 # Check if dataset name and segment name parameters are provided
 if [ $# -lt 2 ]; then
     echo "Usage: ./preprocess.sh <dataset_name> <segment_name>"
@@ -53,7 +51,8 @@ echo ""
 echo "" | tee -a "$LOG_FILE"
 echo "[1/7] Segmenting audio file..." | tee -a "$LOG_FILE"
 python3 segment_audio.py "$DATASET_NAME" "$SEGMENT_NAME" > "$TEMP_LOG" 2>&1
-if [ $? -ne 0 ]; then
+EXIT_CODE=$?
+if [ $EXIT_CODE -ne 0 ]; then
     cat "$TEMP_LOG" | tee -a "$LOG_FILE"
     echo "❌ Audio segmentation failed" | tee -a "$LOG_FILE"
     rm "$TEMP_LOG"
@@ -67,7 +66,8 @@ cat "$TEMP_LOG" >> "$LOG_FILE"
 echo "" | tee -a "$LOG_FILE"
 echo "[2/7] Transcribing segments..." | tee -a "$LOG_FILE"
 python3 transcribe_segments.py "$DATASET_NAME" "$SEGMENT_NAME" > "$TEMP_LOG" 2>&1
-if [ $? -ne 0 ]; then
+EXIT_CODE=$?
+if [ $EXIT_CODE -ne 0 ]; then
     cat "$TEMP_LOG" | tee -a "$LOG_FILE"
     echo "❌ Transcription failed" | tee -a "$LOG_FILE"
     rm "$TEMP_LOG"
@@ -81,7 +81,8 @@ cat "$TEMP_LOG" >> "$LOG_FILE"
 echo "" | tee -a "$LOG_FILE"
 echo "[3/7] Normalizing text..." | tee -a "$LOG_FILE"
 python3 normalize_text.py "$DATASET_NAME" "$SEGMENT_NAME" > "$TEMP_LOG" 2>&1
-if [ $? -ne 0 ]; then
+EXIT_CODE=$?
+if [ $EXIT_CODE -ne 0 ]; then
     cat "$TEMP_LOG" | tee -a "$LOG_FILE"
     echo "❌ Text normalization failed" | tee -a "$LOG_FILE"
     rm "$TEMP_LOG"
@@ -95,7 +96,8 @@ cat "$TEMP_LOG" >> "$LOG_FILE"
 echo "" | tee -a "$LOG_FILE"
 echo "[4/7] Fixing vocabulary mismatches..." | tee -a "$LOG_FILE"
 python3 fix_text.py "$DATASET_NAME" "$SEGMENT_NAME" > "$TEMP_LOG" 2>&1
-if [ $? -ne 0 ]; then
+EXIT_CODE=$?
+if [ $EXIT_CODE -ne 0 ]; then
     cat "$TEMP_LOG" | tee -a "$LOG_FILE"
     echo "❌ Vocabulary fix failed" | tee -a "$LOG_FILE"
     rm "$TEMP_LOG"
@@ -109,7 +111,8 @@ cat "$TEMP_LOG" >> "$LOG_FILE"
 echo "" | tee -a "$LOG_FILE"
 echo "[5/7] Converting to mobile mic quality (8kHz)..." | tee -a "$LOG_FILE"
 python3 convert_to_mic_quality.py "$DATASET_NAME" "$SEGMENT_NAME" > "$TEMP_LOG" 2>&1
-if [ $? -ne 0 ]; then
+EXIT_CODE=$?
+if [ $EXIT_CODE -ne 0 ]; then
     cat "$TEMP_LOG" | tee -a "$LOG_FILE"
     echo "❌ Conversion to mic quality failed" | tee -a "$LOG_FILE"
     rm "$TEMP_LOG"
@@ -123,7 +126,8 @@ cat "$TEMP_LOG" >> "$LOG_FILE"
 echo "" | tee -a "$LOG_FILE"
 echo "[6/7] Generating augmented audio (pitch/speed variations)..." | tee -a "$LOG_FILE"
 python3 generate_augmented.py "$DATASET_NAME" "$SEGMENT_NAME" > "$TEMP_LOG" 2>&1
-if [ $? -ne 0 ]; then
+EXIT_CODE=$?
+if [ $EXIT_CODE -ne 0 ]; then
     cat "$TEMP_LOG" | tee -a "$LOG_FILE"
     echo "❌ Audio augmentation failed" | tee -a "$LOG_FILE"
     rm "$TEMP_LOG"
@@ -137,7 +141,8 @@ cat "$TEMP_LOG" >> "$LOG_FILE"
 echo "" | tee -a "$LOG_FILE"
 echo "[7/7] Precomputing mel spectrogram features from mic audio..." | tee -a "$LOG_FILE"
 python3 generate_mels.py "$DATASET_NAME" "$SEGMENT_NAME" > "$TEMP_LOG" 2>&1
-if [ $? -ne 0 ]; then
+EXIT_CODE=$?
+if [ $EXIT_CODE -ne 0 ]; then
     cat "$TEMP_LOG" | tee -a "$LOG_FILE"
     echo "❌ Mel feature precomputation failed" | tee -a "$LOG_FILE"
     rm "$TEMP_LOG"
