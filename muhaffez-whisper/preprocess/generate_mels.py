@@ -138,14 +138,16 @@ def precompute_dataset(dataset_path, surah_part=None):
                 if source_name == 'mic':
                     audio_files = sorted(glob.glob(f"{audio_dir}/{surah_num}/{surah_part}/{surah_part}-*.wav"))
                 else:
-                    # For augmented, search in all augmentation subdirectories
-                    audio_files = sorted(glob.glob(f"{audio_dir}/**/{surah_num}/{surah_part}-*.wav", recursive=True))
+                    # For augmented, search in all augmentation subdirectories with part structure
+                    # Pattern: augmented/{category}/{variation}/{surah_num}/{surah_part}/
+                    audio_files = sorted(glob.glob(f"{audio_dir}/**/{surah_num}/{surah_part}/{surah_part}-*.wav", recursive=True))
             else:
                 # Single surah (e.g., "001")
                 if source_name == 'mic':
                     audio_files = sorted(glob.glob(f"{audio_dir}/{surah_num}/{surah_part}-*.wav"))
                 else:
                     # For augmented, search in all augmentation subdirectories
+                    # Pattern: augmented/{category}/{variation}/{surah_num}/
                     audio_files = sorted(glob.glob(f"{audio_dir}/**/{surah_num}/{surah_part}-*.wav", recursive=True))
 
             if not audio_files and source_name == 'mic':

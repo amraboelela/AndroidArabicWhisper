@@ -104,7 +104,7 @@ def speed_change(waveform, sample_rate, speed_factor):
 def generate_augmentations(input_file, dataset_name, segment_name, surah_num):
     """
     Generate all 8 augmented versions of an audio file
-    Saves to audio/mic/augmented/{aug_type}/{surah_num}/
+    Saves to audio/augmented/{aug_type}/{surah_num}/{segment_name}/
     """
     # Load audio
     waveform, sample_rate = torchaudio.load(input_file)
@@ -124,8 +124,15 @@ def generate_augmentations(input_file, dataset_name, segment_name, surah_num):
 
     results = []
     for aug_name, aug_func in augmentations.items():
-        # Structure: audio/augmented/{aug_category}/{variation}/{surah_num}/
-        output_dir = f"../datasets/{dataset_name}/audio/augmented/{aug_name}/{surah_num}"
+        # Structure: audio/augmented/{aug_category}/{variation}/{surah_num}/{segment_name}/
+        # For single-part surahs (e.g., 001), segment_name = surah_num, so path ends at surah_num
+        # For multi-part surahs (e.g., 002-04), we add segment_name subdirectory
+        if segment_name == surah_num:
+            # Single-part surah: audio/augmented/pitch/plus4/001/
+            output_dir = f"../datasets/{dataset_name}/audio/augmented/{aug_name}/{surah_num}"
+        else:
+            # Multi-part surah: audio/augmented/pitch/plus4/002/002-04/
+            output_dir = f"../datasets/{dataset_name}/audio/augmented/{aug_name}/{surah_num}/{segment_name}"
         os.makedirs(output_dir, exist_ok=True)
 
         output_file = os.path.join(output_dir, filename)
