@@ -5,12 +5,14 @@
 #        ./preprocess.sh Quran-A 002-04
 #        ./preprocess.sh Quran-A 001
 #
-# This script runs five operations in sequence:
+# This script runs six operations in sequence:
 # 1. Segment audio file based on silence detection (16kHz raw)
 # 2. Transcribe all segments using Whisper
 # 3. Normalize the transcribed text
-# 4. Convert current part to mobile mic quality (8kHz)
-# 5. Precompute mel features for current part only
+# 4. Fix vocabulary mismatches with closest matches
+# 5. Convert current part to mobile mic quality (8kHz)
+# 6. Generate augmented audio variations
+# 7. Precompute mel features for current part only
 #
 
 set -e  # Exit on any error
@@ -49,7 +51,7 @@ echo ""
 
 # Step 1: Segment audio
 echo "" | tee -a "$LOG_FILE"
-echo "[1/6] Segmenting audio file..." | tee -a "$LOG_FILE"
+echo "[1/7] Segmenting audio file..." | tee -a "$LOG_FILE"
 python3 segment_audio.py "$DATASET_NAME" "$SEGMENT_NAME" > "$TEMP_LOG" 2>&1
 if [ $? -ne 0 ]; then
     cat "$TEMP_LOG" | tee -a "$LOG_FILE"
@@ -63,7 +65,7 @@ cat "$TEMP_LOG" >> "$LOG_FILE"
 
 # Step 2: Transcribe segments
 echo "" | tee -a "$LOG_FILE"
-echo "[2/6] Transcribing segments..." | tee -a "$LOG_FILE"
+echo "[2/7] Transcribing segments..." | tee -a "$LOG_FILE"
 python3 transcribe_segments.py "$DATASET_NAME" "$SEGMENT_NAME" > "$TEMP_LOG" 2>&1
 if [ $? -ne 0 ]; then
     cat "$TEMP_LOG" | tee -a "$LOG_FILE"
@@ -77,7 +79,7 @@ cat "$TEMP_LOG" >> "$LOG_FILE"
 
 # Step 3: Normalize text
 echo "" | tee -a "$LOG_FILE"
-echo "[3/6] Normalizing text..." | tee -a "$LOG_FILE"
+echo "[3/7] Normalizing text..." | tee -a "$LOG_FILE"
 python3 normalize_text.py "$DATASET_NAME" "$SEGMENT_NAME" > "$TEMP_LOG" 2>&1
 if [ $? -ne 0 ]; then
     cat "$TEMP_LOG" | tee -a "$LOG_FILE"
@@ -89,9 +91,23 @@ fi
 tail -5 "$TEMP_LOG" | grep "✓" | tee -a "$LOG_FILE"
 cat "$TEMP_LOG" >> "$LOG_FILE"
 
-# Step 4: Convert raw audio to mic quality
+# Step 4: Fix vocabulary mismatches
 echo "" | tee -a "$LOG_FILE"
-echo "[4/6] Converting to mobile mic quality (8kHz)..." | tee -a "$LOG_FILE"
+echo "[4/7] Fixing vocabulary mismatches..." | tee -a "$LOG_FILE"
+python3 fix_text.py "$DATASET_NAME" "$SEGMENT_NAME" > "$TEMP_LOG" 2>&1
+if [ $? -ne 0 ]; then
+    cat "$TEMP_LOG" | tee -a "$LOG_FILE"
+    echo "❌ Vocabulary fix failed" | tee -a "$LOG_FILE"
+    rm "$TEMP_LOG"
+    exit 1
+fi
+# Extract and show summary
+tail -10 "$TEMP_LOG" | grep -E "✓|⚠" | tee -a "$LOG_FILE"
+cat "$TEMP_LOG" >> "$LOG_FILE"
+
+# Step 5: Convert raw audio to mic quality
+echo "" | tee -a "$LOG_FILE"
+echo "[5/7] Converting to mobile mic quality (8kHz)..." | tee -a "$LOG_FILE"
 python3 convert_to_mic_quality.py "$DATASET_NAME" "$SEGMENT_NAME" > "$TEMP_LOG" 2>&1
 if [ $? -ne 0 ]; then
     cat "$TEMP_LOG" | tee -a "$LOG_FILE"
@@ -103,9 +119,9 @@ fi
 tail -10 "$TEMP_LOG" | grep -E "Converted:|Skipped:|Errors:" | tee -a "$LOG_FILE"
 cat "$TEMP_LOG" >> "$LOG_FILE"
 
-# Step 5: Generate augmented audio variations
+# Step 6: Generate augmented audio variations
 echo "" | tee -a "$LOG_FILE"
-echo "[5/6] Generating augmented audio (pitch/speed variations)..." | tee -a "$LOG_FILE"
+echo "[6/7] Generating augmented audio (pitch/speed variations)..." | tee -a "$LOG_FILE"
 python3 generate_augmented.py "$DATASET_NAME" "$SEGMENT_NAME" > "$TEMP_LOG" 2>&1
 if [ $? -ne 0 ]; then
     cat "$TEMP_LOG" | tee -a "$LOG_FILE"
@@ -117,9 +133,9 @@ fi
 tail -10 "$TEMP_LOG" | grep -E "Generated:|Skipped:|Errors:" | tee -a "$LOG_FILE"
 cat "$TEMP_LOG" >> "$LOG_FILE"
 
-# Step 6: Precompute mel features from mic quality audio (including augmented)
+# Step 7: Precompute mel features from mic quality audio (including augmented)
 echo "" | tee -a "$LOG_FILE"
-echo "[6/6] Precomputing mel spectrogram features from mic audio..." | tee -a "$LOG_FILE"
+echo "[7/7] Precomputing mel spectrogram features from mic audio..." | tee -a "$LOG_FILE"
 python3 generate_mels.py "$DATASET_NAME" "$SEGMENT_NAME" > "$TEMP_LOG" 2>&1
 if [ $? -ne 0 ]; then
     cat "$TEMP_LOG" | tee -a "$LOG_FILE"

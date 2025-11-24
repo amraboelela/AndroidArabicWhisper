@@ -10,6 +10,9 @@ import os
 import sys
 from faster_whisper import WhisperModel
 
+# Set offline mode to prevent HuggingFace downloads
+os.environ['HF_HUB_OFFLINE'] = '1'
+
 def main():
     # Get dataset name and segment prefix from command line
     if len(sys.argv) < 3:
@@ -42,8 +45,8 @@ def main():
     print(f"Audio directory: {audio_dir}")
     print(f"Output file: {output_file}")
 
-    # Use faster-whisper with large-v2 model for better accuracy
-    model_size = "large-v2"
+    # Use converted Tarteel model in CTranslate2 format
+    model_size = os.path.join(script_dir, "../models/tarteel_ct2")
 
     print(f"\nLoading model: {model_size}...")
     try:
