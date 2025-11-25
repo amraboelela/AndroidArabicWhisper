@@ -1,16 +1,22 @@
 #!/bin/bash
 #
-# Run both training suites: curriculum learning and full dataset training
+# Unified training script - handles both per-part and whole-dataset training
 # Usage:
-#   ./train.sh                                   # Train all datasets
-#   ./train.sh <dataset_name>                    # Train all surah parts in dataset
-#   ./train.sh <dataset_name> <surah>            # Train all parts of specific surah (e.g., 002)
-#   ./train.sh <dataset_name> <surah_part>       # Train specific surah part (e.g., 002-04)
+#   ./train.sh all                               # Train ALL datasets (full suite with augmentation)
+#   ./train.sh <dataset_name> all                # Train entire dataset (full suite with augmentation)
+#   ./train.sh <dataset_name> <surah>            # Train all parts of specific surah (per-part)
+#   ./train.sh <dataset_name> <surah_part>       # Train specific surah part (per-part)
+#
+# Examples:
+#   ./train.sh all                               # Train everything with augmentation
+#   ./train.sh Quran-A all                       # Train entire Quran-A with augmentation
+#   ./train.sh Quran-A 002                       # Train all parts of surah 002 (per-part)
+#   ./train.sh Quran-A 002-04                    # Train only part 002-04 (per-part)
 #
 
 # Main training log
-TRAIN_LOG="log_train.txt"
-TRAIN_LOG_BACKUP="log_train_backup.txt"
+TRAIN_LOG="log.txt"
+TRAIN_LOG_BACKUP="log_backup.txt"
 
 # If this is the initial call (not recursive), set up logging
 if [ -z "$TRAIN_LOGGING_ACTIVE" ]; then
@@ -34,24 +40,66 @@ fi
 DATASET=${1}
 SURAH_OR_PART=${2}
 
-# If no dataset parameter, find all datasets
+# Check if required parameter is provided
 if [ -z "$DATASET" ]; then
-    DATASETS=($(ls -d ../datasets/*/ 2>/dev/null | xargs -n 1 basename))
+    # List available datasets (must have audio directory)
+    DATASETS=()
+    for dir in ../datasets/*/; do
+        dirname=$(basename "$dir")
+        if [ -d "$dir/audio" ] || [ -d "$dir/audio/mic" ]; then
+            DATASETS+=("$dirname")
+        fi
+    done
+
+    echo "Usage: ./train.sh <dataset_name|all> [surah_part|all]"
+    echo ""
+    echo "Examples:"
+    echo "  ./train.sh all                    # Train all datasets"
+    echo "  ./train.sh Quran-A all            # Train entire Quran-A dataset"
+    echo "  ./train.sh Quran-A 002            # Train all parts of surah 002"
+    echo "  ./train.sh Quran-A 002-04         # Train specific part 002-04"
+
+    if [ ${#DATASETS[@]} -gt 0 ]; then
+        echo ""
+        echo "Available datasets:"
+        for DS in "${DATASETS[@]}"; do
+            echo "  - $DS"
+        done
+    fi
+
+    exit 1
+fi
+
+# If dataset parameter is "all", find all datasets and run whole-dataset training
+if [ "$DATASET" = "all" ]; then
+    DATASETS=()
+    for dir in ../datasets/*/; do
+        dirname=$(basename "$dir")
+        if [ -d "$dir/audio" ] || [ -d "$dir/audio/mic" ]; then
+            DATASETS+=("$dirname")
+        fi
+    done
+
     if [ ${#DATASETS[@]} -eq 0 ]; then
         echo "❌ Error: No datasets found in ../datasets/"
         exit 1
     fi
     echo "Found ${#DATASETS[@]} dataset(s): ${DATASETS[@]}"
+    echo ""
 
-    # Train each dataset
+    # Train each dataset with full suite
     for DS in "${DATASETS[@]}"; do
-        # Recursively call this script with the dataset name
-        "$0" "$DS"
+        echo "════════════════════════════════════════════════════════════"
+        echo "Processing dataset: $DS"
+        echo "════════════════════════════════════════════════════════════"
+        # Recursively call this script with the dataset name and "all"
+        "$0" "$DS" "all"
 
         if [ $? -ne 0 ]; then
             echo "❌ Error: Training failed for dataset $DS"
             exit 1
         fi
+        echo ""
     done
 
     echo ""
@@ -59,16 +107,163 @@ if [ -z "$DATASET" ]; then
     exit 0
 fi
 
-# If no second parameter, find all text files in dataset
-if [ -z "$SURAH_OR_PART" ]; then
-    SURAH_PARTS=($(ls ../datasets/${DATASET}/text/*.txt 2>/dev/null | xargs -n 1 basename | sed 's/.txt//'))
-    if [ ${#SURAH_PARTS[@]} -eq 0 ]; then
-        echo "❌ Error: No text files found in ../datasets/${DATASET}/text/"
+# If second parameter is not provided or is "all", run whole-dataset training with augmentation
+if [ -z "$SURAH_OR_PART" ] || [ "$SURAH_OR_PART" = "all" ]; then
+    # Check if dataset directory exists
+    if [ ! -d "../datasets/${DATASET}" ]; then
+        echo "❌ Dataset directory not found: ../datasets/${DATASET}"
         exit 1
     fi
-    echo "Found ${#SURAH_PARTS[@]} surah parts in ${DATASET}"
-# If parameter looks like a surah number (e.g., "002"), find all parts for that surah
-elif [[ "$SURAH_OR_PART" =~ ^[0-9]{3}$ ]]; then
+
+    # Track overall start time
+    OVERALL_START_TIME=$(date +%s)
+
+    # Track results
+    PASSED=0
+    FAILED=0
+
+    echo "════════════════════════════════════════════════════════════"
+    echo "TRAINING ALL SEGMENTS - DATASET: $DATASET"
+    echo "════════════════════════════════════════════════════════════"
+    echo ""
+
+    # Run train_curriculum.py (whole-dataset mode)
+    SUITE_START=$(date +%s)
+    if python3 -u train_curriculum.py "$DATASET" "all"; then
+        SUITE_END=$(date +%s)
+        ELAPSED=$((SUITE_END - SUITE_START))
+
+        if [ $ELAPSED -lt 60 ]; then
+            TIME_STR="${ELAPSED}s"
+        else
+            MINUTES=$(echo "scale=0; m = ($ELAPSED + 30) / 60; if (m < 1) 1 else m" | bc)
+            TIME_STR="${MINUTES}m"
+        fi
+
+        echo "✓ Curriculum ($TIME_STR)"
+        PASSED=$((PASSED + 1))
+    else
+        SUITE_END=$(date +%s)
+        ELAPSED=$((SUITE_END - SUITE_START))
+
+        if [ $ELAPSED -lt 60 ]; then
+            TIME_STR="${ELAPSED}s"
+        else
+            MINUTES=$(echo "scale=0; m = ($ELAPSED + 30) / 60; if (m < 1) 1 else m" | bc)
+            TIME_STR="${MINUTES}m"
+        fi
+
+        echo "✗ Curriculum ($TIME_STR) FAILED"
+        FAILED=$((FAILED + 1))
+    fi
+
+    echo ""
+
+    # Run train_full.py (whole-dataset mode)
+    SUITE_START=$(date +%s)
+    if python3 -u train_full.py "$DATASET" "all"; then
+        SUITE_END=$(date +%s)
+        ELAPSED=$((SUITE_END - SUITE_START))
+
+        if [ $ELAPSED -lt 60 ]; then
+            TIME_STR="${ELAPSED}s"
+        else
+            MINUTES=$(echo "scale=0; m = ($ELAPSED + 30) / 60; if (m < 1) 1 else m" | bc)
+            TIME_STR="${MINUTES}m"
+        fi
+
+        echo "✓ Full ($TIME_STR)"
+        PASSED=$((PASSED + 1))
+    else
+        SUITE_END=$(date +%s)
+        ELAPSED=$((SUITE_END - SUITE_START))
+
+        if [ $ELAPSED -lt 60 ]; then
+            TIME_STR="${ELAPSED}s"
+        else
+            MINUTES=$(echo "scale=0; m = ($ELAPSED + 30) / 60; if (m < 1) 1 else m" | bc)
+            TIME_STR="${MINUTES}m"
+        fi
+
+        echo "✗ Full ($TIME_STR) FAILED"
+        FAILED=$((FAILED + 1))
+    fi
+
+    echo ""
+
+    # Run train_augmented.py (whole-dataset mode with pitch and speed augmentation)
+    SUITE_START=$(date +%s)
+    if python3 -u train_augmented.py "$DATASET" "all"; then
+        SUITE_END=$(date +%s)
+        ELAPSED=$((SUITE_END - SUITE_START))
+
+        if [ $ELAPSED -lt 60 ]; then
+            TIME_STR="${ELAPSED}s"
+        else
+            MINUTES=$(echo "scale=0; m = ($ELAPSED + 30) / 60; if (m < 1) 1 else m" | bc)
+            TIME_STR="${MINUTES}m"
+        fi
+
+        echo "✓ Augmented ($TIME_STR)"
+        PASSED=$((PASSED + 1))
+    else
+        SUITE_END=$(date +%s)
+        ELAPSED=$((SUITE_END - SUITE_START))
+
+        if [ $ELAPSED -lt 60 ]; then
+            TIME_STR="${ELAPSED}s"
+        else
+            MINUTES=$(echo "scale=0; m = ($ELAPSED + 30) / 60; if (m < 1) 1 else m" | bc)
+            TIME_STR="${MINUTES}m"
+        fi
+
+        echo "✗ Augmented ($TIME_STR) FAILED"
+        FAILED=$((FAILED + 1))
+    fi
+
+    echo ""
+
+    # Calculate total time
+    OVERALL_END_TIME=$(date +%s)
+    TOTAL_ELAPSED=$((OVERALL_END_TIME - OVERALL_START_TIME))
+
+    if [ $TOTAL_ELAPSED -lt 60 ]; then
+        TOTAL_TIME_STR="${TOTAL_ELAPSED}s"
+    elif [ $TOTAL_ELAPSED -ge 3600 ]; then
+        HOURS=$((TOTAL_ELAPSED / 3600))
+        REMAINING_MINUTES=$(((TOTAL_ELAPSED % 3600) / 60))
+        TOTAL_TIME_STR="${HOURS}h ${REMAINING_MINUTES}m"
+    else
+        TOTAL_MINUTES=$(echo "scale=0; m = ($TOTAL_ELAPSED + 30) / 60; if (m < 1) 1 else m" | bc)
+        TOTAL_TIME_STR="${TOTAL_MINUTES}m"
+    fi
+
+    # Summary
+    echo ""
+    echo "Training Summary:"
+    echo "  Dataset: $DATASET"
+    echo "  Completed suites: $PASSED"
+    if [ $FAILED -gt 0 ]; then
+        echo "  Failed: $FAILED suites"
+    fi
+    echo "  Total time: ${TOTAL_TIME_STR}"
+
+    # Exit with error if any training failed
+    if [ $FAILED -gt 0 ]; then
+        echo ""
+        echo "⚠️  Some training suites failed."
+        exit 1
+    else
+        echo ""
+        echo "✓ All training suites completed successfully!"
+        exit 0
+    fi
+fi
+
+# If second parameter exists, run per-part training
+# Find parts to train based on second parameter
+if [[ "$SURAH_OR_PART" =~ ^[0-9]{3}$ ]]; then
+    # Parameter looks like a surah number (e.g., "002"), find all parts for that surah
     SURAH_PARTS=($(ls ../datasets/${DATASET}/text/${SURAH_OR_PART}*.txt 2>/dev/null | xargs -n 1 basename | sed 's/.txt//'))
     if [ ${#SURAH_PARTS[@]} -eq 0 ]; then
         echo "❌ Error: No text files found for surah ${SURAH_OR_PART} in ../datasets/${DATASET}/text/"
@@ -143,9 +338,6 @@ run_training_suite() {
     return 0
 }
 
-# Track which surahs we've cleared logs for (using simple variable)
-CLEARED_LOGS=""
-
 # Create model backup at the very beginning (once per training run)
 MODEL_PATH="../models/muhaffez_whisper.pt"
 BACKUP_PATH="../models/muhaffez_whisper_backup.pt"
@@ -160,25 +352,12 @@ for SURAH_PART in "${SURAH_PARTS[@]}"; do
     # Extract surah number (e.g., "002" from "002-04")
     SURAH_NUM=$(echo "$SURAH_PART" | cut -d'-' -f1)
 
-    # Set up log file for this dataset and surah
-    LOG_FILE="log_${DATASET}_${SURAH_NUM}.txt"
-
-    # Backup and clear the log file to start fresh (only once per surah)
-    if [[ ! "$CLEARED_LOGS" =~ $SURAH_NUM ]]; then
-        # Create backup if log file exists
-        if [ -f "$LOG_FILE" ]; then
-            BACKUP_LOG="log_${DATASET}_${SURAH_NUM}_backup.txt"
-            cp "$LOG_FILE" "$BACKUP_LOG"
-            echo ""
-            echo "✓ Log backup created: $BACKUP_LOG"
-        fi
-        > "$LOG_FILE"
-        CLEARED_LOGS="$CLEARED_LOGS $SURAH_NUM"
-    fi
+    # Always use log.txt for all training output
+    LOG_FILE="$TRAIN_LOG"
 
     echo ""
 
-    # Detect device info (only print once per surah) - write to surah log only, not main log
+    # Detect device info (only print once per surah) - write to log file
     {
         echo "============================================================"
         if command -v python3 &> /dev/null; then
@@ -198,8 +377,8 @@ for SURAH_PART in "${SURAH_PARTS[@]}"; do
     SURAH_START_TIME=$(date +%s)
 
     echo "Training $DATASET $SURAH_PART..."
-    run_training_suite "train_full.py" "Full" "$SURAH_PART" "$LOG_FILE" || exit 1
     run_training_suite "train_curriculum.py" "Curriculum" "$SURAH_PART" "$LOG_FILE" || exit 1
+    run_training_suite "train_full.py" "Full" "$SURAH_PART" "$LOG_FILE" || exit 1
 
     # Calculate total time for this surah part
     SURAH_END_TIME=$(date +%s)
@@ -216,44 +395,6 @@ for SURAH_PART in "${SURAH_PARTS[@]}"; do
 
     # Append total training time to log file
     echo "   Total training time: ${SURAH_TIME_STR}" >> "$LOG_FILE"
-done
-
-# Run fresh accuracy tests on all trained parts
-echo ""
-echo "════════════════════════════════════════════════════════════"
-echo "RUNNING FINAL ACCURACY TESTS ON ALL PARTS"
-echo "════════════════════════════════════════════════════════════"
-echo ""
-
-# Clear the accuracy results array to store fresh test results
-SUITE_ACCURACIES=()
-
-# Test each trained surah part
-for SURAH_PART in "${SURAH_PARTS[@]}"; do
-    # Extract surah number
-    SURAH_NUM=$(echo "$SURAH_PART" | cut -d'-' -f1)
-    LOG_FILE="log_${DATASET}_${SURAH_NUM}.txt"
-
-    echo "Testing $DATASET $SURAH_PART..."
-
-    # Run test_full.py
-    if python3 -u ../test/test_full.py "$DATASET" "$SURAH_PART" >> "$LOG_FILE" 2>&1; then
-        accuracy=$(grep "Token accuracy:" "$LOG_FILE" | tail -1 | sed 's/.*(\([0-9.]*\)%).*/\1/')
-        SUITE_ACCURACIES+=("$DATASET|$SURAH_PART|Full|${accuracy}%")
-        echo "  ✓ Full - Accuracy: ${accuracy}%"
-    else
-        echo "  ✗ Full - FAILED"
-    fi
-
-    # Run test_curriculum.py
-    if python3 -u ../test/test_curriculum.py "$DATASET" "$SURAH_PART" >> "$LOG_FILE" 2>&1; then
-        accuracy=$(grep "Token accuracy:" "$LOG_FILE" | tail -1 | sed 's/.*(\([0-9.]*\)%).*/\1/')
-        SUITE_ACCURACIES+=("$DATASET|$SURAH_PART|Curriculum|${accuracy}%")
-        echo "  ✓ Curriculum - Accuracy: ${accuracy}%"
-    else
-        echo "  ✗ Curriculum - FAILED"
-    fi
-    echo ""
 done
 
 # Summary

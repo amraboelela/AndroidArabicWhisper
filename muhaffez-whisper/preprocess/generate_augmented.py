@@ -154,20 +154,8 @@ def generate_augmentations(input_file, dataset_name, segment_name, surah_num):
 
     return results
 
-def main():
-    if len(sys.argv) < 3:
-        print("Usage: python3 generate_augmented.py <dataset_name> <segment_name>")
-        print("Examples:")
-        print("  python3 generate_augmented.py Quran-A 001")
-        print("  python3 generate_augmented.py Quran-A 002-04")
-        sys.exit(1)
-
-    dataset_name = sys.argv[1]
-    segment_name = sys.argv[2]
-
-    # Extract surah number
-    surah_num = segment_name.split('-')[0]
-
+def process_segment(dataset_name, segment_name, surah_num):
+    """Process a single segment/part"""
     # Determine mic audio directory
     if '-' in segment_name and len(segment_name.split('-')) > 1:
         mic_dir = f"../datasets/{dataset_name}/audio/mic/{surah_num}/{segment_name}"
@@ -176,17 +164,16 @@ def main():
 
     if not os.path.exists(mic_dir):
         print(f"❌ Mic audio directory not found: {mic_dir}")
-        print(f"   Please run step 4 (convert to mic quality) first")
-        sys.exit(1)
+        return None
 
     # Find all mic quality audio files
     audio_files = sorted(glob.glob(os.path.join(mic_dir, f"{segment_name}-*.wav")))
 
     if not audio_files:
         print(f"❌ No mic audio files found in {mic_dir}")
-        sys.exit(1)
+        return None
 
-    print(f"{'='*60}")
+    print(f"\n{'='*60}")
     print(f"GENERATING AUGMENTED AUDIO")
     print(f"Dataset: {dataset_name}, Surah (part): {segment_name}")
     print(f"Found {len(audio_files)} audio files")
@@ -215,12 +202,83 @@ def main():
         print()
 
     print(f"{'='*60}")
-    print(f"AUGMENTATION COMPLETE")
+    print(f"AUGMENTATION COMPLETE - {segment_name}")
     print(f"{'='*60}")
     print(f"Generated: {total_generated}")
     print(f"Skipped (already exists): {total_skipped}")
     print(f"Errors: {total_errors}")
     print(f"{'='*60}")
+
+    return {'generated': total_generated, 'skipped': total_skipped, 'errors': total_errors}
+
+def main():
+    if len(sys.argv) < 3:
+        print("Usage: python3 generate_augmented.py <dataset_name> <segment_name>")
+        print("Examples:")
+        print("  python3 generate_augmented.py Quran-A 001          # Single surah")
+        print("  python3 generate_augmented.py Quran-A 002-04       # Specific part")
+        print("  python3 generate_augmented.py Quran-A 002          # All parts of surah 002")
+        sys.exit(1)
+
+    dataset_name = sys.argv[1]
+    segment_name = sys.argv[2]
+
+    # Extract surah number
+    surah_num = segment_name.split('-')[0]
+
+    # Check if this is a request to process all parts of a surah
+    if segment_name == surah_num:
+        # Process all parts of the surah
+        mic_base_dir = f"../datasets/{dataset_name}/audio/mic/{surah_num}"
+
+        if not os.path.exists(mic_base_dir):
+            print(f"❌ Mic audio directory not found: {mic_base_dir}")
+            sys.exit(1)
+
+        # Find all part subdirectories
+        parts = []
+        for item in sorted(os.listdir(mic_base_dir)):
+            item_path = os.path.join(mic_base_dir, item)
+            if os.path.isdir(item_path) and item.startswith(f"{surah_num}-"):
+                parts.append(item)
+
+        if not parts:
+            # No parts found, treat as single surah
+            print(f"No parts found, processing {segment_name} as single surah")
+            result = process_segment(dataset_name, segment_name, surah_num)
+            if result is None:
+                sys.exit(1)
+        else:
+            # Process each part
+            print(f"{'='*60}")
+            print(f"PROCESSING ALL PARTS OF SURAH {surah_num}")
+            print(f"Found {len(parts)} parts: {', '.join(parts)}")
+            print(f"{'='*60}")
+
+            overall_generated = 0
+            overall_skipped = 0
+            overall_errors = 0
+
+            for part in parts:
+                result = process_segment(dataset_name, part, surah_num)
+                if result:
+                    overall_generated += result['generated']
+                    overall_skipped += result['skipped']
+                    overall_errors += result['errors']
+
+            print(f"\n{'='*60}")
+            print(f"ALL PARTS COMPLETE - SURAH {surah_num}")
+            print(f"{'='*60}")
+            print(f"Total Generated: {overall_generated}")
+            print(f"Total Skipped: {overall_skipped}")
+            print(f"Total Errors: {overall_errors}")
+            print(f"{'='*60}")
+    else:
+        # Process single segment
+        result = process_segment(dataset_name, segment_name, surah_num)
+        if result is None:
+            sys.exit(1)
+
     print(f"\nAugmented audio saved to:")
     print(f"  ../datasets/{dataset_name}/audio/augmented/{{category}}/{{variation}}/{surah_num}/")
     print("Augmentation structure:")

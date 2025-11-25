@@ -57,7 +57,7 @@ def main():
     print("🎲 Random seed set to 42 for reproducibility")
 
     # File paths
-    mels_dir = f"../datasets/{dataset_name}/mels"
+    mels_dir = f"../datasets/{dataset_name}/mels/normal"
     vocab_path = "../models/vocabulary.json"
     model_path = "../models/muhaffez_whisper.pt"
 

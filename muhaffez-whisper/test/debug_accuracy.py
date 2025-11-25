@@ -43,7 +43,7 @@ all_transcriptions = []
 for text_file in text_files:
     surah_part = os.path.splitext(os.path.basename(text_file))[0]
     surah_num = surah_part.split('-')[0]
-    mels_dir = f'{datasets_dir}/mels/{surah_num}'
+    mels_dir = f'{datasets_dir}/mels/normal/{surah_num}'
 
     with open(text_file, 'r', encoding='utf-8') as f:
         transcriptions = [line.strip() for line in f if line.strip()]

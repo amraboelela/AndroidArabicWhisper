@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 """
 Universal training script for encoder-decoder model
-Usage: python3 train_full.py <dataset_name> <surah_part>
+Usage:
+  python3 train_full.py <dataset_name> all                # Train all parts in dataset
+  python3 train_full.py <dataset_name> <surah_part>       # Train specific part
+
 Examples:
-  python3 train_full.py Quran-A 001       # Train on Al-Fatiha (001)
-  python3 train_full.py Quran-A 002-01    # Train on Al-Baqara part 1
-  python3 train_full.py Quran-A 002-04    # Train on Al-Baqara part 4
+  python3 train_full.py Quran-A all            # Train all parts
+  python3 train_full.py Quran-A 001            # Train on Al-Fatiha (001)
+  python3 train_full.py Quran-A 002-01         # Train on Al-Baqara part 1
+  python3 train_full.py Quran-A 002-04         # Train on Al-Baqara part 4
 """
 import sys
 import warnings
@@ -18,6 +22,7 @@ sys.stderr.reconfigure(line_buffering=True)
 import json
 import torch
 import torch.nn as nn
+import torchaudio
 import glob
 import os
 import random
@@ -114,7 +119,7 @@ def calculate_comprehensive_accuracy(model, segment_files, transcriptions, vocab
             if len(generated_ids) > 0:
                 encoder_output = model.encode(audio_batch)
                 text_ids = torch.tensor([[1] + generated_ids[:len(generated_words)]], dtype=torch.long, device=device)
-                logits = model.decode(text_ids, encoder_output)
+                logits, _ = model.decode(text_ids, encoder_output)
                 probs = torch.softmax(logits, dim=-1)
 
                 # Get confident words only (>= 20% threshold)
@@ -148,7 +153,7 @@ def calculate_comprehensive_accuracy(model, segment_files, transcriptions, vocab
 # ==============================================================
 # Training
 # ==============================================================
-def train_model(model, segment_files, transcriptions, vocab, surah_part,
+def train_model(model, segment_files, transcriptions, vocab, surah_part, model_path,
                 target_seconds=None, target_words=None, num_epochs=500, learning_rate=1e-3):
     """
     Universal training function
@@ -177,15 +182,9 @@ def train_model(model, segment_files, transcriptions, vocab, surah_part,
     )
     print(f"Initial accuracy: {overall_acc:.1f}%\n")
 
-    # If already perfect, no need to train
-    if overall_acc > 90.0:
-        print(f"✓ Model already at {overall_acc:.1f}% accuracy. Skipping training.\n")
-        return model
-
     # Build description
     audio_desc = f"first {target_seconds}s" if target_seconds else "full"
     text_desc = f"first {target_words} words" if target_words else "full"
-    checkpoint_name = "checkpoint_best.pt"
 
     for epoch in range(num_epochs):
         model.train()
@@ -244,15 +243,11 @@ def train_model(model, segment_files, transcriptions, vocab, surah_part,
                     lr_str = f"{new_lr:.0e}" if new_lr >= 1e-6 else f"{new_lr:.1e}"
                     print(f"  Loss increased ({prev_loss:.4f} → {avg_loss:.4f}), reducing LR to: {lr_str}", flush=True)
 
-        # Save best
+        # Save best model directly to models directory
         if avg_loss < best_loss:
             best_loss = avg_loss
             best_epoch = epoch + 1
-            torch.save({
-                "model": model.state_dict(),
-                "optimizer": optimizer.state_dict(),
-                "epoch": epoch
-            }, checkpoint_name)
+            torch.save(model.state_dict(), model_path)
 
         elapsed = time.time() - start_time
         current_lr = optimizer.param_groups[0]['lr']
@@ -267,15 +262,7 @@ def train_model(model, segment_files, transcriptions, vocab, surah_part,
         # Calculate accuracy after epoch 1 and every 10 epochs for display and early stopping
         accuracy_str = ""
         if epoch == 0 or (epoch + 1) % 10 == 0:
-            # Save current model state
-            current_model_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
-
-            # Load best checkpoint for accuracy evaluation
-            if os.path.exists(checkpoint_name):
-                checkpoint = torch.load(checkpoint_name, map_location=device)
-                model.load_state_dict(checkpoint["model"])
-
-            # Calculate accuracy on best model
+            # Calculate accuracy on current model
             overall_acc, avg_acc, seg_accuracies = calculate_comprehensive_accuracy(
                 model, segment_files, transcriptions, vocab,
                 target_seconds, target_words, device
@@ -283,17 +270,6 @@ def train_model(model, segment_files, transcriptions, vocab, surah_part,
 
             # Build accuracy string for display
             accuracy_str = f" | Accuracy={overall_acc:.0f}%"
-
-            # Early stopping if accuracy > 90%
-            if overall_acc > 90.0:
-                # Print current epoch info with accuracy before stopping
-                print(f"Epoch {epoch+1} | Loss={avg_loss:.4f}{accuracy_str} | Time={time_str}")
-                print(f"✓ Early stopping: accuracy {overall_acc:.1f}% at epoch {best_epoch}", flush=True)
-                # Keep best model loaded, don't restore
-                break
-
-            # Restore current model to continue training
-            model.load_state_dict({k: v.to(device) for k, v in current_model_state.items()})
 
         # Print epoch 1, every 10 epochs, or on last epoch
         if epoch == 0 or (epoch + 1) % 10 == 0 or epoch == num_epochs - 1:
@@ -303,19 +279,17 @@ def train_model(model, segment_files, transcriptions, vocab, surah_part,
 
         prev_loss = avg_loss
 
+        # Stop if learning rate reaches minimum
+        if current_lr <= 1e-7:
+            print(f"\n✓ Stopping: Learning rate reached minimum (1e-7)", flush=True)
+            break
+
     total_time = time.time() - start_time
     # Format total time: seconds if < 60s, minutes if >= 60s
     if total_time >= 60:
         print(f"Training complete in {int(round(total_time / 60))}m")
     else:
         print(f"Training complete in {int(round(total_time))}s")
-
-    # Load best checkpoint
-    if os.path.exists(checkpoint_name):
-        print(f"\n✓ Loading best checkpoint from {checkpoint_name}...")
-        checkpoint = torch.load(checkpoint_name, map_location=device)
-        model.load_state_dict(checkpoint["model"])
-        print(f"✓ Loaded best model from epoch {checkpoint['epoch'] + 1}")
 
     # Calculate comprehensive accuracy on all segments
     model.eval()
@@ -360,7 +334,7 @@ def train_model(model, segment_files, transcriptions, vocab, surah_part,
         # Calculate confidence for each token
         encoder_output = model.encode(test_audio)
         text_ids = torch.tensor([[1] + generated_ids[:num_tokens_to_check]], dtype=torch.long, device=device)
-        logits = model.decode(text_ids, encoder_output)
+        logits, _ = model.decode(text_ids, encoder_output)
         probs = torch.softmax(logits, dim=-1)
 
         # Get probability of each generated token
@@ -514,18 +488,201 @@ def collect_replay_samples(dataset_name, current_surah_part, datasets_dir, curre
 # ==============================================================
 def main():
     if len(sys.argv) < 3:
-        print("Usage: python3 train_full.py <dataset_name> <surah_part>")
+        print("Usage: python3 train_full.py <dataset_name> <surah_part|all>")
         print("Examples:")
-        print("  python3 train_full.py Quran-A 001")
-        print("  python3 train_full.py Quran-A 002-01")
-        print("  python3 train_full.py Quran-A 002-04")
+        print("  python3 train_full.py Quran-A all            # Train all parts")
+        print("  python3 train_full.py Quran-A 001            # Train specific part")
+        print("  python3 train_full.py Quran-A 002-04         # Train specific part")
         sys.exit(1)
 
-    dataset_name = sys.argv[1]  # e.g., "Quran-A"
-    surah_part = sys.argv[2]  # e.g., "001", "002-01", "002-04"
+    dataset_name = sys.argv[1]
+    surah_part = sys.argv[2]
+
+    # Check if training all parts or single part
+    if surah_part == "all":
+        # Train all parts mode
+        train_all_parts(dataset_name)
+    else:
+        # Train single part mode
+        train_single_part(dataset_name, surah_part)
+
+def train_all_parts(dataset_name):
+    """Train on ALL segments across ALL surah parts in a dataset"""
+    vocab_path = "../models/vocabulary.json"
+    model_path = "../models/muhaffez_whisper.pt"
+    datasets_dir = f"../datasets/{dataset_name}"
+
+    print(f"\n{'='*60}")
+    print(f"TRAINING ON ALL SEGMENTS - DATASET: {dataset_name}")
+    print(f"{'='*60}\n")
+
+    # Load vocabulary
+    with open(vocab_path, "r", encoding="utf-8") as f:
+        vocab = json.load(f)
+    print(f"Vocabulary size: {len(vocab)}")
+
+    # Find ALL text files in dataset
+    text_files = sorted(glob.glob(f"{datasets_dir}/text/*.txt"))
+    if not text_files:
+        print(f"❌ No text files found in {datasets_dir}/text/")
+        sys.exit(1)
+
+    # Collect all segments from all surah parts
+    all_segment_files = []
+    all_transcriptions = []
+
+    for text_file in text_files:
+        surah_part = os.path.splitext(os.path.basename(text_file))[0]
+        surah_num = surah_part.split('-')[0]
+        mels_dir = f"{datasets_dir}/mels/normal/{surah_num}"
+
+        # Load transcriptions
+        with open(text_file, "r", encoding="utf-8") as f:
+            transcriptions = [line.strip() for line in f if line.strip()]
+
+        # Find mel feature files
+        # Check if surah_part has multiple parts (e.g., "002-04")
+        if '-' in surah_part and len(surah_part.split('-')) > 1 and surah_part.split('-')[1]:
+            # Multi-part surah (e.g., "002-04") - look in subdirectory
+            mel_files = sorted(glob.glob(f"{mels_dir}/{surah_part}/{surah_part}-*.pt"))
+        else:
+            # Single surah (e.g., "001") - look directly in surah folder
+            mel_files = sorted(glob.glob(f"{mels_dir}/{surah_part}-*.pt"))
+
+        # Fallback: try subdirectory if not found
+        if not mel_files:
+            mel_files = sorted(glob.glob(f"{mels_dir}/{surah_part}/{surah_part}-*.pt"))
+
+        if len(transcriptions) != len(mel_files):
+            print(f"⚠️  Warning: Mismatch in {surah_part}: {len(transcriptions)} texts vs {len(mel_files)} mel files")
+            continue
+
+        all_segment_files.extend(mel_files)
+        all_transcriptions.extend(transcriptions)
+        print(f"  Loaded {len(mel_files)} segments from {surah_part}")
+
+    total_segments = len(all_segment_files)
+    print(f"\n✓ Total segments: {total_segments}")
+    print(f"✓ Training on full audio/text for all segments")
+
+    # Initialize or load model
+    model = EncoderDecoderTransformer(
+        vocab_size=len(vocab),
+        d_model=128,
+        n_encoder_layers=4,
+        n_decoder_layers=4,
+        n_heads=4,
+        d_ff=512,
+        dropout=0.1
+    )
+
+    if os.path.exists(model_path):
+        print(f"\nLoading existing model from {model_path}...")
+        model.load_state_dict(torch.load(model_path, map_location=device, weights_only=True))
+        print(f"✓ Model loaded successfully! Continuing training.")
+    else:
+        print(f"\n⚠️  No existing model found. Starting from scratch.")
+
+    model = model.to(device)
+
+    # Training setup
+    learning_rate = 1e-3
+    optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=0.01)
+    criterion = nn.CrossEntropyLoss(ignore_index=-100, label_smoothing=0.1)
+
+    print(f"\nStarting training for up to 500 epochs on {total_segments} segments...")
+    print(f"Initial Learning Rate: {learning_rate:.1e}")
+
+    # Calculate initial accuracy
+    initial_acc = calculate_comprehensive_accuracy(model, all_segment_files, all_transcriptions, vocab, None, None, device)[0]
+    print(f"Initial accuracy: {initial_acc:.1f}%")
+
+    # Training loop
+    best_loss = float('inf')
+    prev_loss = float('inf')
+    start_time = time.time()
+
+    for epoch in range(500):
+        model.train()
+        total_loss = 0.0
+        total_iterations = 0
+
+        # Shuffle segments
+        indices = list(range(len(all_segment_files)))
+        random.shuffle(indices)
+
+        for i in indices:
+            seg_file = all_segment_files[i]
+            text = all_transcriptions[i]
+
+            # Load precomputed mel features
+            mel_features = load_mel_features(seg_file)
+            audio_batch = mel_features.transpose(0, 1).unsqueeze(0).to(device)
+
+            # Tokenize
+            text_tokens = tokenize_text(text, vocab)
+            full_sequence = [1] + text_tokens + [2]
+            input_ids = torch.tensor([full_sequence[:-1]], dtype=torch.long, device=device)
+            labels = torch.tensor([full_sequence[1:]], dtype=torch.long, device=device)
+
+            # Forward
+            logits = model(mel_features=audio_batch, text_ids=input_ids)
+            loss = criterion(logits.view(-1, logits.size(-1)), labels.view(-1))
+
+            # Backward
+            optimizer.zero_grad()
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            optimizer.step()
+
+            total_loss += loss.item()
+            total_iterations += 1
+
+        avg_loss = total_loss / total_iterations
+        elapsed = time.time() - start_time
+
+        # Save best model
+        if avg_loss < best_loss:
+            best_loss = avg_loss
+            torch.save(model.state_dict(), model_path)
+
+        # Decay learning rate if loss increases
+        if avg_loss > prev_loss:
+            old_lr = optimizer.param_groups[0]['lr']
+            new_lr = max(old_lr * 0.5, 1e-7)
+            if new_lr != old_lr:
+                for param_group in optimizer.param_groups:
+                    param_group['lr'] = new_lr
+                print(f"  Learning rate reduced: {old_lr:.1e} → {new_lr:.1e}")
+
+        current_lr = optimizer.param_groups[0]['lr']
+        print(f"Epoch {epoch+1} | Loss={avg_loss:.4f} | LR={current_lr:.1e} | Time={elapsed:.0f}s", flush=True)
+
+        # Update prev_loss for next iteration
+        prev_loss = avg_loss
+
+        # Check accuracy every epoch
+        current_acc = calculate_comprehensive_accuracy(model, all_segment_files, all_transcriptions, vocab, None, None, device)[0]
+        print(f"Accuracy: {current_acc:.1f}%", flush=True)
+
+        # Stop if learning rate reaches minimum
+        if current_lr <= 1e-7:
+            print(f"✓ Stopping: Learning rate reached minimum (1e-7)", flush=True)
+            break
+
+    # Save final model
+    torch.save(model.state_dict(), model_path)
+    print(f"\nFinal model saved to: {model_path}")
+
+    # Calculate and output final accuracy
+    final_acc = calculate_comprehensive_accuracy(model, all_segment_files, all_transcriptions, vocab, None, None, device)[0]
+    print(f"FINAL_ACCURACY: {final_acc:.0f}%")
+
+def train_single_part(dataset_name, surah_part):
+    """Train on a single surah part"""
 
     datasets_dir = f"../datasets/{dataset_name}/audio"
-    mels_dir = f"../datasets/{dataset_name}/mels"
+    mels_dir = f"../datasets/{dataset_name}/mels/normal"
     vocab_path = "../models/vocabulary.json"
     model_path = "../models/muhaffez_whisper.pt"
 
@@ -622,6 +779,7 @@ def main():
         all_transcriptions,
         vocab,
         surah_part,
+        model_path,
         target_seconds=target_seconds,
         target_words=target_words,
         num_epochs=500,

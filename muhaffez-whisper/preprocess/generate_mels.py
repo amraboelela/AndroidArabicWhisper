@@ -8,7 +8,9 @@ Usage: python3 generate_mels.py [dataset_name] [surah_part]
 Examples:
   python3 generate_mels.py                    # Process all datasets
   python3 generate_mels.py Quran-A            # Process all parts in Quran-A
-  python3 generate_mels.py Quran-A 002-02     # Process only 002-02
+  python3 generate_mels.py Quran-A 001        # Process single surah 001
+  python3 generate_mels.py Quran-A 002-02     # Process specific part 002-02
+  python3 generate_mels.py Quran-A 002        # Process all parts of surah 002
 """
 import sys
 import warnings
@@ -226,8 +228,53 @@ def main():
             sys.exit(1)
 
         # Check if surah_part is specified
-        surah_part = sys.argv[2] if len(sys.argv) > 2 else None
-        precompute_dataset(dataset_path, surah_part)
+        if len(sys.argv) > 2:
+            surah_part = sys.argv[2]
+            surah_num = surah_part.split('-')[0]
+
+            # Check if this is a request to process all parts of a surah
+            if surah_part == surah_num:
+                # Process all parts of the surah
+                mic_base_dir = f"{dataset_path}/audio/mic/{surah_num}"
+
+                if not os.path.exists(mic_base_dir):
+                    print(f"❌ Mic audio directory not found: {mic_base_dir}")
+                    sys.exit(1)
+
+                # Find all part subdirectories
+                parts = []
+                for item in sorted(os.listdir(mic_base_dir)):
+                    item_path = os.path.join(mic_base_dir, item)
+                    if os.path.isdir(item_path) and item.startswith(f"{surah_num}-"):
+                        parts.append(item)
+
+                if not parts:
+                    # No parts found, treat as single surah
+                    print(f"No parts found, processing {surah_part} as single surah")
+                    precompute_dataset(dataset_path, surah_part)
+                else:
+                    # Process each part
+                    print(f"{'='*60}")
+                    print(f"PROCESSING ALL PARTS OF SURAH {surah_num}")
+                    print(f"Found {len(parts)} parts: {', '.join(parts)}")
+                    print(f"{'='*60}")
+
+                    for i, part in enumerate(parts, 1):
+                        print(f"\n{'#'*60}")
+                        print(f"# PART {i}/{len(parts)}: {part}")
+                        print(f"{'#'*60}")
+                        precompute_dataset(dataset_path, part)
+
+                    print(f"\n{'='*60}")
+                    print(f"✓ ALL PARTS COMPLETE - SURAH {surah_num}")
+                    print(f"  Processed {len(parts)} parts")
+                    print(f"{'='*60}")
+            else:
+                # Process single part
+                precompute_dataset(dataset_path, surah_part)
+        else:
+            # Process all parts in dataset
+            precompute_dataset(dataset_path, None)
     else:
         # Process all datasets
         datasets_dir = "../datasets"
