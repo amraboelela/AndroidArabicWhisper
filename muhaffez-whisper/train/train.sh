@@ -379,6 +379,7 @@ for SURAH_PART in "${SURAH_PARTS[@]}"; do
     echo "Training $DATASET $SURAH_PART..."
     run_training_suite "train_curriculum.py" "Curriculum" "$SURAH_PART" "$LOG_FILE" || exit 1
     run_training_suite "train_full.py" "Full" "$SURAH_PART" "$LOG_FILE" || exit 1
+    run_training_suite "train_augmented.py" "Augmented" "$SURAH_PART" "$LOG_FILE" || exit 1
 
     # Calculate total time for this surah part
     SURAH_END_TIME=$(date +%s)
