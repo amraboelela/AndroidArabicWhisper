@@ -254,7 +254,7 @@ def train_curriculum_stage(model, segment_files, transcriptions, vocab, surah_pa
         # Dynamic learning rate: reduce by 10% if loss increases
         if avg_loss > prev_loss:
             current_lr = optimizer.param_groups[0]['lr']
-            new_lr = max(current_lr * 0.9, 1e-7)  # Minimum LR = 1e-7
+            new_lr = max(current_lr * 0.5, 1e-7)  # Minimum LR = 1e-7
             if new_lr != current_lr:
                 for param_group in optimizer.param_groups:
                     param_group['lr'] = new_lr
@@ -627,35 +627,230 @@ def train_all_parts(dataset_name):
 
     model = model.to(device)
 
-    print(f"\n✓ Starting curriculum training with {max_words} stages")
-    print(f"✓ Replay buffer size: 10% of segments\n")
+    total_start_time = time.time()
 
-    # Curriculum training with 10% replay buffer
-    for stage_num in range(1, max_words + 1):
-        target_seconds = stage_num * CHUNK_DURATION
-        target_words = stage_num * WORDS_PER_CHUNK
+    # Collect segment info for curriculum stages
+    segment_info = []
+    for segment_file, transcription in zip(all_segment_files, all_transcriptions):
+        segment_name = os.path.basename(segment_file)
+        words = transcription.split()
+        num_words = len(words)
 
-        # Create replay buffer (10% of current stage segments)
-        replay_size = max(int(total_segments * 0.1), 1)
-        replay_indices = random.sample(range(total_segments), min(replay_size, total_segments))
-        replay_files = [all_segment_files[i] for i in replay_indices]
-        replay_texts = [all_transcriptions[i] for i in replay_indices]
+        # Get audio duration from mel features (precomputed at 100 fps)
+        mel_features = torch.load(segment_file, map_location='cpu', weights_only=True)
+        audio_duration = mel_features.shape[0] / 100.0
 
-        # Train this stage
-        model = train_curriculum_stage_for_all(
-            model, all_segment_files, all_transcriptions, vocab,
-            stage_num, target_seconds, target_words,
-            replay_files, replay_texts, device
-        )
+        # Calculate how many chunks fit in this audio
+        num_chunks = int(audio_duration / CHUNK_DURATION)
+        max_chunks = min(num_chunks, num_words)
 
-        # Save after each stage
-        torch.save(model.state_dict(), model_path)
+        segment_info.append({
+            'file': segment_file,
+            'name': segment_name,
+            'transcription': transcription,
+            'audio_duration': audio_duration,
+            'num_words': num_words,
+            'max_chunks': max_chunks
+        })
 
-    # Final save and accuracy
+    # Find the maximum number of chunks across all segments
+    global_max_chunks = max(info['max_chunks'] for info in segment_info)
+
+    print(f"Total segments: {len(segment_info)}")
+    print(f"Maximum curriculum stages: {global_max_chunks}")
+    print(f"Chunk size: {CHUNK_DURATION}s → {WORDS_PER_CHUNK} word(s)\n")
+
+    # Collect ALL curriculum samples (all stages mixed together)
+    all_curriculum_files = []
+    all_curriculum_transcriptions = []
+    all_curriculum_target_seconds = []
+    all_curriculum_target_words = []
+
+    print("Collecting all curriculum stages...")
+    for chunk_count in range(1, global_max_chunks + 1):
+        target_seconds = chunk_count * CHUNK_DURATION
+        target_words = chunk_count * WORDS_PER_CHUNK
+
+        for info in segment_info:
+            # Skip if segment is too short for this chunk count
+            if chunk_count > info['max_chunks']:
+                continue
+
+            # Add this curriculum sample
+            all_curriculum_files.append(info['file'])
+            all_curriculum_transcriptions.append(info['transcription'])
+            all_curriculum_target_seconds.append(target_seconds)
+            all_curriculum_target_words.append(target_words)
+
+    print(f"Total curriculum samples: {len(all_curriculum_files)}")
+
+    # Collect 10% replay buffer of full-length segments
+    replay_size = max(int(len(all_segment_files) * 0.1), 30)
+    last_surah_part = os.path.basename(text_files[-1]).replace('.txt', '') if text_files else "999"
+
+    stage_full_replay_files, stage_full_replay_transcriptions = collect_full_length_replay_samples(
+        dataset_name, last_surah_part, datasets_dir, len(all_segment_files)
+    )
+
+    print(f"Replay buffer size: {len(stage_full_replay_files)}")
+
+    # Add replay buffer (full-length)
+    for replay_file, replay_text in zip(stage_full_replay_files, stage_full_replay_transcriptions):
+        all_curriculum_files.append(replay_file)
+        all_curriculum_transcriptions.append(replay_text)
+        all_curriculum_target_seconds.append(None)  # Full length
+        all_curriculum_target_words.append(None)    # Full text
+
+    print(f"Total training samples: {len(all_curriculum_files)}\n")
+
+    # Train on all mixed curriculum samples in one big stage
+    print(f"\n{'='*60}")
+    print(f"TRAINING ALL CURRICULUM STAGES MIXED")
+    print(f"{'='*60}\n")
+
+    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=0.01)
+    criterion = nn.CrossEntropyLoss(ignore_index=-100, label_smoothing=0.1)
+
+    print(f"  Initial Learning Rate: 1.0e-03")
+
+    best_loss = float('inf')
+    prev_loss = float('inf')
+    start_time = time.time()
+    checkpoint_time = start_time
+
+    # Calculate initial accuracy (on full segments only)
+    model.eval()
+    overall_acc, avg_acc, seg_accuracies = calculate_comprehensive_accuracy(
+        model, all_segment_files, all_transcriptions, vocab,
+        None, None, device  # Full length
+    )
+    print(f"  Initial accuracy: {overall_acc:.1f}%", flush=True)
+
+    for epoch in range(500):
+        model.train()
+        total_loss = 0.0
+        total_iterations = 0
+
+        # Shuffle all curriculum samples
+        indices = list(range(len(all_curriculum_files)))
+        random.shuffle(indices)
+
+        for i in indices:
+            seg_file = all_curriculum_files[i]
+            text = all_curriculum_transcriptions[i]
+            target_sec = all_curriculum_target_seconds[i]
+            target_wrd = all_curriculum_target_words[i]
+
+            # Load mel features (with optional truncation)
+            audio_features = load_mel_features(seg_file, target_seconds=target_sec)
+            audio_batch = audio_features.transpose(0, 1).unsqueeze(0).to(device)
+
+            # Extract target text
+            if target_wrd:
+                words = text.split()
+                if len(words) < target_wrd:
+                    continue
+                target_text = " ".join(words[:target_wrd])
+            else:
+                target_text = text
+
+            if not target_text:
+                continue
+
+            text_tokens = tokenize_text(target_text, vocab)
+            full_sequence = [1] + text_tokens + [2]
+            input_ids = torch.tensor([full_sequence[:-1]], dtype=torch.long, device=device)
+            labels = torch.tensor([full_sequence[1:]], dtype=torch.long, device=device)
+
+            logits = model(mel_features=audio_batch, text_ids=input_ids)
+            loss = criterion(logits.view(-1, logits.size(-1)), labels.view(-1))
+
+            optimizer.zero_grad()
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            optimizer.step()
+
+            total_loss += loss.item()
+            total_iterations += 1
+
+        if total_iterations == 0:
+            print(f"  ⚠️  Warning: No valid training samples. Skipping.")
+            break
+
+        avg_loss = total_loss / total_iterations
+
+        # Dynamic learning rate: reduce by 10% if loss increases
+        if avg_loss > prev_loss:
+            current_lr = optimizer.param_groups[0]['lr']
+            new_lr = max(current_lr * 0.9, 1e-7)
+            if new_lr != current_lr:
+                for param_group in optimizer.param_groups:
+                    param_group['lr'] = new_lr
+                if new_lr > 1e-7:
+                    lr_str = f"{new_lr:.0e}" if new_lr >= 1e-6 else f"{new_lr:.1e}"
+                    print(f"  Loss increased ({prev_loss:.4f} → {avg_loss:.4f}), reducing LR to: {lr_str}", flush=True)
+
+        # Save best
+        if avg_loss < best_loss:
+            best_loss = avg_loss
+            torch.save(model.state_dict(), model_path)
+
+        elapsed_from_checkpoint = time.time() - checkpoint_time
+        if elapsed_from_checkpoint >= 60:
+            time_str = f"{int(round(elapsed_from_checkpoint / 60))}m"
+        else:
+            time_str = f"{int(round(elapsed_from_checkpoint))}s"
+
+        current_lr = optimizer.param_groups[0]['lr']
+
+        # Calculate accuracy after epoch 1 and every 10 epochs
+        accuracy_str = ""
+        if epoch == 0 or (epoch + 1) % 10 == 0:
+            overall_acc, avg_acc, seg_accuracies = calculate_comprehensive_accuracy(
+                model, all_segment_files, all_transcriptions, vocab,
+                None, None, device  # Full length
+            )
+            accuracy_str = f" | Accuracy={overall_acc:.0f}%"
+
+        # Print epoch info: epoch 1, every 10 epochs, or last epoch
+        if epoch == 0 or (epoch + 1) % 10 == 0 or epoch == 499:
+            print(f"  Epoch {epoch+1}/500 | Loss={avg_loss:.4f}{accuracy_str} | Time={time_str}")
+            checkpoint_time = time.time()
+
+        prev_loss = avg_loss
+
+        # Stop if learning rate reaches minimum
+        if current_lr <= 1e-7:
+            print(f"  ✓ Stopping: Learning rate reached minimum (1e-7)", flush=True)
+            break
+
+    total_time = time.time() - start_time
+    if total_time >= 60:
+        print(f"  ✓ Training completed in {int(round(total_time / 60))}m")
+    else:
+        print(f"  ✓ Training completed in {int(round(total_time))}s")
+
+    # Save best model
     torch.save(model.state_dict(), model_path)
-    print(f"\nFinal model saved to: {model_path}")
+
+    total_time = time.time() - total_start_time
+    minutes = int(total_time // 60)
+    seconds = int(total_time % 60)
+
+    print(f"\n{'='*60}")
+    print(f"✓ CURRICULUM TRAINING COMPLETED!")
+    print(f"Total time: {minutes}m {seconds}s")
+    print(f"Best model saved to: {model_path}")
+    print(f"{'='*60}\n")
+
+    # Load the saved model for final evaluation
+    print("Loading saved model for final evaluation...")
+    model.load_state_dict(torch.load(model_path, map_location=device))
+    model.eval()
 
     final_acc = calculate_comprehensive_accuracy(model, all_segment_files, all_transcriptions, vocab, None, None, device)[0]
+    print(f"\n📊 Final Evaluation (full audio):")
+    print(f"   Accuracy: {final_acc:.0f}%\n")
     print(f"FINAL_ACCURACY: {final_acc:.0f}%")
 
 def train_single_part(dataset_name, surah_part):

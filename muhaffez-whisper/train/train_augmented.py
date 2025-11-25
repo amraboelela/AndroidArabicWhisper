@@ -387,7 +387,7 @@ def train_all_parts(dataset_name):
     # Add curriculum replay samples to training
     all_training_tuples.extend(curriculum_replay_samples)
 
-    print(f"✓ Total training samples: {len(all_training_tuples)}")
+    print(f"✓ Total training samples: {len(all_training_tuples)}\n")
 
     # Initialize or load model
     model = EncoderDecoderTransformer(
@@ -412,14 +412,14 @@ def train_all_parts(dataset_name):
     # Training setup with custom LR decay strategy
     learning_rate = 1e-3
     min_lr = 1e-7
-    lr_decay_factor = 0.9  # Decay by 10%
+    lr_decay_factor = 0.5  # Decay by 50%
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=0.01)
     criterion = nn.CrossEntropyLoss(ignore_index=-100, label_smoothing=0.1)
 
     print(f"\nTraining Configuration:")
     print(f"  Initial Learning Rate: {learning_rate:.1e}")
-    print(f"  LR Decay Factor: {lr_decay_factor} (10% reduction)")
+    print(f"  LR Decay Factor: {lr_decay_factor} (50% reduction)")
     print(f"  Minimum Learning Rate: {min_lr:.1e}")
     print(f"  Strategy: Decay LR when loss increases, stop at {min_lr:.1e}")
 
@@ -490,6 +490,15 @@ def train_all_parts(dataset_name):
             best_loss = avg_loss
             torch.save(model.state_dict(), model_path)
 
+        # Check accuracy every 5 epochs
+        accuracy_str = ""
+        if (epoch + 1) % 5 == 0:
+            current_acc = calculate_accuracy(model, regular_segment_files, regular_transcriptions, vocab, device)
+            accuracy_str = f" | Accuracy={current_acc:.0f}%"
+
+        # Print epoch info
+        print(f"Epoch {epoch+1} | Loss={avg_loss:.4f}{accuracy_str} | Time={elapsed:.0f}s", flush=True)
+
         # Custom LR decay: reduce by 10% when loss increases
         if avg_loss > prev_loss:
             old_lr = current_lr
@@ -497,19 +506,11 @@ def train_all_parts(dataset_name):
             if new_lr != old_lr:
                 for param_group in optimizer.param_groups:
                     param_group['lr'] = new_lr
-                print(f"  Loss increased: {prev_loss:.4f} → {avg_loss:.4f}")
-                print(f"  Learning rate reduced: {old_lr:.1e} → {new_lr:.1e}")
+                print(f"  Loss increased ({prev_loss:.4f} → {avg_loss:.4f}), reducing LR to: {new_lr:.1e}")
                 current_lr = new_lr
-
-        print(f"Epoch {epoch+1} | Loss={avg_loss:.4f} | LR={current_lr:.1e} | Time={elapsed:.0f}s", flush=True)
 
         # Update prev_loss for next iteration
         prev_loss = avg_loss
-
-        # Check accuracy every 5 epochs
-        if (epoch + 1) % 5 == 0:
-            current_acc = calculate_accuracy(model, regular_segment_files, regular_transcriptions, vocab, device)
-            print(f"Accuracy: {current_acc:.1f}%", flush=True)
 
         # Stop if learning rate reaches minimum
         if current_lr <= min_lr:
@@ -627,7 +628,7 @@ def train_single_part(dataset_name, surah_part):
     # Add curriculum replay samples to training
     all_training_tuples.extend(curriculum_replay_samples)
 
-    print(f"✓ Total training samples: {len(all_training_tuples)}")
+    print(f"✓ Total training samples: {len(all_training_tuples)}\n")
 
     # Initialize or load model
     model = EncoderDecoderTransformer(
@@ -652,7 +653,7 @@ def train_single_part(dataset_name, surah_part):
     # Training setup
     initial_lr = 1e-3
     min_lr = 1e-7
-    lr_decay = 0.9
+    lr_decay = 0.5
     optimizer = torch.optim.AdamW(model.parameters(), lr=initial_lr, weight_decay=0.01)
     criterion = nn.CrossEntropyLoss(ignore_index=-100, label_smoothing=0.1)
 
@@ -728,6 +729,13 @@ def train_single_part(dataset_name, surah_part):
             best_loss = avg_loss
             torch.save(model.state_dict(), model_path)
 
+        # Check accuracy every epoch
+        current_acc = calculate_accuracy(model, regular_segment_files, regular_transcriptions, vocab, device)
+        accuracy_str = f" | Accuracy={current_acc:.0f}%"
+
+        # Print progress every epoch
+        print(f"Epoch {epoch+1} | Loss={avg_loss:.4f}{accuracy_str} | Time={elapsed:.0f}s", flush=True)
+
         # Decay learning rate if loss increases
         if avg_loss > prev_loss:
             old_lr = optimizer.param_groups[0]['lr']
@@ -735,17 +743,10 @@ def train_single_part(dataset_name, surah_part):
             if new_lr != old_lr:
                 for param_group in optimizer.param_groups:
                     param_group['lr'] = new_lr
-                print(f"  Learning rate reduced: {old_lr:.1e} → {new_lr:.1e}")
+                print(f"  Loss increased ({prev_loss:.4f} → {avg_loss:.4f}), reducing LR to: {new_lr:.1e}")
 
         current_lr = optimizer.param_groups[0]['lr']
         prev_loss = avg_loss
-
-        # Print progress every epoch
-        print(f"Epoch {epoch+1} | Loss={avg_loss:.4f} | LR={current_lr:.1e} | Time={elapsed:.0f}s", flush=True)
-
-        # Check accuracy every epoch
-        current_acc = calculate_accuracy(model, regular_segment_files, regular_transcriptions, vocab, device)
-        print(f"Accuracy: {current_acc:.1f}%", flush=True)
 
         # Stop if learning rate reaches minimum
         if current_lr <= min_lr:

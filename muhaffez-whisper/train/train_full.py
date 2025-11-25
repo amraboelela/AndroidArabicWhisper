@@ -230,10 +230,10 @@ def train_model(model, segment_files, transcriptions, vocab, surah_part, model_p
 
         avg_loss = total_loss / total_iterations
 
-        # Dynamic learning rate: reduce by 10% if loss increases
+        # Dynamic learning rate: reduce by 50% if loss increases
         if avg_loss > prev_loss:
             current_lr = optimizer.param_groups[0]['lr']
-            new_lr = max(current_lr * 0.9, 1e-7)  # Minimum LR = 1e-7
+            new_lr = max(current_lr * 0.5, 1e-7)  # Minimum LR = 1e-7
             if new_lr != current_lr:
                 for param_group in optimizer.param_groups:
                     param_group['lr'] = new_lr
@@ -736,9 +736,9 @@ def train_single_part(dataset_name, surah_part):
     #     target_seconds = 4.0
     #     target_words = 3
 
-    print(f"\n✓ Training on surah part: {surah_part}")
-    print(f"   Audio: {'full' if not target_seconds else f'first {target_seconds}s'}")
-    print(f"   Text: {'full' if not target_words else f'first {target_words} words'}")
+    print(f"\n{'='*60}")
+    print(f"FULL-LENGTH TRAINING - PART: {surah_part}")
+    print(f"{'='*60}\n")
 
     # Collect replay buffer samples from previous surahs to prevent catastrophic forgetting
     # Replay buffer size = 10% of current training set
