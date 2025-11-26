@@ -789,11 +789,13 @@ def train_all_parts(dataset_name):
 
         # Calculate accuracy every 10 epochs for "all" mode
         accuracy_str = ""
+        current_acc = 0
         if epoch == 0 or (epoch + 1) % 10 == 0:
             overall_acc, avg_acc, seg_accuracies = calculate_comprehensive_accuracy(
                 model, all_segment_files, all_transcriptions, vocab,
                 None, None, device  # Full length
             )
+            current_acc = overall_acc
             accuracy_str = f" | Accuracy={overall_acc:.0f}%"
 
         # Print every epoch in "all" mode
@@ -805,6 +807,11 @@ def train_all_parts(dataset_name):
         # Stop if learning rate reaches minimum
         if current_lr <= 1e-7:
             print(f"  ✓ Stopping: Learning rate reached minimum (1e-7)", flush=True)
+            break
+
+        # Stop if accuracy reaches 100%
+        if current_acc >= 100.0:
+            print(f"  ✓ Stopping: Accuracy reached 100%", flush=True)
             break
 
     total_time = time.time() - start_time

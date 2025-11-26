@@ -477,6 +477,7 @@ def train_all_parts(dataset_name):
 
         # Check accuracy every 10 epochs
         accuracy_str = ""
+        current_acc = 0
         if epoch == 0 or (epoch + 1) % 10 == 0:
             current_acc = calculate_accuracy(model, regular_segment_files, regular_transcriptions, vocab, device)
             accuracy_str = f" | Accuracy={current_acc:.0f}%"
@@ -514,6 +515,11 @@ def train_all_parts(dataset_name):
         # Stop if learning rate reaches minimum
         if current_lr <= min_lr:
             print(f"\n✓ Stopping: Learning rate reached minimum ({min_lr:.1e})", flush=True)
+            break
+
+        # Stop if accuracy reaches 100%
+        if current_acc >= 100.0:
+            print(f"\n✓ Stopping: Accuracy reached 100%", flush=True)
             break
 
         epoch += 1
@@ -723,6 +729,7 @@ def train_single_part(dataset_name, surah_part):
 
         # Check accuracy every 10 epochs
         accuracy_str = ""
+        current_acc = 0
         if epoch == 0 or (epoch + 1) % 10 == 0:
             current_acc = calculate_accuracy(model, regular_segment_files, regular_transcriptions, vocab, device)
             accuracy_str = f" | Accuracy={current_acc:.0f}%"
@@ -759,6 +766,11 @@ def train_single_part(dataset_name, surah_part):
         # Stop if learning rate reaches minimum
         if current_lr <= min_lr:
             print(f"\n✓ Stopping: Learning rate reached minimum ({min_lr:.1e})", flush=True)
+            break
+
+        # Stop if accuracy reaches 100%
+        if current_acc >= 100.0:
+            print(f"\n✓ Stopping: Accuracy reached 100%", flush=True)
             break
 
         epoch += 1

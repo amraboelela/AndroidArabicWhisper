@@ -603,7 +603,7 @@ def train_all_parts(dataset_name):
     datasets_dir = f"../datasets/{dataset_name}"
 
     print(f"\n{'='*60}")
-    print(f"TRAINING ON ALL SEGMENTS - DATASET: {dataset_name}")
+    print(f"TRAINING ON FULL SEGMENTS - DATASET: {dataset_name}")
     print(f"{'='*60}\n")
 
     # Load vocabulary
@@ -774,6 +774,7 @@ def train_all_parts(dataset_name):
 
         # Check accuracy every 10 epochs
         accuracy_str = ""
+        current_acc = 0
         if epoch == 0 or (epoch + 1) % 10 == 0:
             current_acc = calculate_comprehensive_accuracy(model, all_segment_files, all_transcriptions, vocab, None, None, device)[0]
             accuracy_str = f" | Accuracy={current_acc:.0f}%"
@@ -789,6 +790,11 @@ def train_all_parts(dataset_name):
         # Stop if learning rate reaches minimum
         if current_lr <= 1e-7:
             print(f"✓ Stopping: Learning rate reached minimum (1e-7)", flush=True)
+            break
+
+        # Stop if accuracy reaches 100%
+        if current_acc >= 100.0:
+            print(f"✓ Stopping: Accuracy reached 100%", flush=True)
             break
 
     # Save final model
@@ -966,6 +972,7 @@ def train_single_part(dataset_name, surah_part):
 
         # Check accuracy every 10 epochs
         accuracy_str = ""
+        current_acc = 0
         if epoch == 0 or (epoch + 1) % 10 == 0:
             current_acc = calculate_comprehensive_accuracy(model, segment_files, transcriptions, vocab, None, None, device)[0]
             accuracy_str = f" | Accuracy={current_acc:.0f}%"
@@ -1003,6 +1010,11 @@ def train_single_part(dataset_name, surah_part):
         # Stop if learning rate reaches minimum
         if current_lr <= min_lr:
             print(f"\n✓ Stopping: Learning rate reached minimum ({min_lr:.1e})", flush=True)
+            break
+
+        # Stop if accuracy reaches 100%
+        if current_acc >= 100.0:
+            print(f"\n✓ Stopping: Accuracy reached 100%", flush=True)
             break
 
         epoch += 1
