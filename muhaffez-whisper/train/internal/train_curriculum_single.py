@@ -1,20 +1,12 @@
 #!/usr/bin/env python3
 """
-Curriculum training script - trains incrementally on chunks
+Curriculum training for a single surah part
 Usage:
-  python3 train_curriculum.py <dataset_name> all         # Train all parts in dataset
-  python3 train_curriculum.py <dataset_name> <surah_part> # Train specific part
+  python3 train_curriculum_single.py <dataset_name> <surah_part>
 
 Examples:
-  python3 train_curriculum.py Quran-A all          # Train all parts
-  python3 train_curriculum.py Quran-A 002-04       # Train only part 002-04
-  python3 train_curriculum.py Quran-A 001          # Train only part 001
-
-This script trains the model using curriculum learning:
-- Stage 1: First 1.3s of each segment → first 1 word
-- Stage 2: First 2.6s of each segment → first 2 words
-- Stage 3: First 3.9s of each segment → first 3 words
-- ... and so on until full segment audio → full segment transcription
+  python3 train_curriculum_single.py Quran-A 002-04
+  python3 train_curriculum_single.py Quran-A 001
 """
 import sys
 import warnings
@@ -31,7 +23,6 @@ import glob
 import os
 import time
 import random
-import subprocess
 sys.path.append("..")
 from tools.encoder_decoder_transformer import EncoderDecoderTransformer
 
@@ -39,12 +30,7 @@ from tools.encoder_decoder_transformer import EncoderDecoderTransformer
 from common import (
     load_mel_features,
     tokenize_text,
-    calculate_comprehensive_accuracy,
-    run_training_epoch,
-    update_learning_rate,
-    format_time,
-    collect_segment_files,
-    load_single_part_data
+    calculate_comprehensive_accuracy
 )
 
 # ==============================================================
@@ -68,54 +54,64 @@ WORDS_PER_CHUNK = 1   # words per chunk
 # ==============================================================
 def main():
     if len(sys.argv) < 3:
-        print("Usage: python3 train_curriculum.py <dataset_name> <surah_part|all>")
+        print("Usage: python3 train_curriculum_single.py <dataset_name> <surah_part>")
         print("Examples:")
-        print("  python3 train_curriculum.py Quran-A all          # Train all parts")
-        print("  python3 train_curriculum.py Quran-A 002-04       # Train specific part")
-        print("  python3 train_curriculum.py Quran-A 001          # Train specific part")
+        print("  python3 train_curriculum_single.py Quran-A 002-04")
+        print("  python3 train_curriculum_single.py Quran-A 001")
         sys.exit(1)
 
-    dataset_name = sys.argv[1]  # e.g., "Quran-A"
-    surah_part = sys.argv[2]  # e.g., "all", "001", "002-01", "002-04"
+    dataset_name = sys.argv[1]
+    surah_part = sys.argv[2]
 
-    # Check if training all parts or single part
-    if surah_part == "all":
-        train_all_parts(dataset_name)
-    else:
-        # Call internal script for single part training
-        script_path = os.path.join(os.path.dirname(__file__), "internal", "train_curriculum_single.py")
-        result = subprocess.run([sys.executable, script_path, dataset_name, surah_part])
-        sys.exit(result.returncode)
+    train_single_part(dataset_name, surah_part)
 
-def train_all_parts(dataset_name):
-    """Train on ALL segments across ALL surah parts with curriculum learning"""
+def train_single_part(dataset_name, surah_part):
+    """Train on a single surah part with curriculum learning"""
+
+    datasets_dir = f"../datasets/{dataset_name}"
+    mels_dir = f"{datasets_dir}/mels/normal"
     vocab_path = "../models/vocabulary.json"
     model_path = "../models/muhaffez_whisper.pt"
-    datasets_dir = f"../datasets/{dataset_name}"
 
-    print(f"\n{'='*60}")
-    print(f"CURRICULUM TRAINING - DATASET: {dataset_name}")
-    print(f"{'='*60}\n")
-
-    # Load vocabulary
+    # Load vocab
     with open(vocab_path, "r", encoding="utf-8") as f:
         vocab = json.load(f)
-    print(f"Vocabulary size: {len(vocab)}")
 
-    # Find ALL text files
-    text_files = sorted(glob.glob(f"{datasets_dir}/text/*.txt"))
-    if not text_files:
-        print(f"❌ No text files found in {datasets_dir}/text/")
+    print(f"\n{'='*60}")
+    print(f"CURRICULUM TRAINING - PART: {surah_part}")
+    print(f"Dataset: {dataset_name}")
+    print(f"Vocabulary: {len(vocab)} words")
+    print(f"Chunk size: {CHUNK_DURATION}s → {WORDS_PER_CHUNK} word(s)")
+    print(f"{'='*60}")
+
+    # Parse surah part name to determine surah number
+    surah_num = surah_part.split('-')[0]
+
+    # Load transcriptions and segments
+    text_path = f"{datasets_dir}/text/{surah_part}.txt"
+    if not os.path.exists(text_path):
+        print(f"❌ Error: Text file not found: {text_path}")
         sys.exit(1)
 
-    # Collect all segments from all parts
-    all_segment_files, all_transcriptions = collect_segment_files(dataset_name, text_files)
+    with open(text_path, "r", encoding="utf-8") as f:
+        transcriptions = [line.strip() for line in f if line.strip()]
 
-    if not all_segment_files:
-        print(f"❌ No mel files found for any part!")
-        sys.exit(1)
+    # Determine mel directory based on segment structure
+    if '-' in surah_part and len(surah_part.split('-')) > 1 and surah_part.split('-')[1]:
+        segment_files = sorted(glob.glob(os.path.join(mels_dir, surah_num, surah_part, f"{surah_part}-*.pt")))
+    else:
+        segment_files = sorted(glob.glob(os.path.join(mels_dir, surah_num, f"{surah_part}-*.pt")))
 
-    print(f"Total segments: {len(all_segment_files)} across {len(text_files)} parts\n")
+    if not segment_files:
+        segment_files = sorted(glob.glob(os.path.join(mels_dir, surah_num, surah_part, f"{surah_part}-*.pt")))
+        if not segment_files:
+            print(f"❌ Error: No mel files found")
+            sys.exit(1)
+
+    print(f"Loaded {len(transcriptions)} transcriptions, {len(segment_files)} mel files")
+
+    if len(transcriptions) != len(segment_files):
+        print(f"⚠️  Warning: Mismatch between transcriptions and segments")
 
     # Create model
     model = EncoderDecoderTransformer(
@@ -129,46 +125,34 @@ def train_all_parts(dataset_name):
     )
 
     if os.path.exists(model_path):
-        print(f"\nLoading existing model from {model_path}...")
+        print(f"Loading existing model from {model_path}...")
         model.load_state_dict(torch.load(model_path, map_location=device, weights_only=True))
         print(f"✓ Model loaded successfully!")
     else:
-        print(f"\n⚠️  No existing model found. Starting from scratch.")
+        print(f"\nNo existing model found. Starting from scratch.")
 
-    model = model.to(device)
-
-    # Collect segment info for curriculum stages
+    # Calculate max chunks across all segments
     segment_info = []
-    for segment_file, transcription in zip(all_segment_files, all_transcriptions):
-        segment_name = os.path.basename(segment_file)
-        words = transcription.split()
-        num_words = len(words)
-
-        # Get audio duration from mel features (precomputed at 100 fps)
+    for segment_file, transcription in zip(segment_files, transcriptions):
         mel_features = torch.load(segment_file, map_location='cpu', weights_only=True)
         audio_duration = mel_features.shape[0] / 100.0
-
-        # Calculate how many chunks fit in this audio
+        num_words = len(transcription.split())
         num_chunks = int(audio_duration / CHUNK_DURATION)
         max_chunks = min(num_chunks, num_words)
 
         segment_info.append({
             'file': segment_file,
-            'name': segment_name,
             'transcription': transcription,
-            'audio_duration': audio_duration,
-            'num_words': num_words,
             'max_chunks': max_chunks
         })
 
-    # Find the maximum number of chunks across all segments
     global_max_chunks = max(info['max_chunks'] for info in segment_info)
 
-    print(f"Total segments: {len(segment_info)}")
+    print(f"\nTotal segments: {len(segment_info)}")
     print(f"Maximum curriculum stages: {global_max_chunks}")
     print(f"Chunk size: {CHUNK_DURATION}s → {WORDS_PER_CHUNK} word(s)\n")
 
-    # Collect ALL curriculum samples (all stages mixed together)
+    # Collect ALL curriculum samples
     all_curriculum_files = []
     all_curriculum_transcriptions = []
     all_curriculum_target_seconds = []
@@ -180,39 +164,36 @@ def train_all_parts(dataset_name):
         target_words = chunk_count * WORDS_PER_CHUNK
 
         for info in segment_info:
-            # Skip if segment is too short for this chunk count
             if chunk_count > info['max_chunks']:
                 continue
 
-            # Add this curriculum sample
             all_curriculum_files.append(info['file'])
             all_curriculum_transcriptions.append(info['transcription'])
             all_curriculum_target_seconds.append(target_seconds)
             all_curriculum_target_words.append(target_words)
 
-    print(f"Total curriculum samples: {len(all_curriculum_files)}")
+    print(f"Total curriculum samples: {len(all_curriculum_files)}\n")
 
-    # Train on all mixed curriculum samples in one big stage
+    # Train
     print(f"{'='*60}")
     print(f"TRAINING ALL CURRICULUM STAGES MIXED")
     print(f"{'='*60}\n")
 
+    model = model.to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=0.01)
     criterion = nn.CrossEntropyLoss(ignore_index=-100, label_smoothing=0.1)
 
-    print(f"Initial Learning Rate: 1.0e-03\n")
+    print(f"Initial Learning Rate: 1.0e-03")
 
     best_loss = float('inf')
     prev_loss = float('inf')
-    start_time = time.time()
-    checkpoint_time = start_time
+    checkpoint_time = time.time()
 
     for epoch in range(500):
         model.train()
         total_loss = 0.0
         total_iterations = 0
 
-        # Shuffle all curriculum samples
         indices = list(range(len(all_curriculum_files)))
         random.shuffle(indices)
 
@@ -222,11 +203,9 @@ def train_all_parts(dataset_name):
             target_sec = all_curriculum_target_seconds[i]
             target_wrd = all_curriculum_target_words[i]
 
-            # Load mel features (with optional truncation)
             audio_features = load_mel_features(seg_file, target_seconds=target_sec)
             audio_batch = audio_features.transpose(0, 1).unsqueeze(0).to(device)
 
-            # Extract target text
             if target_wrd:
                 words = text.split()
                 if len(words) < target_wrd:
@@ -255,12 +234,11 @@ def train_all_parts(dataset_name):
             total_iterations += 1
 
         if total_iterations == 0:
-            print(f"⚠️  Warning: No valid training samples. Skipping.")
+            print(f"⚠️  Warning: No valid training samples.")
             break
 
         avg_loss = total_loss / total_iterations
 
-        # Dynamic learning rate: reduce by 50% if loss increases
         if avg_loss > prev_loss:
             current_lr = optimizer.param_groups[0]['lr']
             new_lr = max(current_lr * 0.5, 1e-7)
@@ -268,46 +246,32 @@ def train_all_parts(dataset_name):
                 for param_group in optimizer.param_groups:
                     param_group['lr'] = new_lr
                 if new_lr > 1e-7:
-                    print(f"  Loss increased ({prev_loss:.4f} → {avg_loss:.4f}), reducing LR to: {new_lr:.1e}")
+                    print(f"  LR reduced to: {new_lr:.1e}")
 
-        # Save best
         if avg_loss < best_loss:
             best_loss = avg_loss
             torch.save(model.state_dict(), model_path)
 
-        # Format time
-        elapsed_from_checkpoint = time.time() - checkpoint_time
-        if elapsed_from_checkpoint >= 3600:
-            hours = int(elapsed_from_checkpoint // 3600)
-            minutes = int((elapsed_from_checkpoint % 3600) // 60)
-            time_str = f"{hours}h {minutes}m" if minutes > 0 else f"{hours}h"
-        elif elapsed_from_checkpoint >= 60:
-            time_str = f"{int(round(elapsed_from_checkpoint / 60))}m"
-        else:
-            time_str = f"{int(round(elapsed_from_checkpoint))}s"
+        elapsed = time.time() - checkpoint_time
+        time_str = f"{int(elapsed//60)}m" if elapsed >= 60 else f"{int(elapsed)}s"
 
         current_lr = optimizer.param_groups[0]['lr']
-
-        # Calculate accuracy every 10 epochs
         accuracy_str = ""
         current_acc = 0
         if epoch == 0 or (epoch + 1) % 10 == 0:
-            overall_acc = calculate_comprehensive_accuracy(model, all_segment_files, all_transcriptions, vocab, None, None, device)[0]
-            current_acc = overall_acc
-            accuracy_str = f" | Accuracy={overall_acc:.0f}%"
+            current_acc = calculate_comprehensive_accuracy(model, segment_files, transcriptions, vocab, None, None, device)[0]
+            accuracy_str = f" | Accuracy={current_acc:.0f}%"
 
-        # Print every epoch in "all" mode
-        print(f"Epoch {epoch+1}/500 | Loss={avg_loss:.4f}{accuracy_str} | Time={time_str}")
-        checkpoint_time = time.time()
+        if epoch == 0 or (epoch + 1) % 10 == 0 or epoch == 499:
+            print(f"Epoch {epoch+1}/500 | Loss={avg_loss:.4f}{accuracy_str} | Time={time_str}")
+            checkpoint_time = time.time()
 
         prev_loss = avg_loss
 
-        # Stop if learning rate reaches minimum
         if current_lr <= 1e-7:
-            print(f"\n✓ Stopping: Learning rate reached minimum (1e-7)")
+            print(f"\n✓ Stopping: LR reached minimum")
             break
 
-        # Stop if accuracy > 99%
         if current_acc > 99.0:
             print(f"\n✓ Stopping: Accuracy > 99%")
             break
@@ -315,9 +279,9 @@ def train_all_parts(dataset_name):
     torch.save(model.state_dict(), model_path)
     print(f"\nFinal model saved to: {model_path}")
 
-    final_acc = calculate_comprehensive_accuracy(model, all_segment_files, all_transcriptions, vocab, None, None, device)[0]
+    model.eval()
+    final_acc = calculate_comprehensive_accuracy(model, segment_files, transcriptions, vocab, None, None, device)[0]
     print(f"FINAL_ACCURACY: {final_acc:.0f}%")
-
 
 
 if __name__ == "__main__":
