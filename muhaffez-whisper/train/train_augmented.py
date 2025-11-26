@@ -94,14 +94,13 @@ def normalize_text(text):
 # ==============================================================
 # Curriculum Replay Buffer
 # ==============================================================
-def collect_curriculum_replay_samples(dataset_name, current_surah_part, current_set_size):
+def collect_curriculum_replay_samples(dataset_name, current_set_size):
     """
     Collect partial/chunked curriculum samples as replay buffer.
     This prevents catastrophic forgetting of curriculum patterns while training on augmented data.
 
     Args:
         dataset_name: Name of dataset (e.g., "Quran-A")
-        current_surah_part: Current surah being trained (e.g., "002-01")
         current_set_size: Size of current training set (to calculate 10% replay buffer)
 
     Returns:
@@ -112,22 +111,16 @@ def collect_curriculum_replay_samples(dataset_name, current_surah_part, current_
 
     curriculum_replay_samples = []
 
-    # Find all text files for current and previous surah parts
+    # Find all text files
     text_dir = f"../datasets/{dataset_name}/text"
     all_text_files = sorted(glob.glob(os.path.join(text_dir, "*.txt")))
 
-    # Only include parts that are <= current_surah_part
+    # For "all" mode, include all parts
     relevant_surah_parts = []
-    total_available_samples = 0
     for text_file in all_text_files:
         basename = os.path.basename(text_file)
         surah_part = basename.replace('.txt', '')
-
-        if surah_part <= current_surah_part:
-            with open(text_file, "r", encoding="utf-8") as f:
-                num_samples = len([line for line in f if line.strip()])
-            relevant_surah_parts.append((text_file, surah_part))
-            total_available_samples += num_samples
+        relevant_surah_parts.append((text_file, surah_part))
 
     if not relevant_surah_parts:
         return curriculum_replay_samples
@@ -376,12 +369,8 @@ def train_all_parts(dataset_name):
         all_training_tuples.append((seg_file, text, None, None))
 
     # Collect curriculum replay buffer (10% partial segments)
-    # For "all" mode, use the last surah part as current
-    all_text_files = sorted(glob.glob(f"{datasets_dir}/text/*.txt"))
-    last_surah_part = os.path.basename(all_text_files[-1]).replace('.txt', '') if all_text_files else "999"
-
     curriculum_replay_samples = collect_curriculum_replay_samples(
-        dataset_name, last_surah_part, len(all_training_tuples)
+        dataset_name, len(all_training_tuples)
     )
 
     # Add curriculum replay samples to training
@@ -620,14 +609,7 @@ def train_single_part(dataset_name, surah_part):
     for seg_file, text in zip(all_training_segments, all_training_transcriptions):
         all_training_tuples.append((seg_file, text, None, None))
 
-    # Collect curriculum replay buffer (10% partial segments)
-    curriculum_replay_samples = collect_curriculum_replay_samples(
-        dataset_name, surah_part, len(all_training_tuples)
-    )
-
-    # Add curriculum replay samples to training
-    all_training_tuples.extend(curriculum_replay_samples)
-
+    # No replay buffer for per-part training (only used in "all" mode)
     print(f"✓ Total training samples: {len(all_training_tuples)}\n")
 
     # Initialize or load model

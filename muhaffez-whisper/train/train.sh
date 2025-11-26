@@ -432,7 +432,7 @@ if [ ${#SUITE_ACCURACIES[@]} -gt 0 ]; then
     echo "Accuracies:"
 
     # Track current surah part to group output
-    local current_surah=""
+    current_surah=""
     for acc in "${SUITE_ACCURACIES[@]}"; do
         # Split by | delimiter: dataset|surah_part|suite_name|accuracy
         IFS='|' read -r dataset surah_part suite_name accuracy <<< "$acc"

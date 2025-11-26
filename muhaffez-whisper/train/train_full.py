@@ -239,9 +239,7 @@ def train_model(model, segment_files, transcriptions, vocab, surah_part, model_p
                     param_group['lr'] = new_lr
                 # Only print if LR actually changed
                 if new_lr > 1e-7:
-                    # Format LR without trailing zero (e.g., 9e-04 instead of 9.0e-04)
-                    lr_str = f"{new_lr:.0e}" if new_lr >= 1e-6 else f"{new_lr:.1e}"
-                    print(f"  Loss increased ({prev_loss:.4f} → {avg_loss:.4f}), reducing LR to: {lr_str}", flush=True)
+                    print(f"  Loss increased ({prev_loss:.4f} → {avg_loss:.4f}), reducing LR to: {new_lr:.1e}", flush=True)
 
         # Save best model directly to models directory
         if avg_loss < best_loss:
@@ -483,6 +481,98 @@ def collect_replay_samples(dataset_name, current_surah_part, datasets_dir, curre
 
     return replay_segment_files, replay_transcriptions
 
+def collect_curriculum_replay_samples(dataset_name, current_set_size, include_all=False):
+    """
+    Collect partial/chunked curriculum samples as replay buffer.
+    This prevents catastrophic forgetting of curriculum patterns while training on full-length data.
+
+    Args:
+        dataset_name: Name of dataset (e.g., "Quran-A")
+        current_set_size: Size of current training set (to calculate 10% replay buffer)
+        include_all: If True, include all parts (for "all" mode); if False, not used
+
+    Returns:
+        List of tuples: [(file, transcription, target_seconds, target_words), ...]
+    """
+    CHUNK_DURATION = 1.3  # seconds per chunk
+    WORDS_PER_CHUNK = 1   # words per chunk
+
+    curriculum_replay_samples = []
+
+    # Find all text files
+    text_dir = f"../datasets/{dataset_name}/text"
+    all_text_files = sorted(glob.glob(os.path.join(text_dir, "*.txt")))
+
+    # For "all" mode, include all parts
+    relevant_surah_parts = []
+    for text_file in all_text_files:
+        basename = os.path.basename(text_file)
+        surah_part = basename.replace('.txt', '')
+        relevant_surah_parts.append((text_file, surah_part))
+
+    if not relevant_surah_parts:
+        return curriculum_replay_samples
+
+    # Calculate replay buffer size as 10% of current set
+    replay_buffer_size = max(int(current_set_size * 0.1), 10)
+
+    # Distribute evenly across surah parts
+    samples_per_surah = max(1, replay_buffer_size // len(relevant_surah_parts))
+
+    for text_file, surah_part in relevant_surah_parts:
+        # Load transcriptions
+        with open(text_file, "r", encoding="utf-8") as f:
+            transcriptions = [line.strip() for line in f if line.strip()]
+
+        surah_num = surah_part.split('-')[0]
+
+        # Load mel files
+        if '-' in surah_part and len(surah_part.split('-')) > 1 and surah_part.split('-')[1]:
+            mel_files = sorted(glob.glob(f"../datasets/{dataset_name}/mels/normal/{surah_num}/{surah_part}/{surah_part}-*.pt"))
+        else:
+            mel_files = sorted(glob.glob(f"../datasets/{dataset_name}/mels/normal/{surah_num}/{surah_part}-*.pt"))
+
+        if not mel_files:
+            mel_files = sorted(glob.glob(f"../datasets/{dataset_name}/mels/normal/{surah_num}/{surah_part}/{surah_part}-*.pt"))
+
+        if len(mel_files) > 0 and len(mel_files) == len(transcriptions):
+            # Sample randomly
+            num_samples = min(samples_per_surah, len(mel_files))
+            indices = random.sample(range(len(mel_files)), num_samples)
+
+            for idx in indices:
+                mel_file = mel_files[idx]
+                text = transcriptions[idx]
+
+                # Get audio duration and calculate curriculum stages
+                mel_features = torch.load(mel_file, map_location='cpu', weights_only=True)
+                audio_duration = mel_features.shape[0] / 100.0
+                num_words = len(text.split())
+
+                num_chunks = int(audio_duration / CHUNK_DURATION)
+                max_chunks = min(num_chunks, num_words)
+
+                # Create curriculum samples at different difficulty levels
+                for chunk_count in range(1, max_chunks + 1):
+                    target_seconds = chunk_count * CHUNK_DURATION
+                    target_words = chunk_count * WORDS_PER_CHUNK
+
+                    curriculum_replay_samples.append((
+                        mel_file,
+                        text,
+                        target_seconds,
+                        target_words
+                    ))
+
+    # Shuffle and limit to replay_buffer_size
+    random.shuffle(curriculum_replay_samples)
+    curriculum_replay_samples = curriculum_replay_samples[:replay_buffer_size]
+
+    if len(curriculum_replay_samples) > 0:
+        print(f"  Curriculum replay buffer size: {len(curriculum_replay_samples)} partial segments\n")
+
+    return curriculum_replay_samples
+
 # ==============================================================
 # Main
 # ==============================================================
@@ -565,6 +655,22 @@ def train_all_parts(dataset_name):
     print(f"\n✓ Total segments: {total_segments}")
     print(f"✓ Training on full audio/text for all segments")
 
+    # Collect curriculum replay buffer (10% partial/chunked samples from ALL parts)
+    curriculum_replay_samples = collect_curriculum_replay_samples(
+        dataset_name, total_segments
+    )
+
+    # Convert all training data to tuples for uniform handling
+    # Regular segments: (file, text, None, None) for full-length
+    all_training_tuples = []
+    for seg_file, text in zip(all_segment_files, all_transcriptions):
+        all_training_tuples.append((seg_file, text, None, None))
+
+    # Add curriculum replay samples (already tuples)
+    all_training_tuples.extend(curriculum_replay_samples)
+
+    print(f"✓ Total training samples: {total_segments} full-length + {len(curriculum_replay_samples)} curriculum = {len(all_training_tuples)} total\n")
+
     # Initialize or load model
     model = EncoderDecoderTransformer(
         vocab_size=len(vocab),
@@ -607,20 +713,28 @@ def train_all_parts(dataset_name):
         total_loss = 0.0
         total_iterations = 0
 
-        # Shuffle segments
-        indices = list(range(len(all_segment_files)))
-        random.shuffle(indices)
+        # Shuffle all training tuples
+        random.shuffle(all_training_tuples)
 
-        for i in indices:
-            seg_file = all_segment_files[i]
-            text = all_transcriptions[i]
-
-            # Load precomputed mel features
-            mel_features = load_mel_features(seg_file)
+        for seg_file, text, target_sec, target_wrd in all_training_tuples:
+            # Load mel features (with optional truncation for curriculum samples)
+            mel_features = load_mel_features(seg_file, target_seconds=target_sec)
             audio_batch = mel_features.transpose(0, 1).unsqueeze(0).to(device)
 
+            # Extract target text (truncate for curriculum samples)
+            if target_wrd:
+                words = text.split()
+                if len(words) < target_wrd:
+                    continue
+                target_text = " ".join(words[:target_wrd])
+            else:
+                target_text = text
+
+            if not target_text:
+                continue
+
             # Tokenize
-            text_tokens = tokenize_text(text, vocab)
+            text_tokens = tokenize_text(target_text, vocab)
             full_sequence = [1] + text_tokens + [2]
             input_ids = torch.tensor([full_sequence[:-1]], dtype=torch.long, device=device)
             labels = torch.tensor([full_sequence[1:]], dtype=torch.long, device=device)
@@ -740,17 +854,13 @@ def train_single_part(dataset_name, surah_part):
     print(f"FULL-LENGTH TRAINING - PART: {surah_part}")
     print(f"{'='*60}\n")
 
-    # Collect replay buffer samples from previous surahs to prevent catastrophic forgetting
-    # Replay buffer size = 10% of current training set
-    replay_segment_files, replay_transcriptions = collect_replay_samples(
-        dataset_name, surah_part, datasets_dir, len(segment_files)
-    )
+    # No replay buffer for per-part training (only used in "all" mode)
+    # Training uses current part only
+    all_training_tuples = []
+    for seg_file, text in zip(segment_files, transcriptions):
+        all_training_tuples.append((seg_file, text, None, None))
 
-    # Combine current surah samples with replay buffer
-    all_segment_files = segment_files + replay_segment_files
-    all_transcriptions = transcriptions + replay_transcriptions
-
-    print(f"   Training samples: {len(segment_files)} current + {len(replay_segment_files)} replay = {len(all_segment_files)} total\n")
+    print(f"   Training samples: {len(segment_files)} segments\n")
 
     # Create model
     model = EncoderDecoderTransformer(
@@ -771,20 +881,108 @@ def train_single_part(dataset_name, surah_part):
     else:
         print(f"No existing model found. Starting with fresh weights for {surah_part} training.")
 
-    # Train
-    print(f"\nStarting training for up to 500 epochs on {len(all_segment_files)} segments...\n")
-    model = train_model(
-        model,
-        all_segment_files,
-        all_transcriptions,
-        vocab,
-        surah_part,
-        model_path,
-        target_seconds=target_seconds,
-        target_words=target_words,
-        num_epochs=500,
-        learning_rate=1e-3
-    )
+    model = model.to(device)
+
+    # Training setup
+    learning_rate = 1e-3
+    min_lr = 1e-7
+    optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=0.01)
+    criterion = nn.CrossEntropyLoss(ignore_index=-100, label_smoothing=0.1)
+
+    print(f"Initial Learning Rate: {learning_rate:.1e}\n")
+
+    best_loss = float('inf')
+    prev_loss = float('inf')
+    start_time = time.time()
+    epoch = 0
+    max_epochs = 500
+
+    # Calculate initial accuracy
+    initial_acc = calculate_accuracy(model, segment_files, transcriptions, vocab, None, None, device)
+    print(f"Initial accuracy: {initial_acc:.1f}%\n")
+
+    while epoch < max_epochs:
+        model.train()
+        total_loss = 0.0
+        total_iterations = 0
+
+        # Shuffle all training samples
+        random.shuffle(all_training_tuples)
+
+        for seg_file, text, target_sec, target_wrd in all_training_tuples:
+            # Load mel features (with optional truncation for curriculum samples)
+            mel_features = load_mel_features(seg_file, target_seconds=target_sec)
+            audio_batch = mel_features.transpose(0, 1).unsqueeze(0).to(device)
+
+            # Extract target text (truncate for curriculum samples)
+            if target_wrd:
+                words = text.split()
+                if len(words) < target_wrd:
+                    continue
+                target_text = " ".join(words[:target_wrd])
+            else:
+                target_text = text
+
+            if not target_text:
+                continue
+
+            # Tokenize
+            text_tokens = tokenize_text(target_text, vocab)
+            full_sequence = [1] + text_tokens + [2]
+            input_ids = torch.tensor([full_sequence[:-1]], dtype=torch.long, device=device)
+            labels = torch.tensor([full_sequence[1:]], dtype=torch.long, device=device)
+
+            # Forward
+            logits = model(mel_features=audio_batch, text_ids=input_ids)
+            loss = criterion(logits.view(-1, logits.size(-1)), labels.view(-1))
+
+            # Backward
+            optimizer.zero_grad()
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            optimizer.step()
+
+            total_loss += loss.item()
+            total_iterations += 1
+
+        if total_iterations == 0:
+            print(f"⚠️  Warning: No valid training samples. Stopping.")
+            break
+
+        avg_loss = total_loss / total_iterations
+        elapsed = time.time() - start_time
+
+        # Save best model
+        if avg_loss < best_loss:
+            best_loss = avg_loss
+            torch.save(model.state_dict(), model_path)
+
+        # Check accuracy every epoch
+        current_acc = calculate_accuracy(model, segment_files, transcriptions, vocab, None, None, device)
+        accuracy_str = f" | Accuracy={current_acc:.0f}%"
+
+        # Print progress
+        print(f"Epoch {epoch+1} | Loss={avg_loss:.4f}{accuracy_str} | Time={elapsed:.0f}s", flush=True)
+
+        # Dynamic learning rate: reduce by 50% if loss increases
+        if avg_loss > prev_loss:
+            current_lr = optimizer.param_groups[0]['lr']
+            new_lr = max(current_lr * 0.5, min_lr)
+            if new_lr != current_lr:
+                for param_group in optimizer.param_groups:
+                    param_group['lr'] = new_lr
+                if new_lr > min_lr:
+                    print(f"  Loss increased ({prev_loss:.4f} → {avg_loss:.4f}), reducing LR to: {new_lr:.1e}", flush=True)
+
+        prev_loss = avg_loss
+        current_lr = optimizer.param_groups[0]['lr']
+
+        # Stop if learning rate reaches minimum
+        if current_lr <= min_lr:
+            print(f"\n✓ Stopping: Learning rate reached minimum ({min_lr:.1e})", flush=True)
+            break
+
+        epoch += 1
 
     # Save final model
     torch.save(model.state_dict(), model_path)

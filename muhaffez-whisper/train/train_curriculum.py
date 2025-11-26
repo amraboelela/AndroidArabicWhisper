@@ -260,9 +260,7 @@ def train_curriculum_stage(model, segment_files, transcriptions, vocab, surah_pa
                     param_group['lr'] = new_lr
                 # Only print if LR actually changed
                 if new_lr > 1e-7:
-                    # Format LR without trailing zero (e.g., 9e-04 instead of 9.0e-04)
-                    lr_str = f"{new_lr:.0e}" if new_lr >= 1e-6 else f"{new_lr:.1e}"
-                    print(f"  Loss increased ({prev_loss:.4f} → {avg_loss:.4f}), reducing LR to: {lr_str}", flush=True)
+                    print(f"  Loss increased ({prev_loss:.4f} → {avg_loss:.4f}), reducing LR to: {new_lr:.1e}", flush=True)
 
         # Save best
         if avg_loss < best_loss:
@@ -443,7 +441,7 @@ def collect_replay_samples(dataset_name, current_surah_part, datasets_dir, curre
 
 def collect_full_length_replay_samples(dataset_name, current_surah_part, datasets_dir, current_set_size):
     """
-    Collect full-length samples from current and previous surahs for curriculum training.
+    Collect full-length samples from PREVIOUS surahs for curriculum training.
     This helps the model not forget full-length patterns while learning chunked patterns.
 
     Args:
@@ -453,25 +451,25 @@ def collect_full_length_replay_samples(dataset_name, current_surah_part, dataset
         current_set_size: Size of current training set (to calculate 10% full-length replay buffer with minimum 20)
 
     Returns:
-        (full_replay_segment_files, full_replay_transcriptions): Lists of full-length replay samples
+        (full_replay_segment_files, full_replay_transcriptions): Lists of full-length replay samples from previous parts only
     """
     full_replay_segment_files = []
     full_replay_transcriptions = []
 
-    # Find all text files for current and previous surah parts
+    # Find all text files for previous surah parts only
     text_dir = f"../datasets/{dataset_name}/text"
     all_text_files = sorted(glob.glob(os.path.join(text_dir, "*.txt")))
 
-    # Count current and previous surah parts and total available samples
-    # Only include parts that are <= current_surah_part
+    # Count previous surah parts and total available samples
+    # Only include parts that are < current_surah_part (not <=, exclude current)
     relevant_surah_parts = []
     total_available_samples = 0
     for text_file in all_text_files:
         basename = os.path.basename(text_file)
         surah_part = basename.replace('.txt', '')
 
-        # Compare surah parts properly: "002-01" <= "002-01" but "002-02" > "002-01"
-        if surah_part <= current_surah_part:
+        # Compare surah parts properly: only include parts BEFORE current (not including current)
+        if surah_part < current_surah_part:
             # Count samples in this surah part
             with open(text_file, "r", encoding="utf-8") as f:
                 num_samples = len([line for line in f if line.strip()])
@@ -684,27 +682,8 @@ def train_all_parts(dataset_name):
 
     print(f"Total curriculum samples: {len(all_curriculum_files)}")
 
-    # Collect 10% replay buffer of full-length segments
-    replay_size = max(int(len(all_segment_files) * 0.1), 30)
-    last_surah_part = os.path.basename(text_files[-1]).replace('.txt', '') if text_files else "999"
-
-    stage_full_replay_files, stage_full_replay_transcriptions = collect_full_length_replay_samples(
-        dataset_name, last_surah_part, datasets_dir, len(all_segment_files)
-    )
-
-    print(f"Replay buffer size: {len(stage_full_replay_files)}")
-
-    # Add replay buffer (full-length)
-    for replay_file, replay_text in zip(stage_full_replay_files, stage_full_replay_transcriptions):
-        all_curriculum_files.append(replay_file)
-        all_curriculum_transcriptions.append(replay_text)
-        all_curriculum_target_seconds.append(None)  # Full length
-        all_curriculum_target_words.append(None)    # Full text
-
-    print(f"Total training samples: {len(all_curriculum_files)}\n")
-
     # Train on all mixed curriculum samples in one big stage
-    print(f"\n{'='*60}")
+    print(f"{'='*60}")
     print(f"TRAINING ALL CURRICULUM STAGES MIXED")
     print(f"{'='*60}\n")
 
@@ -779,10 +758,10 @@ def train_all_parts(dataset_name):
 
         avg_loss = total_loss / total_iterations
 
-        # Dynamic learning rate: reduce by 10% if loss increases
+        # Dynamic learning rate: reduce by 50% if loss increases
         if avg_loss > prev_loss:
             current_lr = optimizer.param_groups[0]['lr']
-            new_lr = max(current_lr * 0.9, 1e-7)
+            new_lr = max(current_lr * 0.5, 1e-7)
             if new_lr != current_lr:
                 for param_group in optimizer.param_groups:
                     param_group['lr'] = new_lr
@@ -990,25 +969,8 @@ def train_single_part(dataset_name, surah_part):
 
     print(f"Total curriculum samples: {len(all_curriculum_files)}")
 
-    # Collect 10% replay buffer of full-length segments
-    replay_size = max(int(len(segment_files) * 0.1), 1)
-    stage_full_replay_files, stage_full_replay_transcriptions = collect_full_length_replay_samples(
-        dataset_name, surah_part, datasets_dir, len(segment_files)
-    )
-
-    print(f"Replay buffer size: {len(stage_full_replay_files)}")
-
-    # Add replay buffer (full-length)
-    for replay_file, replay_text in zip(stage_full_replay_files, stage_full_replay_transcriptions):
-        all_curriculum_files.append(replay_file)
-        all_curriculum_transcriptions.append(replay_text)
-        all_curriculum_target_seconds.append(None)  # Full length
-        all_curriculum_target_words.append(None)    # Full text
-
-    print(f"Total training samples: {len(all_curriculum_files)}\n")
-
     # Train on all mixed curriculum samples in one big stage
-    print(f"\n{'='*60}")
+    print(f"{'='*60}")
     print(f"TRAINING ALL CURRICULUM STAGES MIXED")
     print(f"{'='*60}\n")
 
@@ -1084,10 +1046,10 @@ def train_single_part(dataset_name, surah_part):
 
         avg_loss = total_loss / total_iterations
 
-        # Dynamic learning rate: reduce by 10% if loss increases
+        # Dynamic learning rate: reduce by 50% if loss increases
         if avg_loss > prev_loss:
             current_lr = optimizer.param_groups[0]['lr']
-            new_lr = max(current_lr * 0.9, 1e-7)
+            new_lr = max(current_lr * 0.5, 1e-7)
             if new_lr != current_lr:
                 for param_group in optimizer.param_groups:
                     param_group['lr'] = new_lr
