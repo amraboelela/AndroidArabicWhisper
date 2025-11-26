@@ -1110,97 +1110,13 @@ def train_single_part(dataset_name, surah_part):
     print(f"Best model saved to: {model_path}")
     print(f"{'='*60}\n")
 
-    # Load the saved model for final evaluation
-    print("Loading saved model for final evaluation...")
-    model.load_state_dict(torch.load(model_path, map_location=device))
+    # Calculate final accuracy for train.sh to capture
     model.eval()
-
-    # Calculate comprehensive accuracy on all segments (full audio)
-    print(f"\n📊 Final Evaluation (full audio):")
-    overall_acc, avg_acc, seg_accuracies = calculate_comprehensive_accuracy(
+    overall_acc = calculate_comprehensive_accuracy(
         model, segment_files, transcriptions, vocab,
         target_seconds=None, target_words=None, device=device
-    )
-    print(f"   Accuracy: {overall_acc:.0f}%\n", flush=True)
-
-    # Output final accuracy for train.sh to capture
+    )[0]
     print(f"FINAL_ACCURACY: {overall_acc:.0f}%")
-
-    # Sample generation at the end (first segment for consistency)
-    test_audio_features = load_mel_features(segment_files[0])
-    test_audio_batch = test_audio_features.transpose(0, 1).unsqueeze(0).to(device)
-
-    # Calculate audio duration from mel features (precomputed at 100 fps)
-    audio_duration = test_audio_features.shape[0] / 100.0
-
-    expected_text = transcriptions[0]
-
-    with torch.no_grad():
-        generated = model.generate(test_audio_batch, max_new_tokens=50, audio_duration_seconds=audio_duration, use_sampling=False)
-        generated_ids = generated[0].tolist()
-        if generated_ids and generated_ids[0] == 1:
-            generated_ids = generated_ids[1:]
-        if 2 in generated_ids:
-            generated_ids = generated_ids[:generated_ids.index(2)]
-        generated_words = [vocab[idx] for idx in generated_ids if idx < len(vocab)]
-
-        # Calculate confidence for each token
-        encoder_output = model.encode(test_audio_batch)
-        text_ids = torch.tensor([[1] + generated_ids], dtype=torch.long, device=device)
-        logits, _ = model.decode(text_ids, encoder_output)
-        probs = torch.softmax(logits, dim=-1)
-
-        # Get probability of each generated token
-        token_confidences = []
-        for i, token_id in enumerate(generated_ids):
-            if i < logits.shape[1] - 1:  # -1 because we prepended <s>
-                token_prob = probs[0, i, token_id].item()
-                token_confidences.append(token_prob)
-
-        # Calculate accuracy (percentage of correct words)
-        expected_words = expected_text.split()
-        correct_words = sum(1 for i, word in enumerate(generated_words) if i < len(expected_words) and word == expected_words[i])
-        accuracy = (correct_words / len(expected_words) * 100) if expected_words else 0
-
-        # Filter out words with 0% confidence and calculate accuracy based on confident words
-        filtered_words = []
-        filtered_confidences = []
-        correct_confident_words = 0
-        total_confident_words = 0
-
-        if len(generated_words) == len(token_confidences):
-            for i, (word, conf) in enumerate(zip(generated_words, token_confidences)):
-                if conf < 0.01:  # Hide words with < 1% confidence (rounds to 0%)
-                    continue
-                elif conf >= 0.2:  # 20% threshold
-                    filtered_words.append(word)
-                    filtered_confidences.append(f'{conf:.0%}')
-                    total_confident_words += 1
-                    if i < len(expected_words) and word == expected_words[i]:
-                        correct_confident_words += 1
-                else:
-                    filtered_words.append(f"[{word}]")  # Mark low confidence with brackets
-                    filtered_confidences.append(f'{conf:.0%}')
-
-            # Accuracy: correct confident words out of total EXPECTED words
-            accuracy = (correct_confident_words / len(expected_words) * 100) if expected_words else 0
-        else:
-            filtered_words = generated_words
-            filtered_confidences = [f'{c:.0%}' for c in token_confidences] if token_confidences else []
-            # Original accuracy calculation if confidences don't match
-            accuracy = (correct_words / len(expected_words) * 100) if expected_words else 0
-
-        # Build confidence text
-        if filtered_confidences:
-            confidence_text = ', '.join(filtered_confidences)
-        else:
-            confidence_text = "N/A"
-
-        display_text = ' '.join(filtered_words) if filtered_words else ""
-
-        print(f"🔸 Expected: {expected_text}")
-        print(f"🔹 Generated: {display_text}")
-        print(f"   Confidence: {confidence_text}")
 
 
 if __name__ == "__main__":

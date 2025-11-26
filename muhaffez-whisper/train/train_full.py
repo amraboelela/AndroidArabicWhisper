@@ -898,7 +898,7 @@ def train_single_part(dataset_name, surah_part):
     max_epochs = 500
 
     # Calculate initial accuracy
-    initial_acc = calculate_accuracy(model, segment_files, transcriptions, vocab, None, None, device)
+    initial_acc = calculate_comprehensive_accuracy(model, segment_files, transcriptions, vocab, None, None, device)[0]
     print(f"Initial accuracy: {initial_acc:.1f}%\n")
 
     while epoch < max_epochs:
@@ -958,11 +958,17 @@ def train_single_part(dataset_name, surah_part):
             torch.save(model.state_dict(), model_path)
 
         # Check accuracy every epoch
-        current_acc = calculate_accuracy(model, segment_files, transcriptions, vocab, None, None, device)
+        current_acc = calculate_comprehensive_accuracy(model, segment_files, transcriptions, vocab, None, None, device)[0]
         accuracy_str = f" | Accuracy={current_acc:.0f}%"
 
+        # Format time: seconds if < 60s, minutes if >= 60s
+        if elapsed >= 60:
+            time_str = f"{int(round(elapsed / 60))}m"
+        else:
+            time_str = f"{int(round(elapsed))}s"
+
         # Print progress
-        print(f"Epoch {epoch+1} | Loss={avg_loss:.4f}{accuracy_str} | Time={elapsed:.0f}s", flush=True)
+        print(f"Epoch {epoch+1} | Loss={avg_loss:.4f}{accuracy_str} | Time={time_str}", flush=True)
 
         # Dynamic learning rate: reduce by 50% if loss increases
         if avg_loss > prev_loss:
