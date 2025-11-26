@@ -188,14 +188,23 @@ def collect_curriculum_replay_samples(dataset_name, current_set_size):
 # ==============================================================
 # Calculate accuracy
 # ==============================================================
-def calculate_accuracy(model, segment_files, transcriptions, vocab, device):
+def calculate_accuracy(model, segment_files, transcriptions, vocab, device, sample_size=100):
     """Calculate overall accuracy on regular (non-augmented) segments only"""
     model.eval()
     total_correct = 0
     total_tokens = 0
 
+    # Randomly sample segments if dataset is large (shuffle each time for variety)
+    if len(segment_files) > sample_size:
+        indices = random.sample(range(len(segment_files)), sample_size)
+        sampled_files = [segment_files[i] for i in indices]
+        sampled_transcriptions = [transcriptions[i] for i in indices]
+    else:
+        sampled_files = segment_files
+        sampled_transcriptions = transcriptions
+
     with torch.no_grad():
-        for seg_file, expected_text in zip(segment_files, transcriptions):
+        for seg_file, expected_text in zip(sampled_files, sampled_transcriptions):
             # Load precomputed mel features
             mel_features = load_mel_features(seg_file)
             audio_batch = mel_features.transpose(0, 1).unsqueeze(0).to(device)

@@ -81,15 +81,24 @@ def tokenize_text(text, vocab):
 # ==============================================================
 # Comprehensive accuracy calculation for all segments
 # ==============================================================
-def calculate_comprehensive_accuracy(model, segment_files, transcriptions, vocab, target_seconds, target_words, device):
+def calculate_comprehensive_accuracy(model, segment_files, transcriptions, vocab, target_seconds, target_words, device, sample_size=100):
     """Calculate accuracy across all segments"""
     model.eval()
     total_correct = 0
     total_expected = 0
     segment_accuracies = []
 
+    # Randomly sample segments if dataset is large (shuffle each time for variety)
+    if len(segment_files) > sample_size:
+        indices = random.sample(range(len(segment_files)), sample_size)
+        sampled_files = [segment_files[i] for i in indices]
+        sampled_transcriptions = [transcriptions[i] for i in indices]
+    else:
+        sampled_files = segment_files
+        sampled_transcriptions = transcriptions
+
     with torch.no_grad():
-        for idx, (seg_file, transcription) in enumerate(zip(segment_files, transcriptions)):
+        for idx, (seg_file, transcription) in enumerate(zip(sampled_files, sampled_transcriptions)):
             # Extract audio features
             audio_features = load_mel_features(seg_file, target_seconds=target_seconds)
             audio_batch = audio_features.transpose(0, 1).unsqueeze(0).to(device)
