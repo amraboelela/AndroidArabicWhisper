@@ -485,8 +485,14 @@ def train_all_parts(dataset_name):
             current_acc = calculate_accuracy(model, regular_segment_files, regular_transcriptions, vocab, device)
             accuracy_str = f" | Accuracy={current_acc:.0f}%"
 
+        # Format time: seconds if < 60s, minutes if >= 60s
+        if elapsed >= 60:
+            time_str = f"{int(round(elapsed / 60))}m"
+        else:
+            time_str = f"{int(round(elapsed))}s"
+
         # Print epoch info
-        print(f"Epoch {epoch+1} | Loss={avg_loss:.4f}{accuracy_str} | Time={elapsed:.0f}s", flush=True)
+        print(f"Epoch {epoch+1} | Loss={avg_loss:.4f}{accuracy_str} | Time={time_str}", flush=True)
 
         # Custom LR decay: reduce by 10% when loss increases
         if avg_loss > prev_loss:

@@ -782,19 +782,16 @@ def train_all_parts(dataset_name):
 
         current_lr = optimizer.param_groups[0]['lr']
 
-        # Calculate accuracy after epoch 1 and every 10 epochs
-        accuracy_str = ""
-        if epoch == 0 or (epoch + 1) % 10 == 0:
-            overall_acc, avg_acc, seg_accuracies = calculate_comprehensive_accuracy(
-                model, all_segment_files, all_transcriptions, vocab,
-                None, None, device  # Full length
-            )
-            accuracy_str = f" | Accuracy={overall_acc:.0f}%"
+        # Calculate accuracy every epoch for "all" mode
+        overall_acc, avg_acc, seg_accuracies = calculate_comprehensive_accuracy(
+            model, all_segment_files, all_transcriptions, vocab,
+            None, None, device  # Full length
+        )
+        accuracy_str = f" | Accuracy={overall_acc:.0f}%"
 
-        # Print epoch info: epoch 1, every 10 epochs, or last epoch
-        if epoch == 0 or (epoch + 1) % 10 == 0 or epoch == 499:
-            print(f"  Epoch {epoch+1}/500 | Loss={avg_loss:.4f}{accuracy_str} | Time={time_str}")
-            checkpoint_time = time.time()
+        # Print every epoch in "all" mode
+        print(f"  Epoch {epoch+1}/500 | Loss={avg_loss:.4f}{accuracy_str} | Time={time_str}")
+        checkpoint_time = time.time()
 
         prev_loss = avg_loss
 

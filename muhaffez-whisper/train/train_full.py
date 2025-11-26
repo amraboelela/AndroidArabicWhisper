@@ -770,7 +770,14 @@ def train_all_parts(dataset_name):
                 print(f"  Learning rate reduced: {old_lr:.1e} → {new_lr:.1e}")
 
         current_lr = optimizer.param_groups[0]['lr']
-        print(f"Epoch {epoch+1} | Loss={avg_loss:.4f} | LR={current_lr:.1e} | Time={elapsed:.0f}s", flush=True)
+
+        # Format time: seconds if < 60s, minutes if >= 60s
+        if elapsed >= 60:
+            time_str = f"{int(round(elapsed / 60))}m"
+        else:
+            time_str = f"{int(round(elapsed))}s"
+
+        print(f"Epoch {epoch+1} | Loss={avg_loss:.4f} | LR={current_lr:.1e} | Time={time_str}", flush=True)
 
         # Update prev_loss for next iteration
         prev_loss = avg_loss
