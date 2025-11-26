@@ -126,7 +126,7 @@ def train_all_parts(dataset_name):
     model = model.to(device)
 
     # Load saved learning rate or use default
-    learning_rate = load_lr_state(model_path, default_lr=1e-3)
+    learning_rate = load_lr_state(model_path, training_type="full", default_lr=1e-3)
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=0.01)
     criterion = nn.CrossEntropyLoss(ignore_index=-100, label_smoothing=0.1)
 
@@ -158,7 +158,7 @@ def train_all_parts(dataset_name):
         new_lr, lr_changed = update_learning_rate(optimizer, avg_loss, prev_loss, 1e-7, 0.5)
         if lr_changed:
             print(f"  Learning rate reduced to: {new_lr:.1e}")
-            save_lr_state(new_lr, model_path)  # Save LR when it changes
+            save_lr_state(new_lr, model_path, training_type="full")  # Save LR when it changes
 
         # Check accuracy every 10 epochs
         accuracy_str = ""
@@ -186,7 +186,7 @@ def train_all_parts(dataset_name):
     # Save final model and LR
     torch.save(model.state_dict(), model_path)
     final_lr = optimizer.param_groups[0]['lr']
-    save_lr_state(final_lr, model_path)
+    save_lr_state(final_lr, model_path, training_type="full")
     print(f"\nFinal model saved to: {model_path}")
 
     # Calculate and output final accuracy
@@ -236,8 +236,8 @@ def train_single_part(dataset_name, surah_part):
 
     model = model.to(device)
 
-    # Training setup
-    learning_rate = 1e-3
+    # Load saved learning rate or use default
+    learning_rate = load_lr_state(model_path, training_type="full", default_lr=1e-3)
     min_lr = 1e-7
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=0.01)
     criterion = nn.CrossEntropyLoss(ignore_index=-100, label_smoothing=0.1)
@@ -333,6 +333,7 @@ def train_single_part(dataset_name, surah_part):
                     param_group['lr'] = new_lr
                 if new_lr > min_lr:
                     print(f"  Loss increased ({prev_loss:.4f} → {avg_loss:.4f}), reducing LR to: {new_lr:.1e}", flush=True)
+                save_lr_state(new_lr, model_path, training_type="full")  # Save LR when it changes
 
         prev_loss = avg_loss
         current_lr = optimizer.param_groups[0]['lr']
@@ -349,6 +350,8 @@ def train_single_part(dataset_name, surah_part):
 
     # Save final model
     torch.save(model.state_dict(), model_path)
+    final_lr = optimizer.param_groups[0]['lr']
+    save_lr_state(final_lr, model_path, training_type="full")
     print(f"Final model saved to: {model_path}")
 
     # Calculate final accuracy

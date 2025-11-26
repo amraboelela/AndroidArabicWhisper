@@ -30,7 +30,9 @@ from tools.encoder_decoder_transformer import EncoderDecoderTransformer
 from common import (
     load_mel_features,
     tokenize_text,
-    calculate_comprehensive_accuracy
+    calculate_comprehensive_accuracy,
+    save_lr_state,
+    load_lr_state
 )
 
 # ==============================================================
@@ -180,10 +182,13 @@ def train_single_part(dataset_name, surah_part):
     print(f"{'='*60}\n")
 
     model = model.to(device)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=0.01)
+
+    # Load saved learning rate or use default
+    learning_rate = load_lr_state(model_path, training_type="curriculum", default_lr=1e-3)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=0.01)
     criterion = nn.CrossEntropyLoss(ignore_index=-100, label_smoothing=0.1)
 
-    print(f"Initial Learning Rate: 1.0e-03")
+    print(f"Initial Learning Rate: {learning_rate:.1e}")
 
     best_loss = float('inf')
     prev_loss = float('inf')
@@ -247,6 +252,7 @@ def train_single_part(dataset_name, surah_part):
                     param_group['lr'] = new_lr
                 if new_lr > 1e-7:
                     print(f"  LR reduced to: {new_lr:.1e}")
+                save_lr_state(new_lr, model_path, training_type="curriculum")  # Save LR when it changes
 
         if avg_loss < best_loss:
             best_loss = avg_loss
@@ -277,6 +283,8 @@ def train_single_part(dataset_name, surah_part):
             break
 
     torch.save(model.state_dict(), model_path)
+    final_lr = optimizer.param_groups[0]['lr']
+    save_lr_state(final_lr, model_path, training_type="curriculum")
     print(f"\nFinal model saved to: {model_path}")
 
     model.eval()
