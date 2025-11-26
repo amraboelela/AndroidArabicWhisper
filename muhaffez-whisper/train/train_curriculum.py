@@ -775,7 +775,11 @@ def train_all_parts(dataset_name):
             torch.save(model.state_dict(), model_path)
 
         elapsed_from_checkpoint = time.time() - checkpoint_time
-        if elapsed_from_checkpoint >= 60:
+        if elapsed_from_checkpoint >= 3600:
+            hours = int(elapsed_from_checkpoint // 3600)
+            minutes = int((elapsed_from_checkpoint % 3600) // 60)
+            time_str = f"{hours}h {minutes}m" if minutes > 0 else f"{hours}h"
+        elif elapsed_from_checkpoint >= 60:
             time_str = f"{int(round(elapsed_from_checkpoint / 60))}m"
         else:
             time_str = f"{int(round(elapsed_from_checkpoint))}s"
@@ -803,7 +807,11 @@ def train_all_parts(dataset_name):
             break
 
     total_time = time.time() - start_time
-    if total_time >= 60:
+    if total_time >= 3600:
+        hours = int(total_time // 3600)
+        minutes = int((total_time % 3600) // 60)
+        print(f"  ✓ Training completed in {hours}h {minutes}m")
+    elif total_time >= 60:
         print(f"  ✓ Training completed in {int(round(total_time / 60))}m")
     else:
         print(f"  ✓ Training completed in {int(round(total_time))}s")
@@ -812,12 +820,18 @@ def train_all_parts(dataset_name):
     torch.save(model.state_dict(), model_path)
 
     total_time = time.time() - total_start_time
-    minutes = int(total_time // 60)
-    seconds = int(total_time % 60)
+    if total_time >= 3600:
+        hours = int(total_time // 3600)
+        minutes = int((total_time % 3600) // 60)
+        total_time_str = f"{hours}h {minutes}m"
+    else:
+        minutes = int(total_time // 60)
+        seconds = int(total_time % 60)
+        total_time_str = f"{minutes}m {seconds}s"
 
     print(f"\n{'='*60}")
     print(f"✓ CURRICULUM TRAINING COMPLETED!")
-    print(f"Total time: {minutes}m {seconds}s")
+    print(f"Total time: {total_time_str}")
     print(f"Best model saved to: {model_path}")
     print(f"{'='*60}\n")
 
@@ -1062,7 +1076,11 @@ def train_single_part(dataset_name, surah_part):
             torch.save(model.state_dict(), model_path)
 
         elapsed_from_checkpoint = time.time() - checkpoint_time
-        if elapsed_from_checkpoint >= 60:
+        if elapsed_from_checkpoint >= 3600:
+            hours = int(elapsed_from_checkpoint // 3600)
+            minutes = int((elapsed_from_checkpoint % 3600) // 60)
+            time_str = f"{hours}h {minutes}m" if minutes > 0 else f"{hours}h"
+        elif elapsed_from_checkpoint >= 60:
             time_str = f"{int(round(elapsed_from_checkpoint / 60))}m"
         else:
             time_str = f"{int(round(elapsed_from_checkpoint))}s"
@@ -1091,7 +1109,11 @@ def train_single_part(dataset_name, surah_part):
             break
 
     total_time = time.time() - start_time
-    if total_time >= 60:
+    if total_time >= 3600:
+        hours = int(total_time // 3600)
+        minutes = int((total_time % 3600) // 60)
+        print(f"  ✓ Training completed in {hours}h {minutes}m")
+    elif total_time >= 60:
         print(f"  ✓ Training completed in {int(round(total_time / 60))}m")
     else:
         print(f"  ✓ Training completed in {int(round(total_time))}s")
@@ -1100,12 +1122,18 @@ def train_single_part(dataset_name, surah_part):
     torch.save(model.state_dict(), model_path)
 
     total_time = time.time() - total_start_time
-    minutes = int(total_time // 60)
-    seconds = int(total_time % 60)
+    if total_time >= 3600:
+        hours = int(total_time // 3600)
+        minutes = int((total_time % 3600) // 60)
+        total_time_str = f"{hours}h {minutes}m"
+    else:
+        minutes = int(total_time // 60)
+        seconds = int(total_time % 60)
+        total_time_str = f"{minutes}m {seconds}s"
 
     print(f"\n{'='*60}")
     print(f"✓ CURRICULUM TRAINING COMPLETED!")
-    print(f"Total time: {minutes}m {seconds}s")
+    print(f"Total time: {total_time_str}")
     print(f"Best model saved to: {model_path}")
     print(f"{'='*60}\n")
 

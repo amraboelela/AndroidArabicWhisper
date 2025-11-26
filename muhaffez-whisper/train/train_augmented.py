@@ -331,7 +331,11 @@ def train_all_parts(dataset_name):
         augmented_count = 0
         has_augmented_data = False
         for aug_type in augmented_variations:
-            aug_mel_files = sorted(glob.glob(f"{mels_augmented_dir}/{aug_type}/{surah_num}/{surah_part}-*.pt"))
+            # Check both patterns: with and without subdirectory
+            aug_mel_files = sorted(glob.glob(f"{mels_augmented_dir}/{aug_type}/{surah_num}/{surah_part}/{surah_part}-*.pt"))
+            if not aug_mel_files:
+                aug_mel_files = sorted(glob.glob(f"{mels_augmented_dir}/{aug_type}/{surah_num}/{surah_part}-*.pt"))
+
             if aug_mel_files:
                 # Each augmented file corresponds to the same transcription
                 all_training_segments.extend(aug_mel_files)
@@ -367,14 +371,6 @@ def train_all_parts(dataset_name):
     all_training_tuples = []
     for seg_file, text in zip(all_training_segments, all_training_transcriptions):
         all_training_tuples.append((seg_file, text, None, None))
-
-    # Collect curriculum replay buffer (10% partial segments)
-    curriculum_replay_samples = collect_curriculum_replay_samples(
-        dataset_name, len(all_training_tuples)
-    )
-
-    # Add curriculum replay samples to training
-    all_training_tuples.extend(curriculum_replay_samples)
 
     print(f"✓ Total training samples: {len(all_training_tuples)}\n")
 
@@ -479,20 +475,24 @@ def train_all_parts(dataset_name):
             best_loss = avg_loss
             torch.save(model.state_dict(), model_path)
 
-        # Check accuracy every 5 epochs
+        # Check accuracy every 10 epochs
         accuracy_str = ""
-        if (epoch + 1) % 5 == 0:
+        if epoch == 0 or (epoch + 1) % 10 == 0:
             current_acc = calculate_accuracy(model, regular_segment_files, regular_transcriptions, vocab, device)
             accuracy_str = f" | Accuracy={current_acc:.0f}%"
 
-        # Format time: seconds if < 60s, minutes if >= 60s
-        if elapsed >= 60:
+        # Format time: seconds if < 60s, minutes if >= 60s, hours if >= 60m
+        if elapsed >= 3600:
+            hours = int(elapsed // 3600)
+            minutes = int((elapsed % 3600) // 60)
+            time_str = f"{hours}h {minutes}m" if minutes > 0 else f"{hours}h"
+        elif elapsed >= 60:
             time_str = f"{int(round(elapsed / 60))}m"
         else:
             time_str = f"{int(round(elapsed))}s"
 
         # Print epoch info
-        print(f"Epoch {epoch+1} | Loss={avg_loss:.4f}{accuracy_str} | Time={time_str}", flush=True)
+        print(f"Epoch {epoch+1}/500 | Loss={avg_loss:.4f}{accuracy_str} | Time={time_str}", flush=True)
 
         # Custom LR decay: reduce by 10% when loss increases
         if avg_loss > prev_loss:
@@ -717,12 +717,24 @@ def train_single_part(dataset_name, surah_part):
             best_loss = avg_loss
             torch.save(model.state_dict(), model_path)
 
-        # Check accuracy every epoch
-        current_acc = calculate_accuracy(model, regular_segment_files, regular_transcriptions, vocab, device)
-        accuracy_str = f" | Accuracy={current_acc:.0f}%"
+        # Check accuracy every 10 epochs
+        accuracy_str = ""
+        if epoch == 0 or (epoch + 1) % 10 == 0:
+            current_acc = calculate_accuracy(model, regular_segment_files, regular_transcriptions, vocab, device)
+            accuracy_str = f" | Accuracy={current_acc:.0f}%"
+
+        # Format time: seconds if < 60s, minutes if >= 60s, hours if >= 60m
+        if elapsed >= 3600:
+            hours = int(elapsed // 3600)
+            minutes = int((elapsed % 3600) // 60)
+            time_str = f"{hours}h {minutes}m" if minutes > 0 else f"{hours}h"
+        elif elapsed >= 60:
+            time_str = f"{int(round(elapsed / 60))}m"
+        else:
+            time_str = f"{int(round(elapsed))}s"
 
         # Print progress every epoch
-        print(f"Epoch {epoch+1} | Loss={avg_loss:.4f}{accuracy_str} | Time={elapsed:.0f}s", flush=True)
+        print(f"Epoch {epoch+1} | Loss={avg_loss:.4f}{accuracy_str} | Time={time_str}", flush=True)
 
         # Decay learning rate if loss increases
         if avg_loss > prev_loss:

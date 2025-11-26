@@ -653,23 +653,13 @@ def train_all_parts(dataset_name):
 
     total_segments = len(all_segment_files)
     print(f"\n✓ Total segments: {total_segments}")
-    print(f"✓ Training on full audio/text for all segments")
-
-    # Collect curriculum replay buffer (10% partial/chunked samples from ALL parts)
-    curriculum_replay_samples = collect_curriculum_replay_samples(
-        dataset_name, total_segments
-    )
+    print(f"✓ Training on full audio/text for all segments\n")
 
     # Convert all training data to tuples for uniform handling
     # Regular segments: (file, text, None, None) for full-length
     all_training_tuples = []
     for seg_file, text in zip(all_segment_files, all_transcriptions):
         all_training_tuples.append((seg_file, text, None, None))
-
-    # Add curriculum replay samples (already tuples)
-    all_training_tuples.extend(curriculum_replay_samples)
-
-    print(f"✓ Total training samples: {total_segments} full-length + {len(curriculum_replay_samples)} curriculum = {len(all_training_tuples)} total\n")
 
     # Initialize or load model
     model = EncoderDecoderTransformer(
@@ -771,20 +761,26 @@ def train_all_parts(dataset_name):
 
         current_lr = optimizer.param_groups[0]['lr']
 
-        # Format time: seconds if < 60s, minutes if >= 60s
-        if elapsed >= 60:
+        # Format time: seconds if < 60s, minutes if >= 60s, hours if >= 60m
+        if elapsed >= 3600:
+            hours = int(elapsed // 3600)
+            minutes = int((elapsed % 3600) // 60)
+            time_str = f"{hours}h {minutes}m" if minutes > 0 else f"{hours}h"
+        elif elapsed >= 60:
             time_str = f"{int(round(elapsed / 60))}m"
         else:
             time_str = f"{int(round(elapsed))}s"
 
-        print(f"Epoch {epoch+1} | Loss={avg_loss:.4f} | LR={current_lr:.1e} | Time={time_str}", flush=True)
+        # Check accuracy every 10 epochs
+        accuracy_str = ""
+        if epoch == 0 or (epoch + 1) % 10 == 0:
+            current_acc = calculate_comprehensive_accuracy(model, all_segment_files, all_transcriptions, vocab, None, None, device)[0]
+            accuracy_str = f" | Accuracy={current_acc:.0f}%"
+
+        print(f"Epoch {epoch+1} | Loss={avg_loss:.4f}{accuracy_str} | Time={time_str}", flush=True)
 
         # Update prev_loss for next iteration
         prev_loss = avg_loss
-
-        # Check accuracy every epoch
-        current_acc = calculate_comprehensive_accuracy(model, all_segment_files, all_transcriptions, vocab, None, None, device)[0]
-        print(f"Accuracy: {current_acc:.1f}%", flush=True)
 
         # Stop if learning rate reaches minimum
         if current_lr <= 1e-7:
@@ -964,12 +960,18 @@ def train_single_part(dataset_name, surah_part):
             best_loss = avg_loss
             torch.save(model.state_dict(), model_path)
 
-        # Check accuracy every epoch
-        current_acc = calculate_comprehensive_accuracy(model, segment_files, transcriptions, vocab, None, None, device)[0]
-        accuracy_str = f" | Accuracy={current_acc:.0f}%"
+        # Check accuracy every 10 epochs
+        accuracy_str = ""
+        if epoch == 0 or (epoch + 1) % 10 == 0:
+            current_acc = calculate_comprehensive_accuracy(model, segment_files, transcriptions, vocab, None, None, device)[0]
+            accuracy_str = f" | Accuracy={current_acc:.0f}%"
 
-        # Format time: seconds if < 60s, minutes if >= 60s
-        if elapsed >= 60:
+        # Format time: seconds if < 60s, minutes if >= 60s, hours if >= 60m
+        if elapsed >= 3600:
+            hours = int(elapsed // 3600)
+            minutes = int((elapsed % 3600) // 60)
+            time_str = f"{hours}h {minutes}m" if minutes > 0 else f"{hours}h"
+        elif elapsed >= 60:
             time_str = f"{int(round(elapsed / 60))}m"
         else:
             time_str = f"{int(round(elapsed))}s"

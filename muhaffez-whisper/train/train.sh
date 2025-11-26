@@ -127,41 +127,9 @@ if [ -z "$SURAH_OR_PART" ] || [ "$SURAH_OR_PART" = "all" ]; then
     echo "════════════════════════════════════════════════════════════"
     echo ""
 
-    # Run train_curriculum.py (whole-dataset mode)
-    SUITE_START=$(date +%s)
-    if python3 -u train_curriculum.py "$DATASET" "all"; then
-        SUITE_END=$(date +%s)
-        ELAPSED=$((SUITE_END - SUITE_START))
-
-        if [ $ELAPSED -lt 60 ]; then
-            TIME_STR="${ELAPSED}s"
-        else
-            MINUTES=$(echo "scale=0; m = ($ELAPSED + 30) / 60; if (m < 1) 1 else m" | bc)
-            TIME_STR="${MINUTES}m"
-        fi
-
-        echo "✓ Curriculum ($TIME_STR)"
-        PASSED=$((PASSED + 1))
-    else
-        SUITE_END=$(date +%s)
-        ELAPSED=$((SUITE_END - SUITE_START))
-
-        if [ $ELAPSED -lt 60 ]; then
-            TIME_STR="${ELAPSED}s"
-        else
-            MINUTES=$(echo "scale=0; m = ($ELAPSED + 30) / 60; if (m < 1) 1 else m" | bc)
-            TIME_STR="${MINUTES}m"
-        fi
-
-        echo "✗ Curriculum ($TIME_STR) FAILED"
-        FAILED=$((FAILED + 1))
-    fi
-
-    echo ""
-
     # Run train_full.py (whole-dataset mode)
     SUITE_START=$(date +%s)
-    if python3 -u train_full.py "$DATASET" "all"; then
+    if caffeinate -i python3 -u train_full.py "$DATASET" "all"; then
         SUITE_END=$(date +%s)
         ELAPSED=$((SUITE_END - SUITE_START))
 
@@ -193,7 +161,7 @@ if [ -z "$SURAH_OR_PART" ] || [ "$SURAH_OR_PART" = "all" ]; then
 
     # Run train_augmented.py (whole-dataset mode with pitch and speed augmentation)
     SUITE_START=$(date +%s)
-    if python3 -u train_augmented.py "$DATASET" "all"; then
+    if caffeinate -i python3 -u train_augmented.py "$DATASET" "all"; then
         SUITE_END=$(date +%s)
         ELAPSED=$((SUITE_END - SUITE_START))
 
@@ -218,6 +186,38 @@ if [ -z "$SURAH_OR_PART" ] || [ "$SURAH_OR_PART" = "all" ]; then
         fi
 
         echo "✗ Augmented ($TIME_STR) FAILED"
+        FAILED=$((FAILED + 1))
+    fi
+
+    echo ""
+
+    # Run train_curriculum.py (whole-dataset mode)
+    SUITE_START=$(date +%s)
+    if caffeinate -i python3 -u train_curriculum.py "$DATASET" "all"; then
+        SUITE_END=$(date +%s)
+        ELAPSED=$((SUITE_END - SUITE_START))
+
+        if [ $ELAPSED -lt 60 ]; then
+            TIME_STR="${ELAPSED}s"
+        else
+            MINUTES=$(echo "scale=0; m = ($ELAPSED + 30) / 60; if (m < 1) 1 else m" | bc)
+            TIME_STR="${MINUTES}m"
+        fi
+
+        echo "✓ Curriculum ($TIME_STR)"
+        PASSED=$((PASSED + 1))
+    else
+        SUITE_END=$(date +%s)
+        ELAPSED=$((SUITE_END - SUITE_START))
+
+        if [ $ELAPSED -lt 60 ]; then
+            TIME_STR="${ELAPSED}s"
+        else
+            MINUTES=$(echo "scale=0; m = ($ELAPSED + 30) / 60; if (m < 1) 1 else m" | bc)
+            TIME_STR="${MINUTES}m"
+        fi
+
+        echo "✗ Curriculum ($TIME_STR) FAILED"
         FAILED=$((FAILED + 1))
     fi
 
@@ -292,7 +292,7 @@ run_training_suite() {
 
     local suite_start=$(date +%s)
 
-    if python3 -u "$script" "$DATASET" "$surah_part" >> "$log_file" 2>&1; then
+    if caffeinate -i python3 -u "$script" "$DATASET" "$surah_part" >> "$log_file" 2>&1; then
         local suite_end=$(date +%s)
         local elapsed=$((suite_end - suite_start))
 
