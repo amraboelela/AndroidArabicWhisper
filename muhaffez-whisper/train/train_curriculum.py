@@ -774,6 +774,7 @@ def train_all_parts(dataset_name):
             best_loss = avg_loss
             torch.save(model.state_dict(), model_path)
 
+        # Format time: seconds if < 60s, minutes if >= 60s, hours if >= 60m
         elapsed_from_checkpoint = time.time() - checkpoint_time
         if elapsed_from_checkpoint >= 3600:
             hours = int(elapsed_from_checkpoint // 3600)
@@ -1075,6 +1076,7 @@ def train_single_part(dataset_name, surah_part):
             best_loss = avg_loss
             torch.save(model.state_dict(), model_path)
 
+        # Format time: seconds if < 60s, minutes if >= 60s, hours if >= 60m
         elapsed_from_checkpoint = time.time() - checkpoint_time
         if elapsed_from_checkpoint >= 3600:
             hours = int(elapsed_from_checkpoint // 3600)

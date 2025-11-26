@@ -416,6 +416,7 @@ def train_all_parts(dataset_name):
     best_loss = float('inf')
     prev_loss = float('inf')
     start_time = time.time()
+    checkpoint_time = start_time  # Time of last checkpoint (for relative timing)
     epoch = 0
 
     while True:
@@ -467,7 +468,6 @@ def train_all_parts(dataset_name):
             break
 
         avg_loss = total_loss / total_iterations
-        elapsed = time.time() - start_time
         current_lr = optimizer.param_groups[0]['lr']
 
         # Save best model
@@ -482,17 +482,21 @@ def train_all_parts(dataset_name):
             accuracy_str = f" | Accuracy={current_acc:.0f}%"
 
         # Format time: seconds if < 60s, minutes if >= 60s, hours if >= 60m
-        if elapsed >= 3600:
-            hours = int(elapsed // 3600)
-            minutes = int((elapsed % 3600) // 60)
+        elapsed_from_checkpoint = time.time() - checkpoint_time
+        if elapsed_from_checkpoint >= 3600:
+            hours = int(elapsed_from_checkpoint // 3600)
+            minutes = int((elapsed_from_checkpoint % 3600) // 60)
             time_str = f"{hours}h {minutes}m" if minutes > 0 else f"{hours}h"
-        elif elapsed >= 60:
-            time_str = f"{int(round(elapsed / 60))}m"
+        elif elapsed_from_checkpoint >= 60:
+            time_str = f"{int(round(elapsed_from_checkpoint / 60))}m"
         else:
-            time_str = f"{int(round(elapsed))}s"
+            time_str = f"{int(round(elapsed_from_checkpoint))}s"
 
         # Print epoch info
         print(f"Epoch {epoch+1}/500 | Loss={avg_loss:.4f}{accuracy_str} | Time={time_str}", flush=True)
+
+        # Reset checkpoint time after printing
+        checkpoint_time = time.time()
 
         # Custom LR decay: reduce by 10% when loss increases
         if avg_loss > prev_loss:
@@ -658,6 +662,7 @@ def train_single_part(dataset_name, surah_part):
     best_loss = float('inf')
     prev_loss = float('inf')
     start_time = time.time()
+    checkpoint_time = start_time  # Time of last checkpoint (for relative timing)
     epoch = 0
     max_epochs = 500
 
@@ -710,7 +715,6 @@ def train_single_part(dataset_name, surah_part):
             break
 
         avg_loss = total_loss / total_iterations
-        elapsed = time.time() - start_time
 
         # Save best model
         if avg_loss < best_loss:
@@ -724,17 +728,21 @@ def train_single_part(dataset_name, surah_part):
             accuracy_str = f" | Accuracy={current_acc:.0f}%"
 
         # Format time: seconds if < 60s, minutes if >= 60s, hours if >= 60m
-        if elapsed >= 3600:
-            hours = int(elapsed // 3600)
-            minutes = int((elapsed % 3600) // 60)
+        elapsed_from_checkpoint = time.time() - checkpoint_time
+        if elapsed_from_checkpoint >= 3600:
+            hours = int(elapsed_from_checkpoint // 3600)
+            minutes = int((elapsed_from_checkpoint % 3600) // 60)
             time_str = f"{hours}h {minutes}m" if minutes > 0 else f"{hours}h"
-        elif elapsed >= 60:
-            time_str = f"{int(round(elapsed / 60))}m"
+        elif elapsed_from_checkpoint >= 60:
+            time_str = f"{int(round(elapsed_from_checkpoint / 60))}m"
         else:
-            time_str = f"{int(round(elapsed))}s"
+            time_str = f"{int(round(elapsed_from_checkpoint))}s"
 
         # Print progress every epoch
         print(f"Epoch {epoch+1} | Loss={avg_loss:.4f}{accuracy_str} | Time={time_str}", flush=True)
+
+        # Reset checkpoint time after printing
+        checkpoint_time = time.time()
 
         # Decay learning rate if loss increases
         if avg_loss > prev_loss:
