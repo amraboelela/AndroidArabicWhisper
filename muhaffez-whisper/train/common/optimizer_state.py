@@ -4,7 +4,7 @@ import sys
 import subprocess
 import torch
 
-def save_checkpoint(model, optimizer, epoch, loss, model_path="../models/muhaffez_whisper.pt", training_type="full"):
+def save_checkpoint(model, optimizer, epoch, loss, model_path="../models/muhaffez_whisper.pt", training_type="full", accuracy=None):
     """
     Save complete training checkpoint including model, optimizer, and metadata
     Model weights are shared across all training types; only optimizer state differs
@@ -16,6 +16,7 @@ def save_checkpoint(model, optimizer, epoch, loss, model_path="../models/muhaffe
         loss: Current loss value
         model_path: Path for model file
         training_type: Type of training (full, augmented, curriculum)
+        accuracy: Current accuracy (optional)
     """
     # Load existing checkpoint if it exists
     if os.path.exists(model_path):
@@ -35,6 +36,7 @@ def save_checkpoint(model, optimizer, epoch, loss, model_path="../models/muhaffe
         'optimizer_state_dict': optimizer.state_dict(),
         'loss': loss,
         'lr': optimizer.param_groups[0]['lr'],
+        'accuracy': accuracy if accuracy is not None else 0.0,
     }
 
     torch.save(checkpoint, model_path)

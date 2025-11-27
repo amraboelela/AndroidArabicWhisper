@@ -138,6 +138,7 @@ def train_all_parts(dataset_name):
 
     # Training loop
     best_loss = float('inf')
+    best_accuracy = 0.0
     prev_loss = float('inf')
     start_time = time.time()
     checkpoint_time = start_time
@@ -152,22 +153,26 @@ def train_all_parts(dataset_name):
             print(f"⚠️  Warning: No valid training samples. Stopping.")
             break
 
-        # Track best loss (checkpoint saved by save_checkpoint when LR reduces)
-        if avg_loss < best_loss:
-            best_loss = avg_loss
-
-        # Decay learning rate if loss increases
-        new_lr, lr_changed = update_learning_rate(optimizer, avg_loss, prev_loss, 1e-7, 0.5)
-        if lr_changed:
-            print(f"  Learning rate reduced to: {new_lr:.1e}")
-            save_checkpoint(model, optimizer, epoch + 1, avg_loss, model_path, training_type="full")
-
         # Check accuracy every 10 epochs
         accuracy_str = ""
         current_acc = 0
         if epoch == 0 or (epoch + 1) % 10 == 0:
             current_acc = calculate_comprehensive_accuracy(model, all_segment_files, all_transcriptions, vocab, None, None, device)[0]
             accuracy_str = f" | Accuracy={current_acc:.0f}%"
+            # Update best accuracy
+            if current_acc > best_accuracy:
+                best_accuracy = current_acc
+
+        # Track best loss and save when we get a new best
+        if avg_loss < best_loss:
+            best_loss = avg_loss
+            # Save checkpoint when we achieve new best loss
+            save_checkpoint(model, optimizer, epoch + 1, avg_loss, model_path, training_type="full", accuracy=best_accuracy)
+
+        # Decay learning rate if loss increases
+        new_lr, lr_changed = update_learning_rate(optimizer, avg_loss, prev_loss, 1e-7, 0.5)
+        if lr_changed:
+            print(f"  Learning rate reduced to: {new_lr:.1e}")
 
         time_str = format_time(time.time() - checkpoint_time)
         print(f"Epoch {epoch+1} | Loss={avg_loss:.4f}{accuracy_str} | Time={time_str}", flush=True)
@@ -185,9 +190,7 @@ def train_all_parts(dataset_name):
             print(f"✓ Stopping: Accuracy > 99%", flush=True)
             break
 
-    # Save final model and checkpoint
-    save_checkpoint(model, optimizer, epoch + 1, avg_loss, model_path, training_type="full")
-    print(f"\nFinal model saved to: {model_path}")
+    print(f"\nTraining complete. Best model already saved to: {model_path}")
 
 def train_single_part(dataset_name, surah_part):
     """Train on a single surah part"""
@@ -246,6 +249,7 @@ def train_single_part(dataset_name, surah_part):
     all_training_tuples = [(seg_file, text, None, None) for seg_file, text in zip(segment_files, transcriptions)]
 
     best_loss = float('inf')
+    best_accuracy = 0.0
     prev_loss = float('inf')
     start_time = time.time()
     checkpoint_time = start_time
@@ -296,16 +300,21 @@ def train_single_part(dataset_name, surah_part):
 
         avg_loss = total_loss / total_iterations
 
-        # Track best loss (checkpoint saved by save_checkpoint when LR reduces)
-        if avg_loss < best_loss:
-            best_loss = avg_loss
-
         # Check accuracy every 10 epochs
         accuracy_str = ""
         current_acc = 0
         if epoch == 0 or (epoch + 1) % 10 == 0:
             current_acc = calculate_comprehensive_accuracy(model, segment_files, transcriptions, vocab, None, None, device)[0]
             accuracy_str = f" | Accuracy={current_acc:.0f}%"
+            # Update best accuracy
+            if current_acc > best_accuracy:
+                best_accuracy = current_acc
+
+        # Track best loss and save when we get a new best
+        if avg_loss < best_loss:
+            best_loss = avg_loss
+            # Save checkpoint when we achieve new best loss
+            save_checkpoint(model, optimizer, epoch + 1, avg_loss, model_path, training_type="full", accuracy=best_accuracy)
 
         # Format time
         elapsed_from_checkpoint = time.time() - checkpoint_time
@@ -331,7 +340,6 @@ def train_single_part(dataset_name, surah_part):
                     param_group['lr'] = new_lr
                 if new_lr > min_lr:
                     print(f"  Loss increased ({prev_loss:.4f} → {avg_loss:.4f}), reducing LR to: {new_lr:.1e}", flush=True)
-                save_checkpoint(model, optimizer, epoch + 1, avg_loss, model_path, training_type="full")
 
         prev_loss = avg_loss
         current_lr = optimizer.param_groups[0]['lr']
@@ -346,9 +354,7 @@ def train_single_part(dataset_name, surah_part):
 
         epoch += 1
 
-    # Save final model and checkpoint
-    save_checkpoint(model, optimizer, epoch + 1, avg_loss, model_path, training_type="full")
-    print(f"Final model saved to: {model_path}")
+    print(f"\nTraining complete. Best model already saved to: {model_path}")
 
 
 if __name__ == "__main__":

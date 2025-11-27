@@ -209,6 +209,7 @@ def train_all_parts(dataset_name):
     print(f"Initial Learning Rate: {learning_rate:.1e}\n")
 
     best_loss = float('inf')
+    best_accuracy = 0.0
     prev_loss = float('inf')
     start_time = time.time()
     checkpoint_time = start_time
@@ -266,6 +267,23 @@ def train_all_parts(dataset_name):
 
         avg_loss = total_loss / total_iterations
 
+        # Calculate accuracy every 10 epochs
+        accuracy_str = ""
+        current_acc = 0
+        if epoch == 0 or (epoch + 1) % 10 == 0:
+            overall_acc = calculate_comprehensive_accuracy(model, all_segment_files, all_transcriptions, vocab, None, None, device)[0]
+            current_acc = overall_acc
+            accuracy_str = f" | Accuracy={overall_acc:.0f}%"
+            # Update best accuracy
+            if current_acc > best_accuracy:
+                best_accuracy = current_acc
+
+        # Track best loss and save when we get a new best
+        if avg_loss < best_loss:
+            best_loss = avg_loss
+            # Save checkpoint when we achieve new best loss
+            save_checkpoint(model, optimizer, epoch + 1, avg_loss, model_path, training_type="curriculum", accuracy=best_accuracy)
+
         # Dynamic learning rate: reduce by 50% if loss increases
         if avg_loss > prev_loss:
             current_lr = optimizer.param_groups[0]['lr']
@@ -275,11 +293,6 @@ def train_all_parts(dataset_name):
                     param_group['lr'] = new_lr
                 if new_lr > 1e-7:
                     print(f"  Loss increased ({prev_loss:.4f} → {avg_loss:.4f}), reducing LR to: {new_lr:.1e}")
-                save_checkpoint(model, optimizer, epoch + 1, avg_loss, model_path, training_type="curriculum")
-
-        # Track best loss (checkpoint saved by save_checkpoint when LR reduces)
-        if avg_loss < best_loss:
-            best_loss = avg_loss
 
         # Format time
         elapsed_from_checkpoint = time.time() - checkpoint_time
@@ -293,14 +306,6 @@ def train_all_parts(dataset_name):
             time_str = f"{int(round(elapsed_from_checkpoint))}s"
 
         current_lr = optimizer.param_groups[0]['lr']
-
-        # Calculate accuracy every 10 epochs
-        accuracy_str = ""
-        current_acc = 0
-        if epoch == 0 or (epoch + 1) % 10 == 0:
-            overall_acc = calculate_comprehensive_accuracy(model, all_segment_files, all_transcriptions, vocab, None, None, device)[0]
-            current_acc = overall_acc
-            accuracy_str = f" | Accuracy={overall_acc:.0f}%"
 
         # Print every epoch in "all" mode
         print(f"Epoch {epoch+1}/500 | Loss={avg_loss:.4f}{accuracy_str} | Time={time_str}")
@@ -318,8 +323,7 @@ def train_all_parts(dataset_name):
             print(f"\n✓ Stopping: Accuracy > 99%")
             break
 
-    save_checkpoint(model, optimizer, epoch + 1, avg_loss, model_path, training_type="curriculum")
-    print(f"\nFinal model saved to: {model_path}")
+    print(f"\nTraining complete. Best model already saved to: {model_path}")
 
 
 

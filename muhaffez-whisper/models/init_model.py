@@ -59,18 +59,21 @@ def init_model(output_path="muhaffez_whisper.pt", vocab_path="vocabulary.json"):
             'optimizer_state_dict': None,
             'loss': float('inf'),
             'lr': 1e-3,
+            'accuracy': 0.0,
         },
         'augmented': {
             'epoch': 0,
             'optimizer_state_dict': None,
             'loss': float('inf'),
             'lr': 1e-3,
+            'accuracy': 0.0,
         },
         'curriculum': {
             'epoch': 0,
             'optimizer_state_dict': None,
             'loss': float('inf'),
             'lr': 1e-3,
+            'accuracy': 0.0,
         }
     }
 

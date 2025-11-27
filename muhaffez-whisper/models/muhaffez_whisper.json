@@ -1,10 +1,11 @@
 {
   "model_state_dict": "<180 tensors>",
   "full": {
-    "epoch": 0,
-    "optimizer_state_dict": null,
-    "loss": Infinity,
-    "lr": 0.001
+    "epoch": 4,
+    "optimizer_state_dict": "<2 tensors>",
+    "loss": 1.8373650182558838,
+    "lr": 0.001,
+    "accuracy": 57.02954898911353
   },
   "augmented": {
     "epoch": 0,

@@ -146,6 +146,7 @@ def train_all_parts(dataset_name):
 
     # Training loop
     best_loss = float('inf')
+    best_accuracy = 0.0
     prev_loss = float('inf')
     start_time = time.time()
     checkpoint_time = start_time
@@ -160,9 +161,11 @@ def train_all_parts(dataset_name):
 
         current_lr = optimizer.param_groups[0]['lr']
 
-        # Track best loss (checkpoint saved by save_checkpoint when LR reduces)
+        # Track best loss and save when we get a new best
         if avg_loss < best_loss:
             best_loss = avg_loss
+            # Save checkpoint when we achieve new best loss
+            save_checkpoint(model, optimizer, epoch + 1, avg_loss, model_path, training_type="augmented", accuracy=best_accuracy)
 
         # Check accuracy every 10 epochs
         accuracy_str = ""
@@ -170,6 +173,9 @@ def train_all_parts(dataset_name):
         if epoch == 0 or (epoch + 1) % 10 == 0:
             current_acc = calculate_accuracy(model, regular_segment_files, regular_transcriptions, vocab, device)
             accuracy_str = f" | Accuracy={current_acc:.0f}%"
+            # Update best accuracy
+            if current_acc > best_accuracy:
+                best_accuracy = current_acc
 
         time_str = format_time(time.time() - checkpoint_time)
         print(f"Epoch {epoch+1}/500 | Loss={avg_loss:.4f}{accuracy_str} | Time={time_str}", flush=True)
@@ -179,7 +185,6 @@ def train_all_parts(dataset_name):
         new_lr, lr_changed = update_learning_rate(optimizer, avg_loss, prev_loss, min_lr, lr_decay_factor)
         if lr_changed:
             print(f"  Loss increased ({prev_loss:.4f} → {avg_loss:.4f}), reducing LR to: {new_lr:.1e}")
-            save_checkpoint(model, optimizer, epoch + 1, avg_loss, model_path, training_type="augmented")
 
         prev_loss = avg_loss
 
@@ -193,8 +198,7 @@ def train_all_parts(dataset_name):
 
         epoch += 1
 
-    save_checkpoint(model, optimizer, epoch + 1, avg_loss, model_path, training_type="augmented")
-    print(f"\nFinal model saved to: {model_path}")
+    print(f"\nTraining complete. Best model already saved to: {model_path}")
 
     print(f"FINAL_ACCURACY: {final_acc:.0f}%")
 
@@ -312,6 +316,7 @@ def train_single_part(dataset_name, surah_part):
 
     # Training loop
     best_loss = float('inf')
+    best_accuracy = 0.0
     prev_loss = float('inf')
     start_time = time.time()
     checkpoint_time = start_time
@@ -325,9 +330,11 @@ def train_single_part(dataset_name, surah_part):
             print(f"⚠️  Warning: No valid training samples. Stopping.")
             break
 
-        # Track best loss (checkpoint saved by save_checkpoint when LR reduces)
+        # Track best loss and save when we get a new best
         if avg_loss < best_loss:
             best_loss = avg_loss
+            # Save checkpoint when we achieve new best loss
+            save_checkpoint(model, optimizer, epoch + 1, avg_loss, model_path, training_type="augmented", accuracy=best_accuracy)
 
         # Check accuracy every 10 epochs
         accuracy_str = ""
@@ -335,6 +342,9 @@ def train_single_part(dataset_name, surah_part):
         if epoch == 0 or (epoch + 1) % 10 == 0:
             current_acc = calculate_accuracy(model, regular_segment_files, regular_transcriptions, vocab, device)
             accuracy_str = f" | Accuracy={current_acc:.0f}%"
+            # Update best accuracy
+            if current_acc > best_accuracy:
+                best_accuracy = current_acc
 
         time_str = format_time(time.time() - checkpoint_time)
         print(f"Epoch {epoch+1} | Loss={avg_loss:.4f}{accuracy_str} | Time={time_str}", flush=True)
@@ -344,7 +354,6 @@ def train_single_part(dataset_name, surah_part):
         new_lr, lr_changed = update_learning_rate(optimizer, avg_loss, prev_loss, min_lr, lr_decay)
         if lr_changed:
             print(f"  Loss increased ({prev_loss:.4f} → {avg_loss:.4f}), reducing LR to: {new_lr:.1e}")
-            save_checkpoint(model, optimizer, epoch + 1, avg_loss, model_path, training_type="augmented")
 
         prev_loss = avg_loss
 
@@ -358,8 +367,7 @@ def train_single_part(dataset_name, surah_part):
 
         epoch += 1
 
-    save_checkpoint(model, optimizer, epoch + 1, avg_loss, model_path, training_type="augmented")
-    print(f"\nFinal model saved to: {model_path}")
+    print(f"\nTraining complete. Best model already saved to: {model_path}")
 
     print(f"FINAL_ACCURACY: {final_acc:.0f}%")
 
