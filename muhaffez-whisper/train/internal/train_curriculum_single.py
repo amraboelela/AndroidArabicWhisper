@@ -31,6 +31,8 @@ from common import (
     load_mel_features,
     tokenize_text,
     calculate_comprehensive_accuracy,
+    calculate_curriculum_accuracy,
+    collect_augmented_replay_samples,
     save_checkpoint,
     load_checkpoint
 )
@@ -169,6 +171,19 @@ def train_single_part(dataset_name, surah_part):
 
     print(f"Total curriculum samples: {len(all_curriculum_files)}\n")
 
+    # Collect replay buffer from augmented data (10%)
+    print("Collecting replay buffer from augmented data...")
+    replay_samples = collect_augmented_replay_samples(dataset_name, len(all_curriculum_files))
+
+    # Add replay samples to curriculum training data
+    for replay_file, replay_text, target_sec, target_wrd in replay_samples:
+        all_curriculum_files.append(replay_file)
+        all_curriculum_transcriptions.append(replay_text)
+        all_curriculum_target_seconds.append(target_sec)
+        all_curriculum_target_words.append(target_wrd)
+
+    print(f"Total training samples (curriculum + replay): {len(all_curriculum_files)}\n")
+
     # Train
     print(f"{'='*60}")
     print(f"TRAINING ALL CURRICULUM STAGES MIXED")
@@ -267,7 +282,17 @@ def train_single_part(dataset_name, surah_part):
         accuracy_str = ""
         current_acc = 0
         if epoch == 0 or (epoch + 1) % 10 == 0:
-            current_acc = calculate_comprehensive_accuracy(model, segment_files, transcriptions, vocab, None, None, device)[0]
+            # Test on curriculum-appropriate samples (mixed stages)
+            current_acc = calculate_curriculum_accuracy(
+                model,
+                all_curriculum_files,
+                all_curriculum_transcriptions,
+                all_curriculum_target_seconds,
+                all_curriculum_target_words,
+                vocab,
+                device,
+                sample_rate=8
+            )
             accuracy_str = f" | Accuracy={current_acc:.0f}%"
 
         if epoch == 0 or (epoch + 1) % 10 == 0 or epoch == 499:

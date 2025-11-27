@@ -131,3 +131,88 @@ def calculate_comprehensive_accuracy(model, segment_files, transcriptions, vocab
     avg_segment_accuracy = sum(segment_accuracies) / len(segment_accuracies) if segment_accuracies else 0
 
     return overall_accuracy, avg_segment_accuracy, segment_accuracies
+
+
+def calculate_curriculum_accuracy(model, all_curriculum_files, all_curriculum_transcriptions,
+                                   all_curriculum_target_seconds, all_curriculum_target_words,
+                                   vocab, device, sample_rate=8):
+    """
+    Calculate accuracy on curriculum samples (mixed stages of varying lengths).
+
+    This tests the model on a representative sample of curriculum data,
+    including short sequences (1-2 words) and longer sequences (up to full length).
+
+    Args:
+        model: The trained model
+        all_curriculum_files: List of all curriculum mel file paths
+        all_curriculum_transcriptions: List of all curriculum transcriptions
+        all_curriculum_target_seconds: List of target audio durations for each sample
+        all_curriculum_target_words: List of target word counts for each sample
+        vocab: Vocabulary list
+        device: torch device
+        sample_rate: Sample every Nth curriculum sample (default: 8)
+
+    Returns:
+        float: Overall accuracy percentage
+    """
+    # Test on curriculum-appropriate samples (sample from all curriculum stages)
+    # Take a representative sample of curriculum data (e.g., every 8th sample)
+    sample_indices = list(range(0, len(all_curriculum_files), sample_rate))
+    sample_files = [all_curriculum_files[i] for i in sample_indices]
+    sample_texts = [all_curriculum_transcriptions[i] for i in sample_indices]
+    sample_target_secs = [all_curriculum_target_seconds[i] for i in sample_indices]
+    sample_target_wrds = [all_curriculum_target_words[i] for i in sample_indices]
+
+    # Calculate accuracy on curriculum samples
+    total_correct = 0
+    total_expected = 0
+    model.eval()
+
+    with torch.no_grad():
+        for seg_file, transcription, target_sec, target_wrd in zip(sample_files, sample_texts, sample_target_secs, sample_target_wrds):
+            audio_features = load_mel_features(seg_file, target_seconds=target_sec)
+            audio_batch = audio_features.transpose(0, 1).unsqueeze(0).to(device)
+
+            expected_words = transcription.split()[:target_wrd] if target_wrd else transcription.split()
+            if not expected_words:
+                continue
+
+            audio_duration = target_sec if target_sec else (audio_features.shape[0] / 100.0)
+            max_tokens = min((target_wrd * 5) if target_wrd else 30, 50)
+
+            try:
+                generated = model.generate(audio_batch, max_new_tokens=max_tokens, audio_duration_seconds=audio_duration, use_sampling=False)
+                generated_ids = generated[0].tolist()
+            except:
+                continue
+
+            if generated_ids and generated_ids[0] == 1:
+                generated_ids = generated_ids[1:]
+            if 2 in generated_ids:
+                generated_ids = generated_ids[:generated_ids.index(2)]
+
+            generated_words = [vocab[idx] for idx in generated_ids if idx < len(vocab)]
+
+            # Calculate with confidence filtering (20% threshold)
+            if len(generated_ids) > 0:
+                encoder_output = model.encode(audio_batch)
+                text_ids = torch.tensor([[1] + generated_ids[:len(generated_words)]], dtype=torch.long, device=device)
+                logits, _ = model.decode(text_ids, encoder_output)
+                probs = torch.softmax(logits, dim=-1)
+
+                confident_words = []
+                for i, token_id in enumerate(generated_ids[:len(generated_words)]):
+                    if i < logits.shape[1] - 1:
+                        token_prob = probs[0, i, token_id].item()
+                        if token_prob >= 0.2:  # 20% threshold
+                            confident_words.append(generated_words[i])
+
+                correct = sum(1 for i, word in enumerate(confident_words) if i < len(expected_words) and word == expected_words[i])
+            else:
+                correct = 0
+
+            total_correct += correct
+            total_expected += len(expected_words)
+
+    overall_acc = (total_correct / total_expected * 100) if total_expected > 0 else 0
+    return overall_acc

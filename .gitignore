@@ -93,3 +93,4 @@ Thumbs.db
 *.wav
 log*.txt
 *.safetensors
+*.json
