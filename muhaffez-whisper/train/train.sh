@@ -89,9 +89,6 @@ if [ "$DATASET" = "all" ]; then
 
     # Train each dataset with full suite
     for DS in "${DATASETS[@]}"; do
-        echo "════════════════════════════════════════════════════════════"
-        echo "Processing dataset: $DS"
-        echo "════════════════════════════════════════════════════════════"
         # Recursively call this script with the dataset name and "all"
         "$0" "$DS" "all"
 
@@ -121,11 +118,6 @@ if [ -z "$SURAH_OR_PART" ] || [ "$SURAH_OR_PART" = "all" ]; then
     # Track results
     PASSED=0
     FAILED=0
-
-    echo "════════════════════════════════════════════════════════════"
-    echo "TRAINING ALL SEGMENTS - DATASET: $DATASET"
-    echo "════════════════════════════════════════════════════════════"
-    echo ""
 
     # Run train_full.py (whole-dataset mode)
     SUITE_START=$(date +%s)

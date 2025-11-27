@@ -13,7 +13,7 @@ import torch.nn.functional as F
 
 class EncoderDecoderTransformer(nn.Module):
     def __init__(self, vocab_size, d_model=384, n_encoder_layers=6, n_decoder_layers=4,
-                 n_heads=6, d_ff=1536, dropout=0.1, max_seq_len=2000, n_mels=40):
+                 n_heads=6, d_ff=1536, dropout=0.1, max_encoder_seq_len=2000, max_decoder_seq_len=100, n_mels=40):
         super().__init__()
 
         self.d_model = d_model
@@ -26,8 +26,8 @@ class EncoderDecoderTransformer(nn.Module):
         self.conv1 = nn.Conv1d(n_mels, d_model, kernel_size=3, padding=1)
         self.conv2 = nn.Conv1d(d_model, d_model, kernel_size=3, stride=2, padding=1)
 
-        # Learned positional embeddings
-        self.positional_embedding = nn.Parameter(torch.empty(max_seq_len, d_model))
+        # Learned positional embeddings for encoder (long audio sequences)
+        self.positional_embedding = nn.Parameter(torch.empty(max_encoder_seq_len, d_model))
 
         # Encoder blocks (Whisper-style)
         self.blocks = nn.ModuleList([
@@ -40,7 +40,7 @@ class EncoderDecoderTransformer(nn.Module):
         # Decoder (customizable)
         # -------------------------
         self.token_embedding = nn.Embedding(vocab_size, d_model)
-        self.decoder_pos_embedding = nn.Embedding(max_seq_len, d_model)
+        self.decoder_pos_embedding = nn.Embedding(max_decoder_seq_len, d_model)
 
         self.decoder_layers = nn.ModuleList([
             TransformerDecoderLayer(d_model, n_heads, d_ff, dropout)

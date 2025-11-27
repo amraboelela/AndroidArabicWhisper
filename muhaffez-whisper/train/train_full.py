@@ -85,7 +85,7 @@ def train_all_parts(dataset_name):
     datasets_dir = f"../datasets/{dataset_name}"
 
     print(f"\n{'='*60}")
-    print(f"TRAINING ON FULL SEGMENTS - DATASET: {dataset_name}")
+    print(f"Full Training - Dataset: {dataset_name}")
     print(f"{'='*60}\n")
 
     # Load vocabulary
