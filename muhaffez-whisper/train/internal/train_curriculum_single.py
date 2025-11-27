@@ -31,8 +31,8 @@ from common import (
     load_mel_features,
     tokenize_text,
     calculate_comprehensive_accuracy,
-    save_lr_state,
-    load_lr_state
+    save_checkpoint,
+    load_checkpoint
 )
 
 # ==============================================================
@@ -126,13 +126,6 @@ def train_single_part(dataset_name, surah_part):
         dropout=0.1
     )
 
-    if os.path.exists(model_path):
-        print(f"Loading existing model from {model_path}...")
-        model.load_state_dict(torch.load(model_path, map_location=device, weights_only=True))
-        print(f"✓ Model loaded successfully!")
-    else:
-        print(f"\nNo existing model found. Starting from scratch.")
-
     # Calculate max chunks across all segments
     segment_info = []
     for segment_file, transcription in zip(segment_files, transcriptions):
@@ -183,9 +176,18 @@ def train_single_part(dataset_name, surah_part):
 
     model = model.to(device)
 
-    # Load saved learning rate or use default
-    learning_rate = load_lr_state(model_path, training_type="curriculum", default_lr=1e-3)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=0.01)
+    # Setup optimizer and load checkpoint if exists
+    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=0.01)
+    checkpoint_info = load_checkpoint(model, optimizer, model_path, training_type="curriculum", device=device)
+
+    if checkpoint_info['restored']:
+        print(f"✓ Checkpoint restored: Epoch {checkpoint_info['epoch']}, LR={checkpoint_info['lr']:.1e}")
+    elif os.path.exists(model_path):
+        print(f"✓ Model loaded (starting fresh with LR=1e-3)")
+    else:
+        print(f"⚠️  No existing model found. Starting from scratch.")
+
+    learning_rate = checkpoint_info['lr']
     criterion = nn.CrossEntropyLoss(ignore_index=-100, label_smoothing=0.1)
 
     print(f"Initial Learning Rate: {learning_rate:.1e}")
@@ -252,7 +254,7 @@ def train_single_part(dataset_name, surah_part):
                     param_group['lr'] = new_lr
                 if new_lr > 1e-7:
                     print(f"  LR reduced to: {new_lr:.1e}")
-                save_lr_state(new_lr, model_path, training_type="curriculum")  # Save LR when it changes
+                save_checkpoint(model, optimizer, epoch, avg_loss, model_path, training_type="curriculum")
 
         if avg_loss < best_loss:
             best_loss = avg_loss
@@ -282,9 +284,7 @@ def train_single_part(dataset_name, surah_part):
             print(f"\n✓ Stopping: Accuracy > 99%")
             break
 
-    torch.save(model.state_dict(), model_path)
-    final_lr = optimizer.param_groups[0]['lr']
-    save_lr_state(final_lr, model_path, training_type="curriculum")
+    save_checkpoint(model, optimizer, epoch, avg_loss, model_path, training_type="curriculum")
     print(f"\nFinal model saved to: {model_path}")
 
     model.eval()

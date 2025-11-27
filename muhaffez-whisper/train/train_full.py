@@ -25,6 +25,7 @@ import torch.nn as nn
 import glob
 import os
 import time
+import random
 sys.path.append("..")
 from tools.encoder_decoder_transformer import EncoderDecoderTransformer
 
@@ -40,8 +41,8 @@ from common import (
     format_time,
     collect_segment_files,
     load_single_part_data,
-    save_lr_state,
-    load_lr_state
+    save_checkpoint,
+    load_checkpoint
 )
 
 # ==============================================================
@@ -116,18 +117,20 @@ def train_all_parts(dataset_name):
         dropout=0.1
     )
 
-    if os.path.exists(model_path):
-        print(f"\nLoading existing model from {model_path}...")
-        model.load_state_dict(torch.load(model_path, map_location=device, weights_only=True))
-        print(f"✓ Model loaded successfully! Continuing training.")
-    else:
-        print(f"\n⚠️  No existing model found. Starting from scratch.")
-
     model = model.to(device)
 
-    # Load saved learning rate or use default
-    learning_rate = load_lr_state(model_path, training_type="full", default_lr=1e-3)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=0.01)
+    # Setup optimizer and load checkpoint if exists
+    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=0.01)
+    checkpoint_info = load_checkpoint(model, optimizer, model_path, training_type="full", device=device)
+
+    if checkpoint_info['restored']:
+        print(f"✓ Checkpoint restored: Epoch {checkpoint_info['epoch']}, LR={checkpoint_info['lr']:.1e}")
+    elif os.path.exists(model_path):
+        print(f"✓ Model loaded (starting fresh with LR=1e-3)")
+    else:
+        print(f"⚠️  No existing model found. Starting from scratch.")
+
+    learning_rate = checkpoint_info['lr']
     criterion = nn.CrossEntropyLoss(ignore_index=-100, label_smoothing=0.1)
 
     print(f"\nStarting training for up to 500 epochs on {total_segments} segments...")
@@ -158,7 +161,7 @@ def train_all_parts(dataset_name):
         new_lr, lr_changed = update_learning_rate(optimizer, avg_loss, prev_loss, 1e-7, 0.5)
         if lr_changed:
             print(f"  Learning rate reduced to: {new_lr:.1e}")
-            save_lr_state(new_lr, model_path, training_type="full")  # Save LR when it changes
+            save_checkpoint(model, optimizer, epoch, avg_loss, model_path, training_type="full")
 
         # Check accuracy every 10 epochs
         accuracy_str = ""
@@ -183,10 +186,8 @@ def train_all_parts(dataset_name):
             print(f"✓ Stopping: Accuracy > 99%", flush=True)
             break
 
-    # Save final model and LR
-    torch.save(model.state_dict(), model_path)
-    final_lr = optimizer.param_groups[0]['lr']
-    save_lr_state(final_lr, model_path, training_type="full")
+    # Save final model and checkpoint
+    save_checkpoint(model, optimizer, epoch, avg_loss, model_path, training_type="full")
     print(f"\nFinal model saved to: {model_path}")
 
     # Calculate and output final accuracy
@@ -227,19 +228,21 @@ def train_single_part(dataset_name, surah_part):
         dropout=0.1
     )
 
-    if os.path.exists(model_path):
-        print(f"Loading existing model from {model_path}...")
-        model.load_state_dict(torch.load(model_path, map_location=device))
-        print(f"✓ Model loaded successfully! Continuing training on {surah_part}.")
-    else:
-        print(f"No existing model found. Starting with fresh weights.")
-
     model = model.to(device)
 
-    # Load saved learning rate or use default
-    learning_rate = load_lr_state(model_path, training_type="full", default_lr=1e-3)
+    # Setup optimizer and load checkpoint if exists
     min_lr = 1e-7
-    optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=0.01)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=0.01)
+    checkpoint_info = load_checkpoint(model, optimizer, model_path, training_type="full", device=device)
+
+    if checkpoint_info['restored']:
+        print(f"✓ Checkpoint restored: Epoch {checkpoint_info['epoch']}, LR={checkpoint_info['lr']:.1e}")
+    elif os.path.exists(model_path):
+        print(f"✓ Model loaded (starting fresh with LR=1e-3)")
+    else:
+        print(f"⚠️  No existing model found. Starting from scratch.")
+
+    learning_rate = checkpoint_info['lr']
     criterion = nn.CrossEntropyLoss(ignore_index=-100, label_smoothing=0.1)
 
     print(f"Initial Learning Rate: {learning_rate:.1e}\n")
@@ -333,7 +336,7 @@ def train_single_part(dataset_name, surah_part):
                     param_group['lr'] = new_lr
                 if new_lr > min_lr:
                     print(f"  Loss increased ({prev_loss:.4f} → {avg_loss:.4f}), reducing LR to: {new_lr:.1e}", flush=True)
-                save_lr_state(new_lr, model_path, training_type="full")  # Save LR when it changes
+                save_checkpoint(model, optimizer, epoch, avg_loss, model_path, training_type="full")
 
         prev_loss = avg_loss
         current_lr = optimizer.param_groups[0]['lr']
@@ -348,10 +351,8 @@ def train_single_part(dataset_name, surah_part):
 
         epoch += 1
 
-    # Save final model
-    torch.save(model.state_dict(), model_path)
-    final_lr = optimizer.param_groups[0]['lr']
-    save_lr_state(final_lr, model_path, training_type="full")
+    # Save final model and checkpoint
+    save_checkpoint(model, optimizer, epoch, avg_loss, model_path, training_type="full")
     print(f"Final model saved to: {model_path}")
 
     # Calculate final accuracy
