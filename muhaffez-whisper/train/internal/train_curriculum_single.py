@@ -171,18 +171,12 @@ def train_single_part(dataset_name, surah_part):
 
     print(f"Total curriculum samples: {len(all_curriculum_files)}\n")
 
-    # Collect replay buffer from augmented data (10%)
-    print("Collecting replay buffer from augmented data...")
-    replay_samples = collect_augmented_replay_samples(dataset_name, len(all_curriculum_files))
-
-    # Add replay samples to curriculum training data
-    for replay_file, replay_text, target_sec, target_wrd in replay_samples:
-        all_curriculum_files.append(replay_file)
-        all_curriculum_transcriptions.append(replay_text)
-        all_curriculum_target_seconds.append(target_sec)
-        all_curriculum_target_words.append(target_wrd)
-
-    print(f"Total training samples (curriculum + replay): {len(all_curriculum_files)}\n")
+    # Collect all augmented data (normal + augmented) for replay buffer sampling
+    print("Loading augmented data pool for replay buffer...")
+    text_files = sorted(glob.glob(f"../datasets/{dataset_name}/text/*.txt"))
+    from common.data_collection import collect_augmented_data
+    _, _, all_augmented_segments, all_augmented_transcriptions = collect_augmented_data(dataset_name, text_files)
+    print(f"Augmented data pool: {len(all_augmented_segments)} samples\n")
 
     # Train
     print(f"{'='*60}")
@@ -216,14 +210,31 @@ def train_single_part(dataset_name, surah_part):
         total_loss = 0.0
         total_iterations = 0
 
-        indices = list(range(len(all_curriculum_files)))
+        # Sample fresh 10% replay buffer from augmented data every epoch
+        replay_size = max(int(len(all_curriculum_files) * 0.1), 10)
+        replay_size = min(replay_size, len(all_augmented_segments))
+        replay_indices = random.sample(range(len(all_augmented_segments)), replay_size)
+
+        # Build combined training data (curriculum + fresh replay sample)
+        epoch_training_files = all_curriculum_files.copy()
+        epoch_training_transcriptions = all_curriculum_transcriptions.copy()
+        epoch_training_target_seconds = all_curriculum_target_seconds.copy()
+        epoch_training_target_words = all_curriculum_target_words.copy()
+
+        for idx in replay_indices:
+            epoch_training_files.append(all_augmented_segments[idx])
+            epoch_training_transcriptions.append(all_augmented_transcriptions[idx])
+            epoch_training_target_seconds.append(None)
+            epoch_training_target_words.append(None)
+
+        indices = list(range(len(epoch_training_files)))
         random.shuffle(indices)
 
         for i in indices:
-            seg_file = all_curriculum_files[i]
-            text = all_curriculum_transcriptions[i]
-            target_sec = all_curriculum_target_seconds[i]
-            target_wrd = all_curriculum_target_words[i]
+            seg_file = epoch_training_files[i]
+            text = epoch_training_transcriptions[i]
+            target_sec = epoch_training_target_seconds[i]
+            target_wrd = epoch_training_target_words[i]
 
             audio_features = load_mel_features(seg_file, target_seconds=target_sec)
             audio_batch = audio_features.transpose(0, 1).unsqueeze(0).to(device)
