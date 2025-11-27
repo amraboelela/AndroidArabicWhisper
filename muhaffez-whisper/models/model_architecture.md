@@ -23,53 +23,32 @@
 
 ## Architecture Overview
 
-```
-┌──────────────────────────────────────────┐
-│              INPUT                       │
-├──────────────────────────────────────────┤
-│  Audio: Mel Spectrogram (40 bins)       │
-└──────────────────────────────────────────┘
-                  │
-                  ▼
-┌──────────────────────────────────────────┐
-│         ENCODER (Audio Path)             │
-├──────────────────────────────────────────┤
-│  • Conv1D (40→128, kernel=3, stride=1)  │
-│  • GELU Activation                       │
-│  • Conv1D (128→128, kernel=3, stride=2) │
-│  • Positional Embedding                  │
-│  • 4x Transformer Encoder Layers         │
-│    - Multi-Head Self-Attention (4 heads) │
-│    - Feed-Forward Network (128→512→128)  │
-│    - Residual + LayerNorm                │
-└──────────────────────────────────────────┘
-                  │
-                  ▼ (encoder hidden states)
-┌──────────────────────────────────────────┐
-│         DECODER (Text Path)              │
-├──────────────────────────────────────────┤
-│  Start with: <s> (start token)           │
-│  • Token Embedding (14,755 vocab)        │
-│  • Positional Embedding (learned)        │
-│  • 4x Transformer Decoder Layers         │
-│    - Masked Self-Attention (4 heads)     │
-│    - Cross-Attention with Encoder        │
-│    - Feed-Forward Network (128→512→128)  │
-│    - Residual + LayerNorm                │
-│  • Output Projection (128→14,755)        │
-│  Generate tokens autoregressively ──┐    │
-│  (feed each output as next input)   │    │
-└─────────────────────────────────────┼────┘
-                  │                   │
-                  │◄──────────────────┘
-                  ▼
-┌──────────────────────────────────────────┐
-│              OUTPUT                      │
-├──────────────────────────────────────────┤
-│  Token sequence: <s> word1 word2 ... </s>│
-│  → Arabic Text Transcription             │
-└──────────────────────────────────────────┘
-```
+| Stage | Component | Details |
+|-------|-----------|---------|
+| **INPUT** | Audio | Mel Spectrogram (40 bins) |
+| | | ↓ |
+| **ENCODER** | Conv1D Layer 1 | 40→128, kernel=3, stride=1 |
+| (Audio Path) | Activation | GELU |
+| | Conv1D Layer 2 | 128→128, kernel=3, stride=2 |
+| | Positional Embedding | Learned (max 2000 positions) |
+| | Transformer Layers | 4x Encoder Blocks |
+| | └─ Self-Attention | Multi-Head (4 heads) |
+| | └─ Feed-Forward | 128→512→128 + GELU |
+| | └─ Normalization | Residual + LayerNorm |
+| | | ↓ (encoder hidden states) |
+| **DECODER** | Input | Start token: `<s>` |
+| (Text Path) | Token Embedding | 14,755 vocab → 128 dims |
+| | Positional Embedding | Learned (max 100 positions) |
+| | Transformer Layers | 4x Decoder Blocks |
+| | └─ Masked Self-Attention | Multi-Head (4 heads, causal) |
+| | └─ Cross-Attention | Attends to encoder output |
+| | └─ Feed-Forward | 128→512→128 + GELU |
+| | └─ Normalization | Residual + LayerNorm |
+| | Output Projection | 128→14,755 (logits) |
+| | Generation | Autoregressive (feed output → input) |
+| | | ↓ |
+| **OUTPUT** | Token Sequence | `<s>` word1 word2 ... `</s>` |
+| | Transcription | Arabic Text |
 
 ## Encoder Details
 
@@ -128,16 +107,18 @@ Each decoder layer contains:
 
 ## Key Features
 
-✓ **Encoder-Decoder Architecture** - Inspired by Whisper
-✓ **Convolutional Preprocessing** - Efficient mel spectrogram processing
-✓ **Learned Positional Embeddings** - Trainable position encodings for both encoder and decoder
-✓ **Multi-Head Attention** - 4 heads for parallel processing
-✓ **Cross-Attention** - Aligns audio and text representations
-✓ **Residual Connections** - Improves gradient flow
-✓ **Layer Normalization** - Stabilizes training
-✓ **Causal Masking** - Enables autoregressive generation
-✓ **Compact Size** - 4.1M parameters (~15.5 MB)
-✓ **Optimized Sequence Lengths** - Encoder: 2000 (audio), Decoder: 100 (text)
+| Feature | Description |
+|---------|-------------|
+| **Architecture** | Encoder-Decoder design inspired by Whisper |
+| **Audio Processing** | Convolutional preprocessing of mel spectrograms |
+| **Positional Embeddings** | Learned trainable embeddings for encoder and decoder |
+| **Attention Mechanism** | 4-head multi-head attention for parallel processing |
+| **Cross-Attention** | Aligns audio features with text generation |
+| **Residual Connections** | Improves gradient flow during training |
+| **Layer Normalization** | Stabilizes training process |
+| **Causal Masking** | Enables autoregressive text generation |
+| **Model Size** | 4.1M parameters (~15.5 MB) |
+| **Sequence Lengths** | Encoder: 2000 (audio), Decoder: 100 (text) |
 
 ## Training Configuration
 
