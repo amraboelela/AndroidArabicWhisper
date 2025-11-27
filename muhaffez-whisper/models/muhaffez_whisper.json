@@ -1,23 +1,24 @@
 {
   "model_state_dict": "<180 tensors>",
   "full": {
-    "epoch": 30,
+    "epoch": 10,
     "optimizer_state_dict": "<2 tensors>",
-    "loss": 1.378815525070915,
+    "loss": 1.354129753465759,
     "lr": 0.00025,
-    "accuracy": 99.17573872472784
+    "accuracy": 99.44012441679627
   },
   "augmented": {
-    "epoch": 4,
+    "epoch": 20,
     "optimizer_state_dict": "<2 tensors>",
-    "loss": 1.6596546075419563,
-    "lr": 0.001,
-    "accuracy": 49.004665629860035
+    "loss": 1.3483696127441047,
+    "lr": 0.0005,
+    "accuracy": 96.50077760497668
   },
   "curriculum": {
-    "epoch": 0,
-    "optimizer_state_dict": null,
-    "loss": Infinity,
-    "lr": 0.001
+    "epoch": 25,
+    "optimizer_state_dict": "<2 tensors>",
+    "loss": 1.394076488240504,
+    "lr": 0.000125,
+    "accuracy": 85.98755832037325
   }
 }

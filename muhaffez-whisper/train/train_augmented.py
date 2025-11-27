@@ -126,7 +126,7 @@ def train_all_parts(dataset_name):
     checkpoint_info = load_checkpoint(model, optimizer, model_path, training_type="augmented", device=device)
 
     if checkpoint_info['restored']:
-        print(f"✓ Checkpoint restored: Epoch {checkpoint_info['epoch']}, LR={checkpoint_info['lr']:.1e}")
+        print(f"✓ Checkpoint restored (with optimizer state): Epoch {checkpoint_info['epoch']}, LR={checkpoint_info['lr']:.1e}")
     elif os.path.exists(model_path):
         print(f"✓ Model loaded (starting fresh with LR=1e-3)")
     else:
@@ -161,13 +161,7 @@ def train_all_parts(dataset_name):
 
         current_lr = optimizer.param_groups[0]['lr']
 
-        # Track best loss and save when we get a new best
-        if avg_loss < best_loss:
-            best_loss = avg_loss
-            # Save checkpoint when we achieve new best loss
-            save_checkpoint(model, optimizer, epoch + 1, avg_loss, model_path, training_type="augmented", accuracy=best_accuracy)
-
-        # Check accuracy every 10 epochs
+        # Check accuracy every 10 epochs (BEFORE saving checkpoint)
         accuracy_str = ""
         current_acc = 0
         if epoch == 0 or (epoch + 1) % 10 == 0:
@@ -176,6 +170,12 @@ def train_all_parts(dataset_name):
             # Update best accuracy
             if current_acc > best_accuracy:
                 best_accuracy = current_acc
+
+        # Track best loss and save when we get a new best
+        if avg_loss < best_loss:
+            best_loss = avg_loss
+            # Save checkpoint when we achieve new best loss
+            save_checkpoint(model, optimizer, epoch + 1, avg_loss, model_path, training_type="augmented", accuracy=best_accuracy)
 
         time_str = format_time(time.time() - checkpoint_time)
         print(f"Epoch {epoch+1} | Loss={avg_loss:.4f}{accuracy_str} | Time={time_str}", flush=True)
@@ -199,8 +199,7 @@ def train_all_parts(dataset_name):
         epoch += 1
 
     print(f"\nTraining complete. Best model already saved to: {model_path}")
-
-    print(f"FINAL_ACCURACY: {final_acc:.0f}%")
+    print(f"FINAL_ACCURACY: {best_accuracy:.0f}%")
 
 def train_single_part(dataset_name, surah_part):
     """Train on a single surah part with augmentation"""
@@ -297,7 +296,7 @@ def train_single_part(dataset_name, surah_part):
     checkpoint_info = load_checkpoint(model, optimizer, model_path, training_type="augmented", device=device)
 
     if checkpoint_info['restored']:
-        print(f"✓ Checkpoint restored: Epoch {checkpoint_info['epoch']}, LR={checkpoint_info['lr']:.1e}")
+        print(f"✓ Checkpoint restored (with optimizer state): Epoch {checkpoint_info['epoch']}, LR={checkpoint_info['lr']:.1e}")
     elif os.path.exists(model_path):
         print(f"✓ Model loaded (starting fresh with LR=1e-3)")
     else:
@@ -330,13 +329,7 @@ def train_single_part(dataset_name, surah_part):
             print(f"⚠️  Warning: No valid training samples. Stopping.")
             break
 
-        # Track best loss and save when we get a new best
-        if avg_loss < best_loss:
-            best_loss = avg_loss
-            # Save checkpoint when we achieve new best loss
-            save_checkpoint(model, optimizer, epoch + 1, avg_loss, model_path, training_type="augmented", accuracy=best_accuracy)
-
-        # Check accuracy every 10 epochs
+        # Check accuracy every 10 epochs (BEFORE saving checkpoint)
         accuracy_str = ""
         current_acc = 0
         if epoch == 0 or (epoch + 1) % 10 == 0:
@@ -345,6 +338,12 @@ def train_single_part(dataset_name, surah_part):
             # Update best accuracy
             if current_acc > best_accuracy:
                 best_accuracy = current_acc
+
+        # Track best loss and save when we get a new best
+        if avg_loss < best_loss:
+            best_loss = avg_loss
+            # Save checkpoint when we achieve new best loss
+            save_checkpoint(model, optimizer, epoch + 1, avg_loss, model_path, training_type="augmented", accuracy=best_accuracy)
 
         time_str = format_time(time.time() - checkpoint_time)
         print(f"Epoch {epoch+1} | Loss={avg_loss:.4f}{accuracy_str} | Time={time_str}", flush=True)
@@ -368,8 +367,7 @@ def train_single_part(dataset_name, surah_part):
         epoch += 1
 
     print(f"\nTraining complete. Best model already saved to: {model_path}")
-
-    print(f"FINAL_ACCURACY: {final_acc:.0f}%")
+    print(f"FINAL_ACCURACY: {best_accuracy:.0f}%")
 
 
 if __name__ == "__main__":

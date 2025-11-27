@@ -197,7 +197,7 @@ def train_all_parts(dataset_name):
     checkpoint_info = load_checkpoint(model, optimizer, model_path, training_type="curriculum", device=device)
 
     if checkpoint_info['restored']:
-        print(f"✓ Checkpoint restored: Epoch {checkpoint_info['epoch']}, LR={checkpoint_info['lr']:.1e}")
+        print(f"✓ Checkpoint restored (with optimizer state): Epoch {checkpoint_info['epoch']}, LR={checkpoint_info['lr']:.1e}")
     elif os.path.exists(model_path):
         print(f"✓ Model loaded (starting fresh with LR=1e-3)")
     else:
@@ -284,16 +284,6 @@ def train_all_parts(dataset_name):
             # Save checkpoint when we achieve new best loss
             save_checkpoint(model, optimizer, epoch + 1, avg_loss, model_path, training_type="curriculum", accuracy=best_accuracy)
 
-        # Dynamic learning rate: reduce by 50% if loss increases
-        if avg_loss > prev_loss:
-            current_lr = optimizer.param_groups[0]['lr']
-            new_lr = max(current_lr * 0.5, 1e-7)
-            if new_lr != current_lr:
-                for param_group in optimizer.param_groups:
-                    param_group['lr'] = new_lr
-                if new_lr > 1e-7:
-                    print(f"  Loss increased ({prev_loss:.4f} → {avg_loss:.4f}), reducing LR to: {new_lr:.1e}")
-
         # Format time
         elapsed_from_checkpoint = time.time() - checkpoint_time
         if elapsed_from_checkpoint >= 3600:
@@ -309,6 +299,17 @@ def train_all_parts(dataset_name):
 
         # Print every epoch in "all" mode
         print(f"Epoch {epoch+1} | Loss={avg_loss:.4f}{accuracy_str} | Time={time_str}")
+
+        # Dynamic learning rate: reduce by 50% if loss increases
+        if avg_loss > prev_loss:
+            current_lr = optimizer.param_groups[0]['lr']
+            new_lr = max(current_lr * 0.5, 1e-7)
+            if new_lr != current_lr:
+                for param_group in optimizer.param_groups:
+                    param_group['lr'] = new_lr
+                if new_lr > 1e-7:
+                    print(f"  Loss increased ({prev_loss:.4f} → {avg_loss:.4f}), reducing LR to: {new_lr:.1e}")
+
         checkpoint_time = time.time()
 
         prev_loss = avg_loss

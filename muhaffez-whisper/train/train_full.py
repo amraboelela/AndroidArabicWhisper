@@ -124,7 +124,7 @@ def train_all_parts(dataset_name):
     checkpoint_info = load_checkpoint(model, optimizer, model_path, training_type="full", device=device)
 
     if checkpoint_info['restored']:
-        print(f"✓ Checkpoint restored: Epoch {checkpoint_info['epoch']}, LR={checkpoint_info['lr']:.1e}")
+        print(f"✓ Checkpoint restored (with optimizer state): Epoch {checkpoint_info['epoch']}, LR={checkpoint_info['lr']:.1e}")
     elif os.path.exists(model_path):
         print(f"✓ Model loaded (starting fresh with LR=1e-3)")
     else:
@@ -169,13 +169,13 @@ def train_all_parts(dataset_name):
             # Save checkpoint when we achieve new best loss
             save_checkpoint(model, optimizer, epoch + 1, avg_loss, model_path, training_type="full", accuracy=best_accuracy)
 
+        time_str = format_time(time.time() - checkpoint_time)
+        print(f"Epoch {epoch+1} | Loss={avg_loss:.4f}{accuracy_str} | Time={time_str}", flush=True)
+
         # Decay learning rate if loss increases
         new_lr, lr_changed = update_learning_rate(optimizer, avg_loss, prev_loss, 1e-7, 0.5)
         if lr_changed:
-            print(f"  Learning rate reduced to: {new_lr:.1e}")
-
-        time_str = format_time(time.time() - checkpoint_time)
-        print(f"Epoch {epoch+1} | Loss={avg_loss:.4f}{accuracy_str} | Time={time_str}", flush=True)
+            print(f"  Loss increased ({prev_loss:.4f} → {avg_loss:.4f}), reducing LR to: {new_lr:.1e}")
 
         checkpoint_time = time.time()
         prev_loss = avg_loss
@@ -234,7 +234,7 @@ def train_single_part(dataset_name, surah_part):
     checkpoint_info = load_checkpoint(model, optimizer, model_path, training_type="full", device=device)
 
     if checkpoint_info['restored']:
-        print(f"✓ Checkpoint restored: Epoch {checkpoint_info['epoch']}, LR={checkpoint_info['lr']:.1e}")
+        print(f"✓ Checkpoint restored (with optimizer state): Epoch {checkpoint_info['epoch']}, LR={checkpoint_info['lr']:.1e}")
     elif os.path.exists(model_path):
         print(f"✓ Model loaded (starting fresh with LR=1e-3)")
     else:
