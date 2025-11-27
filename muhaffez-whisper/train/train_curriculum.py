@@ -32,8 +32,8 @@ import os
 import time
 import random
 import subprocess
-sys.path.append("..")
-from tools.encoder_decoder_transformer import EncoderDecoderTransformer
+sys.path.append("../models")
+from encoder_decoder_transformer import EncoderDecoderTransformer
 
 # Import common utilities
 from common import (
@@ -275,12 +275,11 @@ def train_all_parts(dataset_name):
                     param_group['lr'] = new_lr
                 if new_lr > 1e-7:
                     print(f"  Loss increased ({prev_loss:.4f} → {avg_loss:.4f}), reducing LR to: {new_lr:.1e}")
-                save_checkpoint(model, optimizer, epoch, avg_loss, model_path, training_type="curriculum")
+                save_checkpoint(model, optimizer, epoch + 1, avg_loss, model_path, training_type="curriculum")
 
-        # Save best
+        # Track best loss (checkpoint saved by save_checkpoint when LR reduces)
         if avg_loss < best_loss:
             best_loss = avg_loss
-            torch.save(model.state_dict(), model_path)
 
         # Format time
         elapsed_from_checkpoint = time.time() - checkpoint_time
@@ -319,11 +318,9 @@ def train_all_parts(dataset_name):
             print(f"\n✓ Stopping: Accuracy > 99%")
             break
 
-    save_checkpoint(model, optimizer, epoch, avg_loss, model_path, training_type="curriculum")
+    save_checkpoint(model, optimizer, epoch + 1, avg_loss, model_path, training_type="curriculum")
     print(f"\nFinal model saved to: {model_path}")
 
-    final_acc = calculate_comprehensive_accuracy(model, all_segment_files, all_transcriptions, vocab, None, None, device)[0]
-    print(f"FINAL_ACCURACY: {final_acc:.0f}%")
 
 
 

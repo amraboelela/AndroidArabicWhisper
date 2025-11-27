@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Test PyTorch model directly"""
 import sys
-sys.path.append('../tools')
+sys.path.append('../models')
 
 import torch
 import torchaudio

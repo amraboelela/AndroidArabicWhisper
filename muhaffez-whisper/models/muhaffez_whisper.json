@@ -1,0 +1,21 @@
+{
+  "model_state_dict": "<180 tensors>",
+  "full": {
+    "epoch": 0,
+    "optimizer_state_dict": null,
+    "loss": Infinity,
+    "lr": 0.001
+  },
+  "augmented": {
+    "epoch": 0,
+    "optimizer_state_dict": null,
+    "loss": Infinity,
+    "lr": 0.001
+  },
+  "curriculum": {
+    "epoch": 0,
+    "optimizer_state_dict": null,
+    "loss": Infinity,
+    "lr": 0.001
+  }
+}

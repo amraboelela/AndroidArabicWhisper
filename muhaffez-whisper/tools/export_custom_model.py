@@ -8,8 +8,8 @@ import torch
 import torch.nn as nn
 from pathlib import Path
 
-# Add onnx directory to path to import the model
-sys.path.insert(0, 'onnx')
+# Add models directory to path to import the model
+sys.path.insert(0, '../models')
 from encoder_decoder_transformer import EncoderDecoderTransformer
 
 def export_custom_model_to_onnx():

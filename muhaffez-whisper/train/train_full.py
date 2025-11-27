@@ -26,8 +26,8 @@ import glob
 import os
 import time
 import random
-sys.path.append("..")
-from tools.encoder_decoder_transformer import EncoderDecoderTransformer
+sys.path.append("../models")
+from encoder_decoder_transformer import EncoderDecoderTransformer
 
 # Import common utilities
 from common import (
@@ -152,16 +152,15 @@ def train_all_parts(dataset_name):
             print(f"⚠️  Warning: No valid training samples. Stopping.")
             break
 
-        # Save best model
+        # Track best loss (checkpoint saved by save_checkpoint when LR reduces)
         if avg_loss < best_loss:
             best_loss = avg_loss
-            torch.save(model.state_dict(), model_path)
 
         # Decay learning rate if loss increases
         new_lr, lr_changed = update_learning_rate(optimizer, avg_loss, prev_loss, 1e-7, 0.5)
         if lr_changed:
             print(f"  Learning rate reduced to: {new_lr:.1e}")
-            save_checkpoint(model, optimizer, epoch, avg_loss, model_path, training_type="full")
+            save_checkpoint(model, optimizer, epoch + 1, avg_loss, model_path, training_type="full")
 
         # Check accuracy every 10 epochs
         accuracy_str = ""
@@ -187,12 +186,8 @@ def train_all_parts(dataset_name):
             break
 
     # Save final model and checkpoint
-    save_checkpoint(model, optimizer, epoch, avg_loss, model_path, training_type="full")
+    save_checkpoint(model, optimizer, epoch + 1, avg_loss, model_path, training_type="full")
     print(f"\nFinal model saved to: {model_path}")
-
-    # Calculate and output final accuracy
-    final_acc = calculate_comprehensive_accuracy(model, all_segment_files, all_transcriptions, vocab, None, None, device)[0]
-    print(f"FINAL_ACCURACY: {final_acc:.0f}%")
 
 def train_single_part(dataset_name, surah_part):
     """Train on a single surah part"""
@@ -301,9 +296,9 @@ def train_single_part(dataset_name, surah_part):
 
         avg_loss = total_loss / total_iterations
 
+        # Track best loss (checkpoint saved by save_checkpoint when LR reduces)
         if avg_loss < best_loss:
             best_loss = avg_loss
-            torch.save(model.state_dict(), model_path)
 
         # Check accuracy every 10 epochs
         accuracy_str = ""
@@ -336,7 +331,7 @@ def train_single_part(dataset_name, surah_part):
                     param_group['lr'] = new_lr
                 if new_lr > min_lr:
                     print(f"  Loss increased ({prev_loss:.4f} → {avg_loss:.4f}), reducing LR to: {new_lr:.1e}", flush=True)
-                save_checkpoint(model, optimizer, epoch, avg_loss, model_path, training_type="full")
+                save_checkpoint(model, optimizer, epoch + 1, avg_loss, model_path, training_type="full")
 
         prev_loss = avg_loss
         current_lr = optimizer.param_groups[0]['lr']
@@ -352,16 +347,8 @@ def train_single_part(dataset_name, surah_part):
         epoch += 1
 
     # Save final model and checkpoint
-    save_checkpoint(model, optimizer, epoch, avg_loss, model_path, training_type="full")
+    save_checkpoint(model, optimizer, epoch + 1, avg_loss, model_path, training_type="full")
     print(f"Final model saved to: {model_path}")
-
-    # Calculate final accuracy
-    model.eval()
-    overall_acc, avg_acc, seg_accuracies = calculate_comprehensive_accuracy(
-        model, segment_files, transcriptions, vocab,
-        target_seconds=None, target_words=None, device=device
-    )
-    print(f"FINAL_ACCURACY: {overall_acc:.0f}%")
 
 
 if __name__ == "__main__":

@@ -9,12 +9,11 @@ import torch.nn as nn
 from pathlib import Path
 import json
 
-sys.path.append("..")
 from encoder_decoder_transformer import EncoderDecoderTransformer
 
 def export_muhaffez_to_onnx():
-    model_path = "../models/muhaffez_whisper.pt"
-    vocab_path = "../models/vocabulary.json"
+    model_path = "muhaffez_whisper.pt"
+    vocab_path = "vocabulary.json"
     output_dir = Path("../../app/src/main/assets/muhaffez_whisper")
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -51,7 +50,15 @@ def export_muhaffez_to_onnx():
     # Load weights
     print("📥 Loading weights...")
     checkpoint = torch.load(model_path, map_location='cpu')
-    model.load_state_dict(checkpoint)
+
+    # Handle NEW format (with shared model_state_dict) or OLD format (raw state_dict)
+    if 'model_state_dict' in checkpoint:
+        # NEW format
+        model.load_state_dict(checkpoint['model_state_dict'])
+    else:
+        # OLD format
+        model.load_state_dict(checkpoint)
+
     model.eval()
     print("   ✅ Weights loaded successfully")
     print()
