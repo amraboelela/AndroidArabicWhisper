@@ -308,7 +308,7 @@ def train_all_parts(dataset_name):
         current_lr = optimizer.param_groups[0]['lr']
 
         # Print every epoch in "all" mode
-        print(f"Epoch {epoch+1}/500 | Loss={avg_loss:.4f}{accuracy_str} | Time={time_str}")
+        print(f"Epoch {epoch+1} | Loss={avg_loss:.4f}{accuracy_str} | Time={time_str}")
         checkpoint_time = time.time()
 
         prev_loss = avg_loss

@@ -178,7 +178,7 @@ def train_all_parts(dataset_name):
                 best_accuracy = current_acc
 
         time_str = format_time(time.time() - checkpoint_time)
-        print(f"Epoch {epoch+1}/500 | Loss={avg_loss:.4f}{accuracy_str} | Time={time_str}", flush=True)
+        print(f"Epoch {epoch+1} | Loss={avg_loss:.4f}{accuracy_str} | Time={time_str}", flush=True)
         checkpoint_time = time.time()
 
         # LR decay on loss increase
