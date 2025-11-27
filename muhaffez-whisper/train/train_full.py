@@ -153,10 +153,11 @@ def train_all_parts(dataset_name):
             print(f"⚠️  Warning: No valid training samples. Stopping.")
             break
 
-        # Check accuracy every 10 epochs
+        # Check accuracy every 10 epochs (or every epoch if accuracy > 90%)
         accuracy_str = ""
         current_acc = 0
-        if epoch == 0 or (epoch + 1) % 10 == 0:
+        should_calc_accuracy = epoch == 0 or (epoch + 1) % 10 == 0 or best_accuracy > 90
+        if should_calc_accuracy:
             current_acc = calculate_comprehensive_accuracy(model, all_segment_files, all_transcriptions, vocab, None, None, device)[0]
             accuracy_str = f" | Accuracy={current_acc:.0f}%"
             # Update best accuracy
@@ -189,8 +190,6 @@ def train_all_parts(dataset_name):
         if current_acc > 99.0:
             print(f"✓ Stopping: Accuracy > 99%", flush=True)
             break
-
-    print(f"\nTraining complete. Best model already saved to: {model_path}")
 
 def train_single_part(dataset_name, surah_part):
     """Train on a single surah part"""
@@ -300,10 +299,11 @@ def train_single_part(dataset_name, surah_part):
 
         avg_loss = total_loss / total_iterations
 
-        # Check accuracy every 10 epochs
+        # Check accuracy every 10 epochs (or every epoch if accuracy > 90%)
         accuracy_str = ""
         current_acc = 0
-        if epoch == 0 or (epoch + 1) % 10 == 0:
+        should_calc_accuracy = epoch == 0 or (epoch + 1) % 10 == 0 or best_accuracy > 90
+        if should_calc_accuracy:
             current_acc = calculate_comprehensive_accuracy(model, segment_files, transcriptions, vocab, None, None, device)[0]
             accuracy_str = f" | Accuracy={current_acc:.0f}%"
             # Update best accuracy
@@ -353,8 +353,6 @@ def train_single_part(dataset_name, surah_part):
             break
 
         epoch += 1
-
-    print(f"\nTraining complete. Best model already saved to: {model_path}")
 
 
 if __name__ == "__main__":

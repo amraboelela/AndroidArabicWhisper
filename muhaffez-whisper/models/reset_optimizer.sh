@@ -29,6 +29,7 @@ for training_type in ['full', 'augmented', 'curriculum']:
         checkpoint[training_type]['lr'] = 1e-3
         checkpoint[training_type]['epoch'] = 0
         checkpoint[training_type]['loss'] = float('inf')
+        checkpoint[training_type]['accuracy'] = 0.0
         print(f"  ✓ Reset {training_type} optimizer state")
 
 # Save updated checkpoint

@@ -178,11 +178,6 @@ def train_single_part(dataset_name, surah_part):
     _, _, all_augmented_segments, all_augmented_transcriptions = collect_augmented_data(dataset_name, text_files)
     print(f"Augmented data pool: {len(all_augmented_segments)} samples\n")
 
-    # Train
-    print(f"{'='*60}")
-    print(f"TRAINING ALL CURRICULUM STAGES MIXED")
-    print(f"{'='*60}\n")
-
     model = model.to(device)
 
     # Setup optimizer and load checkpoint if exists
@@ -202,6 +197,7 @@ def train_single_part(dataset_name, surah_part):
     print(f"Initial Learning Rate: {learning_rate:.1e}")
 
     best_loss = float('inf')
+    best_accuracy = 0.0
     prev_loss = float('inf')
     checkpoint_time = time.time()
 
@@ -292,7 +288,8 @@ def train_single_part(dataset_name, surah_part):
         current_lr = optimizer.param_groups[0]['lr']
         accuracy_str = ""
         current_acc = 0
-        if epoch == 0 or (epoch + 1) % 10 == 0:
+        should_calc_accuracy = epoch == 0 or (epoch + 1) % 10 == 0 or best_accuracy > 90
+        if should_calc_accuracy:
             # Test on curriculum-appropriate samples (mixed stages)
             current_acc = calculate_curriculum_accuracy(
                 model,
@@ -305,6 +302,8 @@ def train_single_part(dataset_name, surah_part):
                 sample_rate=8
             )
             accuracy_str = f" | Accuracy={current_acc:.0f}%"
+            if current_acc > best_accuracy:
+                best_accuracy = current_acc
 
         if epoch == 0 or (epoch + 1) % 10 == 0 or epoch == 499:
             print(f"Epoch {epoch+1}/500 | Loss={avg_loss:.4f}{accuracy_str} | Time={time_str}")

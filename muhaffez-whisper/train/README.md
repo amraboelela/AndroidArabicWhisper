@@ -1,32 +1,61 @@
 # Training Scripts
 
-This directory contains training scripts for the encoder-decoder model.
+This directory contains training scripts for the encoder-decoder Whisper model.
 
-## Full Segments Training
+## Training Suites
 
-Train on complete segments (full audio → full text), example:
+### 1. Full Training (`train_full.py`)
+Trains on complete segments (full audio → full text):
 
 ```bash
+# Train all parts
+python3 train_full.py Quran-A all
+
+# Train specific part
 python3 train_full.py Quran-A 002-04
 ```
 
-## Curriculum Training
-
-Train incrementally on segment chunks with 1.3-second chunks, one word per chunk, example:
+### 2. Augmented Training (`train_augmented.py`)
+Trains on normal + augmented data (speed/pitch variations):
 
 ```bash
+# Train all parts
+python3 train_augmented.py Quran-A all
+
+# Train specific part
+python3 train_augmented.py Quran-A 002-04
+```
+
+**Augmented Data Includes:**
+- Normal samples (original audio)
+- Speed variations: ±10%, ±20%
+- Pitch variations: ±2, ±4 semitones
+
+### 3. Curriculum Training (`train_curriculum.py`)
+Trains incrementally on segment chunks with 1.3-second chunks, one word per chunk:
+
+```bash
+# Train all parts
+python3 train_curriculum.py Quran-A all
+
+# Train specific part
 python3 train_curriculum.py Quran-A 002-04
 ```
 
-This will train on each segment (002-04-01.wav, 002-04-02.wav, etc.) progressively:
+**Curriculum Strategy:**
 - Stage 1: First 1.3s → 1 word (per segment)
 - Stage 2: First 2.6s → 2 words (per segment)
 - Stage 3: First 3.9s → 3 words (per segment)
 - ... until full segment audio → full segment transcription
 
-## Run Both Training Suites
+**NEW: Replay Buffer (10%)**
+- Each epoch samples fresh 10% from augmented data (normal + variations)
+- Prevents forgetting full-length sequences during curriculum training
+- Different samples each epoch for better generalization
 
-The master training script runs both curriculum and full segments training:
+## Master Training Script
+
+Run all three training suites in sequence:
 
 ```bash
 # Usage: ./train.sh [dataset_name] [surah_or_part]
@@ -36,10 +65,10 @@ The master training script runs both curriculum and full segments training:
 
 ```bash
 # Train all available datasets
-./train.sh
+./train.sh all
 
-# Train on entire dataset (all surah parts)
-./train.sh Quran-A
+# Train entire dataset (all surah parts)
+./train.sh Quran-A all
 
 # Train on Al-Fatiha (001)
 ./train.sh Quran-A 001
@@ -47,74 +76,143 @@ The master training script runs both curriculum and full segments training:
 # Train on all parts of surah 002 (Al-Baqara)
 ./train.sh Quran-A 002
 
-# Train on specific surah part only
+# Train on specific surah part
 ./train.sh Quran-A 002-04
 ```
 
-The script automatically detects what you want:
-- **No parameters**: Trains on all datasets in ../datasets/
-- **Dataset only**: Trains on all text files in the dataset
-- **3-digit number (e.g., 002)**: Trains on all parts of that surah
-- **Specific part (e.g., 002-04)**: Trains only on that part
+**How the script works:**
 
-### Logging
+- **`all` parameter** - Trains on all datasets in ../datasets/
+- **Dataset + `all`** - Trains on all text files in the dataset
+- **3-digit number (e.g., 002)** - Trains on all parts of that surah
+- **Specific part (e.g., 002-04)** - Trains only on that part
 
-Log files are created per dataset and surah with automatic day rotation:
-- **Format**: `log_train_{dataset}_{surah}.txt`
-- **Examples**:
-  - `log_train_Quran-A_001.txt` - Training for surah 001
-  - `log_train_Quran-A_002.txt` - Training for surah 002
-- **Day Rotation**: Backups saved as `.1` (Monday) through `.7` (Sunday)
-  - Previous logs moved to `log_train_Quran-A_002.txt.{day}` before creating new log
-  - Provides 7-day rolling history per surah
-- **Content**: All output from both curriculum and full training for all parts of that surah
 
-## Files
+## Logging
 
-- **train_full.py** - Full segments training script (trains on full segments)
-- **train_curriculum.py** - Curriculum learning script (trains on segment chunks progressively, each chunk is 1.3 seconds)
-- **train.sh** - Runs both training suites in sequence
+Log files are created per dataset with output to console and file:
+
+- **Location**: `train/log.txt`
+- **Content**: All output from full, augmented, and curriculum training
+- **Format**: Timestamped entries with suite markers
+
+## Accuracy Calculation
+
+### Full & Augmented Training
+Tests on full segments with 20% confidence threshold:
+- Filters out predictions with <20% probability
+- Measures word-by-word accuracy on full transcriptions
+- **Frequency**: Every 10 epochs, or every epoch when accuracy > 90%
+
+### Curriculum Training
+Tests on curriculum-appropriate samples:
+- Samples every 8th curriculum stage (1-word, 2-word, ..., full)
+- Matches training distribution (short + long sequences)
+- Uses same 20% confidence threshold
+- **Frequency**: Every 10 epochs, or every epoch when accuracy > 90%
+
+## Optimizer State Management
+
+### Reset Optimizer
+
+```bash
+cd ../models
+./reset_optimizer.sh
+```
+
+Resets optimizer states (LR, momentum) while preserving model weights:
+- Sets LR back to 1e-3
+- Clears momentum buffers
+- Resets epoch counters and accuracy
+- **Model weights preserved!**
+
+Use this when you want to restart training with fresh optimizer state.
 
 ## Configuration
 
 ### Common Settings
-- **Max Epochs**: 100
-- **Learning Rate**: 1e-5
-- **Learning Rate Scheduler**: 0.5x decay per epoch
-- **Early Stopping**: min_delta=1e-3, patience=3
-- **Normalization**: Per-segment mel normalization
+- **Initial Learning Rate**: 1e-3
+- **LR Decay**: 0.5x when loss increases
+- **Minimum LR**: 1e-7
+- **Optimizer**: AdamW (weight_decay=0.01)
+- **Loss**: CrossEntropyLoss (label_smoothing=0.1)
+- **Gradient Clipping**: 1.0
 
-### train_full.py Settings
-- **Training Mode**: Full segments (complete segment audio → complete segment text)
+### Full Training
+- Trains on full segments
+- Early stop: Accuracy > 99% or LR ≤ 1e-7
 
-### train_curriculum.py Settings
-- **Training Mode**: Segment chunks (progressive chunking)
-- **Chunk Duration**: 1.3 seconds per word (fixed, estimated once during initial setup)
+### Augmented Training
+- Normal segments + 8 augmentation variations
+- Early stop: Accuracy > 99% or LR ≤ 1e-7
+
+### Curriculum Training
+- **Chunk Duration**: 1.3 seconds per word
 - **Words Per Chunk**: 1 word
+- **Replay Buffer**: 10% from augmented data (resampled each epoch)
+- Early stop: Accuracy > 99% or LR ≤ 1e-7
 
 ## How Curriculum Training Works
 
-The curriculum training script:
-1. Uses a fixed chunk duration of 1.3 seconds per word (estimated once during initial setup)
-2. For each audio segment, calculates how many 1.3s chunks fit in the audio duration
-3. Trains progressively on increasing chunks: 1 chunk (1.3s) → 1 word, 2 chunks (2.6s) → 2 words, etc.
-4. Stops when reaching either the audio length limit or the number of words in the transcription
-5. Saves the model after training all segments
+1. **Collect Curriculum Stages**: For each segment, create progressive stages (1 word, 2 words, ..., full)
+2. **Load Augmented Data Pool**: All normal + augmented samples for replay buffer
+3. **Each Epoch**:
+   - Sample fresh 10% replay buffer from augmented pool
+   - Combine curriculum stages + replay samples
+   - Shuffle and train on combined data
+4. **Accuracy**: Test only on curriculum stages (not replay buffer)
 
-This approach helps the model learn progressively, starting with simpler tasks (predicting 1 word from 1.3s) and gradually increasing difficulty based on the actual audio length of each segment.
+### Example: 002-04 Segment
 
-### Example: Training on 002-04
+Audio duration: 5.2 seconds, Transcription: 6 words
 
-When you run `python3 train_curriculum.py Quran-A 002-04`, it will:
-- Load all segments from surah part 002-04 (e.g., 002-04-01.wav, 002-04-02.wav, ...)
-- For each segment:
-  - Calculate audio duration (e.g., 5.2 seconds)
-  - Determine how many 1.3s chunks fit (e.g., 5.2 / 1.3 = 4 chunks)
-  - Check word count in transcription (e.g., 6 words)
-  - Train on min(4 chunks, 6 words) = 4 progressive steps:
-    - 1 chunk (1.3s) → 1 word
-    - 2 chunks (2.6s) → 2 words
-    - 3 chunks (3.9s) → 3 words
-    - 4 chunks (5.2s) → 4 words
+Curriculum stages:
+- Stage 1: 1.3s → 1 word
+- Stage 2: 2.6s → 2 words
+- Stage 3: 3.9s → 3 words
+- Stage 4: 5.2s → 4 words
 
-Each training step runs for up to 100 epochs with early stopping (min_delta=1e-3, patience=3, min_epochs=5).
+(Stops at 4 chunks because audio is only 5.2s)
+
+## Files
+
+### Main Scripts
+- **train.sh** - Master script running all three suites
+- **train_full.py** - Full segments training
+- **train_augmented.py** - Augmented data training
+- **train_curriculum.py** - Curriculum learning with replay buffer
+
+### Model Scripts (`../models/`)
+
+- **encoder_decoder_transformer.py** - Model architecture definition (encoder-decoder transformer)
+- **init_model.py** - Initialize new model with random weights
+- **inspect_muhaffez_whisper.py** - Inspect model architecture and parameters
+- **export_muhaffez_to_onnx.py** - Export model to ONNX format for deployment
+- **reset_optimizer.sh** - Reset optimizer states (LR, momentum, epoch) while preserving model weights
+
+### Common Module (`common/`)
+- **data_utils.py** - Mel features loading, tokenization
+- **metrics.py** - Accuracy calculation (comprehensive, curriculum)
+- **replay_buffer.py** - Replay buffer collection
+- **data_collection.py** - Augmented data collection
+- **training_loop.py** - Training epoch, LR updates
+- **optimizer_state.py** - Checkpoint save/load
+
+## Model Checkpoint Structure
+
+```python
+{
+    'model_state_dict': {...},  # Model weights
+    'full': {
+        'epoch': int,
+        'optimizer_state_dict': {...},
+        'loss': float,
+        'lr': float,
+        'accuracy': float
+    },
+    'augmented': { ... },
+    'curriculum': { ... }
+}
+```
+
+Each training type maintains independent optimizer state, allowing you to train with different methods without interference.

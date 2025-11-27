@@ -161,10 +161,11 @@ def train_all_parts(dataset_name):
 
         current_lr = optimizer.param_groups[0]['lr']
 
-        # Check accuracy every 10 epochs (BEFORE saving checkpoint)
+        # Check accuracy every 10 epochs (or every epoch if accuracy > 90%)
         accuracy_str = ""
         current_acc = 0
-        if epoch == 0 or (epoch + 1) % 10 == 0:
+        should_calc_accuracy = epoch == 0 or (epoch + 1) % 10 == 0 or best_accuracy > 90
+        if should_calc_accuracy:
             current_acc = calculate_accuracy(model, regular_segment_files, regular_transcriptions, vocab, device)
             accuracy_str = f" | Accuracy={current_acc:.0f}%"
             # Update best accuracy
@@ -197,9 +198,6 @@ def train_all_parts(dataset_name):
             break
 
         epoch += 1
-
-    print(f"\nTraining complete. Best model already saved to: {model_path}")
-    print(f"FINAL_ACCURACY: {best_accuracy:.0f}%")
 
 def train_single_part(dataset_name, surah_part):
     """Train on a single surah part with augmentation"""
@@ -329,10 +327,11 @@ def train_single_part(dataset_name, surah_part):
             print(f"⚠️  Warning: No valid training samples. Stopping.")
             break
 
-        # Check accuracy every 10 epochs (BEFORE saving checkpoint)
+        # Check accuracy every 10 epochs (or every epoch if accuracy > 90%)
         accuracy_str = ""
         current_acc = 0
-        if epoch == 0 or (epoch + 1) % 10 == 0:
+        should_calc_accuracy = epoch == 0 or (epoch + 1) % 10 == 0 or best_accuracy > 90
+        if should_calc_accuracy:
             current_acc = calculate_accuracy(model, regular_segment_files, regular_transcriptions, vocab, device)
             accuracy_str = f" | Accuracy={current_acc:.0f}%"
             # Update best accuracy
@@ -365,9 +364,6 @@ def train_single_part(dataset_name, surah_part):
             break
 
         epoch += 1
-
-    print(f"\nTraining complete. Best model already saved to: {model_path}")
-    print(f"FINAL_ACCURACY: {best_accuracy:.0f}%")
 
 
 if __name__ == "__main__":

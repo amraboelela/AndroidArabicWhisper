@@ -196,11 +196,6 @@ def train_all_parts(dataset_name):
     _, _, all_augmented_segments, all_augmented_transcriptions = collect_augmented_data(dataset_name, text_files)
     print(f"Augmented data pool: {len(all_augmented_segments)} samples\n")
 
-    # Train on all mixed curriculum samples in one big stage
-    print(f"{'='*60}")
-    print(f"TRAINING ALL CURRICULUM STAGES MIXED")
-    print(f"{'='*60}\n")
-
     # Setup optimizer and load checkpoint if exists
     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=0.01)
     checkpoint_info = load_checkpoint(model, optimizer, model_path, training_type="curriculum", device=device)
@@ -293,10 +288,11 @@ def train_all_parts(dataset_name):
 
         avg_loss = total_loss / total_iterations
 
-        # Calculate accuracy every 10 epochs
+        # Calculate accuracy every 10 epochs (or every epoch if accuracy > 90%)
         accuracy_str = ""
         current_acc = 0
-        if epoch == 0 or (epoch + 1) % 10 == 0:
+        should_calc_accuracy = epoch == 0 or (epoch + 1) % 10 == 0 or best_accuracy > 90
+        if should_calc_accuracy:
             # Test on curriculum-appropriate samples (mixed stages)
             overall_acc = calculate_curriculum_accuracy(
                 model,
@@ -359,10 +355,6 @@ def train_all_parts(dataset_name):
         if current_acc > 99.0:
             print(f"\n✓ Stopping: Accuracy > 99%")
             break
-
-    print(f"\nTraining complete. Best model already saved to: {model_path}")
-
-
 
 
 if __name__ == "__main__":
