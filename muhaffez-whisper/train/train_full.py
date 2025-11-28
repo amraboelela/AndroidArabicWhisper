@@ -153,10 +153,10 @@ def train_all_parts(dataset_name):
             print(f"⚠️  Warning: No valid training samples. Stopping.")
             break
 
-        # Check accuracy every 10 epochs (or every epoch if accuracy > 90%)
+        # Check accuracy every 10 epochs (or every epoch if accuracy >= 95%)
         accuracy_str = ""
         current_acc = 0
-        should_calc_accuracy = epoch == 0 or (epoch + 1) % 10 == 0 or best_accuracy > 90
+        should_calc_accuracy = epoch == 0 or (epoch + 1) % 10 == 0 or best_accuracy >= 95
         if should_calc_accuracy:
             current_acc = calculate_comprehensive_accuracy(model, all_segment_files, all_transcriptions, vocab, None, None, device)[0]
             accuracy_str = f" | Accuracy={current_acc:.0f}%"
@@ -299,10 +299,10 @@ def train_single_part(dataset_name, surah_part):
 
         avg_loss = total_loss / total_iterations
 
-        # Check accuracy every 10 epochs (or every epoch if accuracy > 90%)
+        # Check accuracy every 10 epochs (or every epoch if accuracy >= 95%)
         accuracy_str = ""
         current_acc = 0
-        should_calc_accuracy = epoch == 0 or (epoch + 1) % 10 == 0 or best_accuracy > 90
+        should_calc_accuracy = epoch == 0 or (epoch + 1) % 10 == 0 or best_accuracy >= 95
         if should_calc_accuracy:
             current_acc = calculate_comprehensive_accuracy(model, segment_files, transcriptions, vocab, None, None, device)[0]
             accuracy_str = f" | Accuracy={current_acc:.0f}%"

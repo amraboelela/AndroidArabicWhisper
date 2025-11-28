@@ -296,10 +296,10 @@ def train_all_parts(dataset_name):
 
         avg_loss = total_loss / total_iterations
 
-        # Calculate accuracy every 10 epochs (or every epoch if accuracy > 90%)
+        # Calculate accuracy every 10 epochs (or every epoch if accuracy >= 95%)
         accuracy_str = ""
         current_acc = 0
-        should_calc_accuracy = epoch == 0 or (epoch + 1) % 10 == 0 or best_accuracy > 90
+        should_calc_accuracy = epoch == 0 or (epoch + 1) % 10 == 0 or best_accuracy >= 95
         if should_calc_accuracy:
             # Test on curriculum-appropriate samples (mixed stages)
             overall_acc = calculate_curriculum_accuracy(

@@ -303,7 +303,7 @@ def train_single_part(dataset_name, surah_part):
         current_lr = optimizer.param_groups[0]['lr']
         accuracy_str = ""
         current_acc = 0
-        should_calc_accuracy = epoch == 0 or (epoch + 1) % 10 == 0 or best_accuracy > 90
+        should_calc_accuracy = epoch == 0 or (epoch + 1) % 10 == 0 or best_accuracy >= 95
         if should_calc_accuracy:
             # Test on curriculum-appropriate samples (mixed stages)
             current_acc = calculate_curriculum_accuracy(

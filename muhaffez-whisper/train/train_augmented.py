@@ -161,10 +161,10 @@ def train_all_parts(dataset_name):
 
         current_lr = optimizer.param_groups[0]['lr']
 
-        # Check accuracy every 10 epochs (or every epoch if accuracy > 90%)
+        # Check accuracy every 10 epochs (or every epoch if accuracy >= 95%)
         accuracy_str = ""
         current_acc = 0
-        should_calc_accuracy = epoch == 0 or (epoch + 1) % 10 == 0 or best_accuracy > 90
+        should_calc_accuracy = epoch == 0 or (epoch + 1) % 10 == 0 or best_accuracy >= 95
         if should_calc_accuracy:
             current_acc = calculate_accuracy(model, regular_segment_files, regular_transcriptions, vocab, device)
             accuracy_str = f" | Accuracy={current_acc:.0f}%"
@@ -327,10 +327,10 @@ def train_single_part(dataset_name, surah_part):
             print(f"⚠️  Warning: No valid training samples. Stopping.")
             break
 
-        # Check accuracy every 10 epochs (or every epoch if accuracy > 90%)
+        # Check accuracy every 10 epochs (or every epoch if accuracy >= 95%)
         accuracy_str = ""
         current_acc = 0
-        should_calc_accuracy = epoch == 0 or (epoch + 1) % 10 == 0 or best_accuracy > 90
+        should_calc_accuracy = epoch == 0 or (epoch + 1) % 10 == 0 or best_accuracy >= 95
         if should_calc_accuracy:
             current_acc = calculate_accuracy(model, regular_segment_files, regular_transcriptions, vocab, device)
             accuracy_str = f" | Accuracy={current_acc:.0f}%"
