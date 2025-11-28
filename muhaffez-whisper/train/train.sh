@@ -288,13 +288,17 @@ run_training_suite() {
         local suite_end=$(date +%s)
         local elapsed=$((suite_end - suite_start))
 
-        # Format time: show seconds if < 60s, otherwise minutes
+        # Format time: show seconds if < 60s, minutes if < 3600s, otherwise hours
         if [ $elapsed -lt 60 ]; then
             local time_str="${elapsed}s"
-        else
+        elif [ $elapsed -lt 3600 ]; then
             # Round to nearest minute with minimum of 1
             local minutes=$(echo "scale=0; m = ($elapsed + 30) / 60; if (m < 1) 1 else m" | bc)
             local time_str="${minutes}m"
+        else
+            # Round to nearest hour
+            local hours=$(echo "scale=0; h = ($elapsed + 1800) / 3600; if (h < 1) 1 else h" | bc)
+            local time_str="${hours}h"
         fi
 
         # Extract accuracy from log file
@@ -311,13 +315,17 @@ run_training_suite() {
         local suite_end=$(date +%s)
         local elapsed=$((suite_end - suite_start))
 
-        # Format time: show seconds if < 60s, otherwise minutes
+        # Format time: show seconds if < 60s, minutes if < 3600s, otherwise hours
         if [ $elapsed -lt 60 ]; then
             local time_str="${elapsed}s"
-        else
+        elif [ $elapsed -lt 3600 ]; then
             # Round to nearest minute with minimum of 1
             local minutes=$(echo "scale=0; m = ($elapsed + 30) / 60; if (m < 1) 1 else m" | bc)
             local time_str="${minutes}m"
+        else
+            # Round to nearest hour
+            local hours=$(echo "scale=0; h = ($elapsed + 1800) / 3600; if (h < 1) 1 else h" | bc)
+            local time_str="${hours}h"
         fi
 
         echo "✗ $suite_name ($time_str) FAILED"

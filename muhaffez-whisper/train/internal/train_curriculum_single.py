@@ -169,14 +169,22 @@ def train_single_part(dataset_name, surah_part):
             all_curriculum_target_seconds.append(target_seconds)
             all_curriculum_target_words.append(target_words)
 
-    print(f"Total curriculum samples: {len(all_curriculum_files)}\n")
+    print(f"Total curriculum samples: {len(all_curriculum_files)}")
 
     # Collect all augmented data (normal + augmented) for replay buffer sampling
-    print("Loading augmented data pool for replay buffer...")
+    print("\nLoading augmented data pool for replay buffer...")
     text_files = sorted(glob.glob(f"../datasets/{dataset_name}/text/*.txt"))
     from common.data_collection import collect_augmented_data
     _, _, all_augmented_segments, all_augmented_transcriptions = collect_augmented_data(dataset_name, text_files)
-    print(f"Augmented data pool: {len(all_augmented_segments)} samples\n")
+
+    # Calculate replay buffer size (10% of curriculum samples)
+    replay_buffer_size = max(int(len(all_curriculum_files) * 0.1), 10)
+    replay_buffer_size = min(replay_buffer_size, len(all_augmented_segments))
+    total_training_samples = len(all_curriculum_files) + replay_buffer_size
+
+    print(f"Augmented data pool: {len(all_augmented_segments)} samples")
+    print(f"Replay buffer size: {replay_buffer_size} samples (10% of curriculum)")
+    print(f"Total training per epoch: {len(all_curriculum_files)} curriculum + {replay_buffer_size} replay = {total_training_samples} samples\n")
 
     model = model.to(device)
 
@@ -187,7 +195,7 @@ def train_single_part(dataset_name, surah_part):
     if checkpoint_info['restored']:
         print(f"✓ Checkpoint restored: Epoch {checkpoint_info['epoch']}, LR={checkpoint_info['lr']:.1e}")
     elif os.path.exists(model_path):
-        print(f"✓ Model loaded (starting fresh with LR=1e-3)")
+        print(f"✓ Model loaded (starting fresh with LR={checkpoint_info['lr']:.1e})")
     else:
         print(f"⚠️  No existing model found. Starting from scratch.")
 
@@ -283,7 +291,14 @@ def train_single_part(dataset_name, surah_part):
             best_loss = avg_loss
 
         elapsed = time.time() - checkpoint_time
-        time_str = f"{int(elapsed//60)}m" if elapsed >= 60 else f"{int(elapsed)}s"
+        if elapsed >= 3600:
+            # Round to nearest hour
+            hours = int(round(elapsed / 3600))
+            time_str = f"{hours}h"
+        elif elapsed >= 60:
+            time_str = f"{int(round(elapsed / 60))}m"
+        else:
+            time_str = f"{int(elapsed)}s"
 
         current_lr = optimizer.param_groups[0]['lr']
         accuracy_str = ""

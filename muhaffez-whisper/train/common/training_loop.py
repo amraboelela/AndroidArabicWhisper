@@ -90,9 +90,9 @@ def update_learning_rate(optimizer, avg_loss, prev_loss, min_lr=1e-7, decay_fact
 def format_time(seconds):
     """Format elapsed time in a human-readable format"""
     if seconds >= 3600:
-        hours = int(seconds // 3600)
-        minutes = int((seconds % 3600) // 60)
-        return f"{hours}h {minutes}m" if minutes > 0 else f"{hours}h"
+        # Round to nearest hour
+        hours = int(round(seconds / 3600))
+        return f"{hours}h"
     elif seconds >= 60:
         return f"{int(round(seconds / 60))}m"
     else:

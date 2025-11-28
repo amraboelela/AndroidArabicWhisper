@@ -319,9 +319,9 @@ def train_single_part(dataset_name, surah_part):
         # Format time
         elapsed_from_checkpoint = time.time() - checkpoint_time
         if elapsed_from_checkpoint >= 3600:
-            hours = int(elapsed_from_checkpoint // 3600)
-            minutes = int((elapsed_from_checkpoint % 3600) // 60)
-            time_str = f"{hours}h {minutes}m" if minutes > 0 else f"{hours}h"
+            # Round to nearest hour
+            hours = int(round(elapsed_from_checkpoint / 3600))
+            time_str = f"{hours}h"
         elif elapsed_from_checkpoint >= 60:
             time_str = f"{int(round(elapsed_from_checkpoint / 60))}m"
         else:

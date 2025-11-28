@@ -190,11 +190,19 @@ def train_all_parts(dataset_name):
     print(f"Total curriculum samples: {len(all_curriculum_files)}")
 
     # Collect all augmented data (normal + augmented) for replay buffer sampling
-    print("Loading augmented data pool for replay buffer...")
+    print("\nLoading augmented data pool for replay buffer...")
     text_files = sorted(glob.glob(f"{datasets_dir}/text/*.txt"))
     from common.data_collection import collect_augmented_data
     _, _, all_augmented_segments, all_augmented_transcriptions = collect_augmented_data(dataset_name, text_files)
-    print(f"Augmented data pool: {len(all_augmented_segments)} samples\n")
+
+    # Calculate replay buffer size (10% of curriculum samples)
+    replay_buffer_size = max(int(len(all_curriculum_files) * 0.1), 10)
+    replay_buffer_size = min(replay_buffer_size, len(all_augmented_segments))
+    total_training_samples = len(all_curriculum_files) + replay_buffer_size
+
+    print(f"Augmented data pool: {len(all_augmented_segments)} samples")
+    print(f"Replay buffer size: {replay_buffer_size} samples (10% of curriculum)")
+    print(f"Total training per epoch: {len(all_curriculum_files)} curriculum + {replay_buffer_size} replay = {total_training_samples} samples\n")
 
     # Setup optimizer and load checkpoint if exists
     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=0.01)
@@ -203,7 +211,7 @@ def train_all_parts(dataset_name):
     if checkpoint_info['restored']:
         print(f"✓ Checkpoint restored (with optimizer state): Epoch {checkpoint_info['epoch']}, LR={checkpoint_info['lr']:.1e}")
     elif os.path.exists(model_path):
-        print(f"✓ Model loaded (starting fresh with LR=1e-3)")
+        print(f"✓ Model loaded (starting fresh with LR={checkpoint_info['lr']:.1e})")
     else:
         print(f"⚠️  No existing model found. Starting from scratch.")
 
@@ -319,9 +327,9 @@ def train_all_parts(dataset_name):
         # Format time
         elapsed_from_checkpoint = time.time() - checkpoint_time
         if elapsed_from_checkpoint >= 3600:
-            hours = int(elapsed_from_checkpoint // 3600)
-            minutes = int((elapsed_from_checkpoint % 3600) // 60)
-            time_str = f"{hours}h {minutes}m" if minutes > 0 else f"{hours}h"
+            # Round to nearest hour
+            hours = int(round(elapsed_from_checkpoint / 3600))
+            time_str = f"{hours}h"
         elif elapsed_from_checkpoint >= 60:
             time_str = f"{int(round(elapsed_from_checkpoint / 60))}m"
         else:
